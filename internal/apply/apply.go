@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/ledger"
 	"github.com/dbtools/dbtools/internal/migrator"
 	"github.com/dbtools/dbtools/internal/statusinfo"
@@ -21,19 +21,24 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		return nil, err
 	}
 
+	eng, err := engine.ForTarget(cfg.EngineName(targetName), url)
+	if err != nil {
+		return nil, fmt.Errorf("target %q: %w", targetName, err)
+	}
+
 	m, err := migrator.Open(url, cfg.MigrationsDir)
 	if err != nil {
 		return nil, err
 	}
 	defer m.Close()
 
-	db, err := dbconn.Open(url)
+	db, err := eng.Open(url)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 	defer db.Close()
 
-	if err := ledger.Sync(db, m, cfg.MigrationsDir); err != nil {
+	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
@@ -52,7 +57,7 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 	}
 
 	for _, v := range newlyPending {
-		if err := ledger.SetStatus(db, v, ledger.StatusApplied, "applied via up/push"); err != nil {
+		if err := eng.Ledger().SetStatus(db, v, ledger.StatusApplied, "applied via up/push"); err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}
 	}

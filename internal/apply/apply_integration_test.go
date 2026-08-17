@@ -9,6 +9,9 @@ import (
 
 	"github.com/dbtools/dbtools/internal/config"
 	"github.com/dbtools/dbtools/internal/dbconn"
+	// apply.Run resolves engines from the registry; register MSSQL for
+	// this test binary the same way cmd/root.go does for the CLI.
+	_ "github.com/dbtools/dbtools/internal/engine/mssqlengine"
 	"github.com/dbtools/dbtools/internal/ledger"
 	"github.com/dbtools/dbtools/internal/testdb"
 )
@@ -38,7 +41,7 @@ func TestRun_AppliesMigrations(t *testing.T) {
 		Targets:       map[string]config.Target{"local": {URLEnv: "DBTOOLS_APPLY_TEST_URL"}},
 	}
 
-	status, err := Run(cfg, "local")
+	status, err := Run(cfg, "local", "")
 	if err != nil {
 		t.Fatalf("Run() returned error: %v", err)
 	}
@@ -72,7 +75,7 @@ func TestRun_RecordsLedgerEntries(t *testing.T) {
 		Targets:       map[string]config.Target{"local": {URLEnv: "DBTOOLS_APPLY_LEDGER_TEST_URL"}},
 	}
 
-	if _, err := Run(cfg, "local"); err != nil {
+	if _, err := Run(cfg, "local", ""); err != nil {
 		t.Fatalf("Run() returned error: %v", err)
 	}
 

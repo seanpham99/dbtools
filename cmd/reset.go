@@ -6,7 +6,7 @@ import (
 	"github.com/dbtools/dbtools/internal/apply"
 	"github.com/dbtools/dbtools/internal/config"
 	"github.com/dbtools/dbtools/internal/container"
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/seed"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +32,15 @@ func init() {
 }
 
 func recreateLocalDatabase() error {
-	db, err := dbconn.Open(container.MasterURL())
+	// reset is deliberately scoped to the tool-owned local MSSQL container
+	// (its URL is container.MasterURL(), always mssql://); seeding also runs
+	// through the MSSQL path. A future non-MSSQL local target gets its own
+	// engine-owned reset/seed capability rather than reusing this one.
+	eng, err := engine.ForURL(container.MasterURL())
+	if err != nil {
+		return err
+	}
+	db, err := eng.Open(container.MasterURL())
 	if err != nil {
 		return fmt.Errorf("opening master connection: %w", err)
 	}

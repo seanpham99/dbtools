@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dbtools/dbtools/internal/ddlcheck"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/ledger"
 	"github.com/dbtools/dbtools/internal/migrator"
 )
@@ -28,8 +28,8 @@ type Result struct {
 // applied when its migration's objects don't exist unless force is set),
 // applies all pairs, and recomputes db's cursor as the highest remaining
 // applied version.
-func Run(db *sql.DB, m *migrator.Migrator, migrationsDir string, pairs []Pair, force bool) (*Result, error) {
-	if err := ledger.Sync(db, m, migrationsDir); err != nil {
+func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir string, pairs []Pair, force bool) (*Result, error) {
+	if err := eng.Ledger().Sync(db, m, migrationsDir); err != nil {
 		return nil, err
 	}
 
@@ -50,8 +50,8 @@ func Run(db *sql.DB, m *migrator.Migrator, migrationsDir string, pairs []Pair, f
 		if err != nil {
 			return nil, err
 		}
-		for _, obj := range ddlcheck.ExtractObjects(string(raw)) {
-			exists, err := ddlcheck.Exists(db, obj)
+		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
+			exists, err := eng.DDL().Exists(db, obj)
 			if err != nil {
 				return nil, err
 			}
@@ -71,12 +71,12 @@ func Run(db *sql.DB, m *migrator.Migrator, migrationsDir string, pairs []Pair, f
 	defer tx.Rollback()
 
 	for _, pair := range pairs {
-		if err := ledger.SetStatus(tx, pair.Version, pair.Status, "repaired via dbtools repair"); err != nil {
+		if err := eng.Ledger().SetStatus(tx, pair.Version, pair.Status, "repaired via dbtools repair"); err != nil {
 			return nil, err
 		}
 	}
 
-	applied, err := ledger.AppliedVersions(tx)
+	applied, err := eng.Ledger().AppliedVersions(tx)
 	if err != nil {
 		return nil, err
 	}

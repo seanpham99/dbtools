@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/ledger"
 	"github.com/dbtools/dbtools/internal/migrator"
 	"github.com/dbtools/dbtools/internal/repair"
@@ -83,7 +83,12 @@ func runRepair(targetName string, pairs []repair.Pair) error {
 		return err
 	}
 
-	db, err := dbconn.Open(url)
+	eng, err := engine.ForTarget(cfg.EngineName(targetName), url)
+	if err != nil {
+		return err
+	}
+
+	db, err := eng.Open(url)
 	if err != nil {
 		return err
 	}
@@ -95,7 +100,7 @@ func runRepair(targetName string, pairs []repair.Pair) error {
 	}
 	defer m.Close()
 
-	result, err := repair.Run(db, m, cfg.MigrationsDir, pairs, repairForce)
+	result, err := repair.Run(db, eng, m, cfg.MigrationsDir, pairs, repairForce)
 	if err != nil {
 		return err
 	}

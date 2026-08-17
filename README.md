@@ -29,6 +29,9 @@ migrations_dir = "migrations"
 
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"
+# engine is optional and defaults to the connection URL's scheme
+# (e.g. mssql:// -> mssql). When set, it must match that scheme.
+engine = "mssql"
 
 [targets.prod]
 url_env = "DBTOOLS_PROD_URL"

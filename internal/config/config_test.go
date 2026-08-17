@@ -104,3 +104,27 @@ func TestTargetNames_Sorted(t *testing.T) {
 		}
 	}
 }
+
+func TestLoad_ParsesOptionalEngineField(t *testing.T) {
+	path := writeTemp(t, `
+[targets.local]
+url_env = "L_URL"
+engine = "mssql"
+
+[targets.prod]
+url_env = "P_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if got := cfg.EngineName("local"); got != "mssql" {
+		t.Errorf("EngineName(local) = %q, want mssql", got)
+	}
+	if got := cfg.EngineName("prod"); got != "" {
+		t.Errorf("EngineName(prod) = %q, want \"\" (infer from URL scheme)", got)
+	}
+	if got := cfg.EngineName("nosuch"); got != "" {
+		t.Errorf("EngineName(nosuch) = %q, want \"\"", got)
+	}
+}

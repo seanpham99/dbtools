@@ -39,6 +39,7 @@ migrations_dir = "migrations"
 
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"
+engine = "mssql"  # optional; defaults from the URL scheme and must match it
 
 [targets.prod]
 url_env = "DBTOOLS_PROD_URL"

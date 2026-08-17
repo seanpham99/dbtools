@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/dbtools/dbtools/internal/engine/mssqlengine"
 	"github.com/dbtools/dbtools/internal/ledger"
 	"github.com/dbtools/dbtools/internal/testdb"
 )
@@ -43,7 +44,7 @@ func TestCollect_DetectsStampedButNeverRunTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestCollect_DetectsStampedButNeverRunTable(t *testing.T) {
 	}
 	defer db.Exec("DROP TABLE dbtools_test_verify_widgets")
 
-	report, err = Collect(db, dir, "test-target")
+	report, err = Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
 	if err != nil {
 		t.Fatalf("second Collect() returned error: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestCollect_RevertedButStillExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -136,7 +137,7 @@ func TestCollect_RevertedWithFileGoneIsNotDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -172,7 +173,7 @@ func TestCollect_AppliedWithFileGoneIsStillDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestCollect_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -267,7 +268,7 @@ func TestCollect_ReportsAllMissingObjectsInOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
