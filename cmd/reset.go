@@ -64,6 +64,17 @@ func runReset() error {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}
 
+	// Validate the configured local target (URL resolvable, engine matches
+	// its scheme) BEFORE the destructive drop/recreate — a misconfigured
+	// target must never leave the local database wiped and then fail.
+	localURL, err := cfg.ResolveURL("local")
+	if err != nil {
+		return err
+	}
+	if _, err := engine.ForTarget(cfg.EngineName("local"), localURL); err != nil {
+		return err
+	}
+
 	if err := resetLocalDatabase(); err != nil {
 		return err
 	}
@@ -74,10 +85,6 @@ func runReset() error {
 	}
 	fmt.Printf("local: replayed to version %d\n", status.CurrentVersion)
 
-	localURL, err := cfg.ResolveURL("local")
-	if err != nil {
-		return err
-	}
 	if err := seedRun(localURL); err != nil {
 		return fmt.Errorf("running %s: %w", seed.Filename, err)
 	}

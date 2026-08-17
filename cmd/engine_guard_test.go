@@ -40,6 +40,30 @@ func TestCollectStatuses_RejectsEngineSchemeMismatch(t *testing.T) {
 	}
 }
 
+// reset must refuse a misconfigured local target BEFORE any destructive
+// drop/recreate happens.
+func TestRunReset_RejectsEngineSchemeMismatchBeforeDestructiveWork(t *testing.T) {
+	cfg := mismatchConfig(t)
+
+	origLoad, origReset := loadConfig, resetLocalDatabase
+	t.Cleanup(func() { loadConfig, resetLocalDatabase = origLoad, origReset })
+
+	loadConfig = func(string) (*config.Config, error) { return cfg, nil }
+	destroyed := false
+	resetLocalDatabase = func() error { destroyed = true; return nil }
+
+	err := runReset()
+	if err == nil {
+		t.Fatal("runReset() should fail on engine/scheme mismatch")
+	}
+	if !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if destroyed {
+		t.Fatal("local database must not be recreated when validation fails")
+	}
+}
+
 func TestRunPush_RejectsEngineSchemeMismatch(t *testing.T) {
 	cfg := mismatchConfig(t)
 	dir := t.TempDir()
