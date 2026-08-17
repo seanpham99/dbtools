@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dbtools/dbtools/internal/config"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/render"
 	"github.com/dbtools/dbtools/internal/statusinfo"
 	"github.com/spf13/cobra"
@@ -68,17 +69,21 @@ func buildStatusEntries(statuses []statusinfo.Status, failures []targetFailure) 
 	return entries
 }
 
-func runStatus() error {
-	cfg, err := config.Load("dbtools.toml")
-	if err != nil {
-		return fmt.Errorf("loading dbtools.toml: %w", err)
-	}
-
+// collectStatuses gathers each configured target's status, recording a
+// failure (never aborting the whole run) for targets that can't be
+// resolved, fail engine validation, or can't be reached. Engine
+// resolution happens before any connection attempt, so a target whose
+// configured engine contradicts its URL scheme is rejected without dialing.
+func collectStatuses(cfg *config.Config) ([]statusinfo.Status, []targetFailure) {
 	var statuses []statusinfo.Status
 	var failures []targetFailure
 	for _, name := range cfg.TargetNames() {
 		url, err := cfg.ResolveURLOrFlag(name, statusURL)
 		if err != nil {
+			failures = append(failures, targetFailure{Target: name, Error: err.Error()})
+			continue
+		}
+		if _, err := engine.ForTarget(cfg.EngineName(name), url); err != nil {
 			failures = append(failures, targetFailure{Target: name, Error: err.Error()})
 			continue
 		}
@@ -89,6 +94,16 @@ func runStatus() error {
 		}
 		statuses = append(statuses, *s)
 	}
+	return statuses, failures
+}
+
+func runStatus() error {
+	cfg, err := config.Load("dbtools.toml")
+	if err != nil {
+		return fmt.Errorf("loading dbtools.toml: %w", err)
+	}
+
+	statuses, failures := collectStatuses(cfg)
 
 	if jsonOutput {
 		b, err := json.Marshal(buildStatusEntries(statuses, failures))

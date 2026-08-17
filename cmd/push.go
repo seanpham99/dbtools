@@ -5,6 +5,7 @@ import (
 
 	"github.com/dbtools/dbtools/internal/apply"
 	"github.com/dbtools/dbtools/internal/config"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/statusinfo"
 	"github.com/spf13/cobra"
 )
@@ -17,38 +18,47 @@ var pushCmd = &cobra.Command{
 	Short: "Apply pending migrations to a named remote target (version-sync only)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load("dbtools.toml")
-		if err != nil {
-			return fmt.Errorf("loading dbtools.toml: %w", err)
-		}
-
-		url, err := cfg.ResolveURLOrFlag(args[0], pushURL)
-		if err != nil {
-			return err
-		}
-		preview, err := statusinfo.Collect(url, cfg.MigrationsDir, args[0])
-		if err != nil {
-			return err
-		}
-		if len(preview.Pending) == 0 {
-			fmt.Printf("%s: already up to date, nothing to push\n", args[0])
-			return nil
-		}
-		fmt.Printf("%s: %d pending migration(s):\n", args[0], len(preview.Pending))
-		for _, f := range preview.Pending {
-			fmt.Printf("  %s\n", f)
-		}
-		if !pushYes {
-			return fmt.Errorf("refusing to push migrations to %q without --yes", args[0])
-		}
-
-		status, err := apply.Run(cfg, args[0], pushURL)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("%s: now at version %d (%d pending)\n", status.Target, status.CurrentVersion, len(status.Pending))
-		return nil
+		return runPush(args[0])
 	},
+}
+
+func runPush(targetName string) error {
+	cfg, err := config.Load("dbtools.toml")
+	if err != nil {
+		return fmt.Errorf("loading dbtools.toml: %w", err)
+	}
+
+	url, err := cfg.ResolveURLOrFlag(targetName, pushURL)
+	if err != nil {
+		return err
+	}
+	// Validate the target's engine against the URL scheme before the
+	// status preflight opens any connection.
+	if _, err := engine.ForTarget(cfg.EngineName(targetName), url); err != nil {
+		return err
+	}
+	preview, err := statusinfo.Collect(url, cfg.MigrationsDir, targetName)
+	if err != nil {
+		return err
+	}
+	if len(preview.Pending) == 0 {
+		fmt.Printf("%s: already up to date, nothing to push\n", targetName)
+		return nil
+	}
+	fmt.Printf("%s: %d pending migration(s):\n", targetName, len(preview.Pending))
+	for _, f := range preview.Pending {
+		fmt.Printf("  %s\n", f)
+	}
+	if !pushYes {
+		return fmt.Errorf("refusing to push migrations to %q without --yes", targetName)
+	}
+
+	status, err := apply.Run(cfg, targetName, pushURL)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s: now at version %d (%d pending)\n", status.Target, status.CurrentVersion, len(status.Pending))
+	return nil
 }
 
 func init() {
