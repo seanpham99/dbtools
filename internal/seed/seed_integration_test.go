@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	_ "github.com/microsoft/go-mssqldb"
+
+	"github.com/dbtools/dbtools/internal/engine/mssqlengine"
 )
 
 func TestRun_ExecutesSeedFile(t *testing.T) {
@@ -47,7 +49,7 @@ func TestRun_ExecutesSeedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Run(rawURL); err != nil {
+	if err := Run(mssqlengine.MSSQL{}, rawURL); err != nil {
 		t.Fatalf("Run() returned error: %v", err)
 	}
 

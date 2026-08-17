@@ -63,9 +63,10 @@ var pythonKeywords = map[string]bool{
 	"return": true, "try": true, "while": true, "with": true, "yield": true,
 }
 
-// sanitizeFieldName appends a trailing underscore to Python-keyword column names,
-// matching the idiomatic Python convention (e.g. `class` -> `class_`).
-func sanitizeFieldName(name string) string {
+// SanitizeFieldName appends a trailing underscore to Python-keyword column
+// names, matching the idiomatic Python convention (e.g. `class` -> `class_`).
+// Exported so other engines' introspectors build columns the same way.
+func SanitizeFieldName(name string) string {
 	if pythonKeywords[name] {
 		return name + "_"
 	}

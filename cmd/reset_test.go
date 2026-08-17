@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/dbtools/dbtools/internal/config"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/statusinfo"
 )
 
@@ -30,7 +31,7 @@ func TestRunResetRecreatesAppliesAndSeedsLocal(t *testing.T) {
 		}, nil
 	}
 	resetCalled := false
-	resetLocalDatabase = func() error {
+	resetLocalDatabase = func(engine.Engine) error {
 		resetCalled = true
 		return nil
 	}
@@ -43,7 +44,7 @@ func TestRunResetRecreatesAppliesAndSeedsLocal(t *testing.T) {
 		return &statusinfo.Status{Target: "local", CurrentVersion: 20260701041134, HasVersion: true}, nil
 	}
 	seedCalled := false
-	seedRun = func(databaseURL string) error {
+	seedRun = func(_ engine.Engine, databaseURL string) error {
 		seedCalled = true
 		if databaseURL != "mssql://sa:pw@localhost:14330?database=dbtools_local&TrustServerCertificate=true" {
 			t.Fatalf("seedRun called with %q", databaseURL)

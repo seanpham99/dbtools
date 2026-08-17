@@ -1,6 +1,6 @@
 # dbtools
 
-Migration authority and local dev-loop for MSSQL (Postgres planned) — see
+Migration authority and local dev-loop for MSSQL and Postgres (SQLite planned) — see
 `docs/adr/016-dbtools-migration-authority.md` for why this exists and
 `CONTEXT.md` for the terms it introduces (`target`, `push`, `version-sync`,
 `reset`, `seed.sql`).
@@ -30,7 +30,8 @@ migrations_dir = "migrations"
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"
 # engine is optional and defaults to the connection URL's scheme
-# (e.g. mssql:// -> mssql). When set, it must match that scheme.
+# (e.g. mssql:// -> mssql, postgres:// -> postgres). When set, it must
+# match that scheme. Supported engines: mssql, postgres.
 engine = "mssql"
 
 [targets.prod]
@@ -42,7 +43,8 @@ environment variable before running `up`/`push`/`status` against that target.
 
 ## Generate
 
-`dbtools generate` introspects `INFORMATION_SCHEMA` (MSSQL only today) for a
+`dbtools generate` introspects the target's information schema (MSSQL and
+Postgres) for a
 target and renders one `pydantic.BaseModel` per base table, giving consuming
 Python code (services, ETL scripts, tests) a versioned type contract to
 `model_validate()` against instead of raw dicts. It ships with zero domain

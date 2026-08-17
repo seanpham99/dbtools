@@ -8,13 +8,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var startContainer = container.Start
+var startContainer = container.StartFor
 
 var writeLocalEnv = localenv.Write
 
 var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start the tool-owned local MSSQL container",
+	Short: "Start the tool-owned local database container",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStart()
 	},
@@ -34,7 +34,7 @@ func runStart() error {
 		return fmt.Errorf(`no "local" target configured in dbtools.toml`)
 	}
 
-	url, err := startContainer()
+	url, err := startContainer(localEngineName(cfg))
 	if err != nil {
 		return err
 	}

@@ -133,7 +133,7 @@ func Introspect(db *sql.DB, excludeList []string) ([]TableSchema, []string, erro
 
 		col := ColumnSchema{
 			Name:       colName,
-			PyName:     sanitizeFieldName(colName),
+			PyName:     SanitizeFieldName(colName),
 			DataType:   dataType,
 			PythonType: pythonType,
 			IsNullable: strings.ToUpper(isNullableStr) == "YES",

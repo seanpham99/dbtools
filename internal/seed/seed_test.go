@@ -1,6 +1,7 @@
 package seed
 
 import (
+	"github.com/dbtools/dbtools/internal/engine/mssqlengine"
 	"os"
 	"testing"
 )
@@ -43,7 +44,7 @@ func TestRun_NoSeedFileIsNotAnError(t *testing.T) {
 		t.Fatalf("os.Chdir() returned error: %v", err)
 	}
 
-	if err := Run("not-a-real-connection-string"); err != nil {
+	if err := Run(mssqlengine.MSSQL{}, "not-a-real-connection-string"); err != nil {
 		t.Fatalf("Run() with no seed.sql returned error: %v", err)
 	}
 }

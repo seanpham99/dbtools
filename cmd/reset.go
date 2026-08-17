@@ -31,29 +31,45 @@ func init() {
 	rootCmd.AddCommand(resetCmd)
 }
 
-func recreateLocalDatabase() error {
-	// reset is deliberately scoped to the tool-owned local MSSQL container
-	// (its URL is container.MasterURL(), always mssql://); seeding also runs
-	// through the MSSQL path. A future non-MSSQL local target gets its own
-	// engine-owned reset/seed capability rather than reusing this one.
-	eng, err := engine.ForURL(container.MasterURL())
+// recreateLocalDatabase drops and recreates the tool-owned local
+// container's database for eng. reset is deliberately scoped to that
+// container — its maintenance URL comes from the container package, never
+// from user configuration, so a mistyped target URL can't aim the drop at
+// a real server.
+func recreateLocalDatabase(eng engine.Engine) error {
+	maintenanceURL, err := container.MaintenanceURLFor(eng.Name())
 	if err != nil {
 		return err
 	}
-	db, err := eng.Open(container.MasterURL())
+	db, err := eng.Open(maintenanceURL)
 	if err != nil {
-		return fmt.Errorf("opening master connection: %w", err)
+		return fmt.Errorf("opening maintenance connection: %w", err)
 	}
 	defer db.Close()
 
-	query := fmt.Sprintf(`IF DB_ID(N'%s') IS NOT NULL
+	switch eng.Name() {
+	case "mssql":
+		query := fmt.Sprintf(`IF DB_ID(N'%s') IS NOT NULL
 BEGIN
-	ALTER DATABASE %s SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-	DROP DATABASE %s;
+    ALTER DATABASE %s SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE %s;
 END
 CREATE DATABASE %s;`, container.DatabaseName, container.DatabaseName, container.DatabaseName, container.DatabaseName)
-	if _, err := db.Exec(query); err != nil {
-		return fmt.Errorf("recreating %s: %w", container.DatabaseName, err)
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("recreating %s: %w", container.DatabaseName, err)
+		}
+	case "postgres":
+		// CREATE/DROP DATABASE cannot run inside a transaction block, so
+		// each statement is its own Exec. WITH (FORCE) (PG13+) kicks out
+		// lingering connections, mirroring MSSQL's ROLLBACK IMMEDIATE.
+		if _, err := db.Exec(fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, container.DatabaseName)); err != nil {
+			return fmt.Errorf("dropping %s: %w", container.DatabaseName, err)
+		}
+		if _, err := db.Exec(fmt.Sprintf(`CREATE DATABASE %s`, container.DatabaseName)); err != nil {
+			return fmt.Errorf("creating %s: %w", container.DatabaseName, err)
+		}
+	default:
+		return fmt.Errorf("reset does not support engine %q", eng.Name())
 	}
 	return nil
 }
@@ -71,11 +87,12 @@ func runReset() error {
 	if err != nil {
 		return err
 	}
-	if _, err := engine.ForTarget(cfg.EngineName("local"), localURL); err != nil {
+	eng, err := engine.ForTarget(cfg.EngineName("local"), localURL)
+	if err != nil {
 		return err
 	}
 
-	if err := resetLocalDatabase(); err != nil {
+	if err := resetLocalDatabase(eng); err != nil {
 		return err
 	}
 
@@ -85,7 +102,7 @@ func runReset() error {
 	}
 	fmt.Printf("local: replayed to version %d\n", status.CurrentVersion)
 
-	if err := seedRun(localURL); err != nil {
+	if err := seedRun(eng, localURL); err != nil {
 		return fmt.Errorf("running %s: %w", seed.Filename, err)
 	}
 	fmt.Printf("%s applied (or skipped if absent)\n", seed.Filename)

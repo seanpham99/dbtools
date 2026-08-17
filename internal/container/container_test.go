@@ -7,14 +7,14 @@ import (
 )
 
 func TestLocalDatabaseURL(t *testing.T) {
-	want := "mssql://sa:" + url.QueryEscape(password) + "@127.0.0.1:" + Port + "?database=" + DatabaseName + "&TrustServerCertificate=true"
-	if got := LocalDatabaseURL(); got != want {
-		t.Fatalf("LocalDatabaseURL() = %q, want %q", got, want)
+	want := "mssql://sa:" + url.QueryEscape(password) + "@127.0.0.1:" + mssqlSpec.hostPort + "?database=" + DatabaseName + "&TrustServerCertificate=true"
+	if got := mustLocalURL(t); got != want {
+		t.Fatalf("mustLocalURL(t) = %q, want %q", got, want)
 	}
 }
 
 func TestMasterURL(t *testing.T) {
-	want := "mssql://sa:" + url.QueryEscape(password) + "@127.0.0.1:" + Port + "?database=master&TrustServerCertificate=true"
+	want := "mssql://sa:" + url.QueryEscape(password) + "@127.0.0.1:" + mssqlSpec.hostPort + "?database=master&TrustServerCertificate=true"
 	if got := MasterURL(); got != want {
 		t.Fatalf("MasterURL() = %q, want %q", got, want)
 	}
@@ -67,4 +67,13 @@ func TestParseInspectOutputOtherError(t *testing.T) {
 	if err == nil {
 		t.Fatal("parseInspectOutput() returned nil error, want non-nil")
 	}
+}
+
+func mustLocalURL(t *testing.T) string {
+	t.Helper()
+	got, err := LocalDatabaseURLFor("mssql")
+	if err != nil {
+		t.Fatalf("LocalDatabaseURLFor(mssql) returned error: %v", err)
+	}
+	return got
 }
