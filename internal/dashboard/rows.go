@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"github.com/dbtools/dbtools/internal/config"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/statusinfo"
 )
 
@@ -18,6 +19,12 @@ func BuildRows(cfg *config.Config, collect CollectFunc) []Row {
 	for _, name := range cfg.TargetNames() {
 		url, err := cfg.ResolveURL(name)
 		if err != nil {
+			rows = append(rows, Row{Target: name, Err: err})
+			continue
+		}
+
+		// Reject an engine/URL-scheme mismatch before collect dials anything.
+		if _, err := engine.ForTarget(cfg.EngineName(name), url); err != nil {
 			rows = append(rows, Row{Target: name, Err: err})
 			continue
 		}
