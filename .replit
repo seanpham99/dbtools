@@ -1,0 +1,30 @@
+modules = ["go-1.25"]
+
+[nix]
+channel = "stable-25_05"
+
+[agent]
+expertMode = true
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Build dbtools"
+
+[[workflows.workflow]]
+name = "Build dbtools"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "go build -o dbtools . && echo '✓ dbtools binary built — run ./dbtools [command] in the shell'"
+
+[workflows.workflow.metadata]
+outputType = "console"
