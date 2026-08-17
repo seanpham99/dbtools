@@ -247,7 +247,7 @@ func IntrospectProcs(db *sql.DB) ([]TableSchema, error) {
 		for i, p := range params {
 			cols[i] = ColumnSchema{
 				Name:       p.Name,
-				PyName:     sanitizeFieldName(p.Name),
+				PyName:     SanitizeFieldName(p.Name),
 				DataType:   p.SQLType,
 				PythonType: p.PythonType,
 				IsNullable: true,

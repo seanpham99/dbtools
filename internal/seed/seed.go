@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/dbtools/dbtools/internal/engine"
 )
 
 const Filename = "seed.sql"
@@ -25,7 +25,10 @@ func splitBatches(sqlText string) []string {
 	return batches
 }
 
-func Run(databaseURL string) error {
+// Run executes seed.sql (if present) against databaseURL through eng's
+// connection opener. Batches are split on GO separators — a no-op for
+// engines whose seed files never contain GO lines (e.g. Postgres).
+func Run(eng engine.Engine, databaseURL string) error {
 	data, err := os.ReadFile(Filename)
 	if os.IsNotExist(err) {
 		return nil
@@ -34,7 +37,7 @@ func Run(databaseURL string) error {
 		return fmt.Errorf("reading %s: %w", Filename, err)
 	}
 
-	db, err := dbconn.Open(databaseURL)
+	db, err := eng.Open(databaseURL)
 	if err != nil {
 		return fmt.Errorf("opening database: %w", err)
 	}

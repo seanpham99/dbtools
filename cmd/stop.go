@@ -8,13 +8,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var stopContainer = container.Stop
+var stopContainer = container.StopFor
 
 var removeLocalEnv = localenv.Remove
 
 var stopCmd = &cobra.Command{
 	Use:   "stop",
-	Short: "Stop and remove the tool-owned local MSSQL container",
+	Short: "Stop and remove the tool-owned local database container",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStop()
 	},
@@ -25,7 +25,7 @@ func init() {
 }
 
 func runStop() error {
-	if err := stopContainer(); err != nil {
+	if err := stopContainer(loadLocalEngineName()); err != nil {
 		return err
 	}
 	if err := removeLocalEnv(); err != nil {

@@ -17,7 +17,8 @@ migrations_dir = "migrations"
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"
 # engine is optional and defaults to the connection URL's scheme
-# (e.g. mssql:// -> mssql). When set, it must match that scheme.
+# (e.g. mssql:// -> mssql, postgres:// -> postgres). When set, it must
+# match that scheme. Supported engines: mssql, postgres.
 engine = "mssql"
 `
 

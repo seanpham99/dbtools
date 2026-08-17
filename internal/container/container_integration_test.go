@@ -9,8 +9,8 @@ func TestStartStopIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start() returned error: %v", err)
 	}
-	if url != LocalDatabaseURL() {
-		t.Errorf("Start() = %q, want %q", url, LocalDatabaseURL())
+	if url != mustLocalURL(t) {
+		t.Errorf("Start() = %q, want %q", url, mustLocalURL(t))
 	}
 
 	// Calling Start() again while already running must be a no-op, not an error.
@@ -26,9 +26,9 @@ func TestStartStopIdempotent(t *testing.T) {
 		t.Fatalf("Stop() returned error: %v", err)
 	}
 
-	exists, _, err := inspect()
+	exists, _, err := inspect(mssqlSpec.name)
 	if err != nil {
-		t.Fatalf("inspect() after Stop() returned error: %v", err)
+		t.Fatalf("inspect(mssqlSpec.name) after Stop() returned error: %v", err)
 	}
 	if exists {
 		t.Error("expected container to be removed after Stop()")

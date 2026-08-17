@@ -10,10 +10,10 @@ import (
 
 type fakeEngine struct{ name string }
 
-func (f fakeEngine) Name() string                        { return f.name }
-func (f fakeEngine) Open(string) (*sql.DB, error)        { return nil, nil }
-func (f fakeEngine) DDL() DDLDialect                     { return nil }
-func (f fakeEngine) Ledger() LedgerStore                 { return nil }
+func (f fakeEngine) Name() string                 { return f.name }
+func (f fakeEngine) Open(string) (*sql.DB, error) { return nil, nil }
+func (f fakeEngine) DDL() DDLDialect              { return nil }
+func (f fakeEngine) Ledger() LedgerStore          { return nil }
 func (f fakeEngine) Introspect(*sql.DB, []string) ([]generate.TableSchema, []string, error) {
 	return nil, nil, nil
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dbtools/dbtools/internal/config"
+	"github.com/dbtools/dbtools/internal/engine"
 )
 
 // A configured engine that contradicts the target URL's scheme must be
@@ -50,7 +51,7 @@ func TestRunReset_RejectsEngineSchemeMismatchBeforeDestructiveWork(t *testing.T)
 
 	loadConfig = func(string) (*config.Config, error) { return cfg, nil }
 	destroyed := false
-	resetLocalDatabase = func() error { destroyed = true; return nil }
+	resetLocalDatabase = func(engine.Engine) error { destroyed = true; return nil }
 
 	err := runReset()
 	if err == nil {

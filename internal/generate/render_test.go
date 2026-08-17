@@ -89,11 +89,11 @@ func TestMapMSSQLToPython(t *testing.T) {
 }
 
 func TestSanitizeFieldName(t *testing.T) {
-	if got := sanitizeFieldName("class"); got != "class_" {
-		t.Errorf("sanitizeFieldName(class) = %q; want class_", got)
+	if got := SanitizeFieldName("class"); got != "class_" {
+		t.Errorf("SanitizeFieldName(class) = %q; want class_", got)
 	}
-	if got := sanitizeFieldName("ticker"); got != "ticker" {
-		t.Errorf("sanitizeFieldName(ticker) = %q; want ticker (unchanged)", got)
+	if got := SanitizeFieldName("ticker"); got != "ticker" {
+		t.Errorf("SanitizeFieldName(ticker) = %q; want ticker (unchanged)", got)
 	}
 }
 
