@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/dbtools/dbtools/internal/engine/mssqlengine"
 	"github.com/dbtools/dbtools/internal/ledger"
 	"github.com/dbtools/dbtools/internal/migrator"
 	"github.com/dbtools/dbtools/internal/testdb"
@@ -48,11 +49,11 @@ func TestRun_RefusesWithoutForceWhenObjectMissing(t *testing.T) {
 	// The table was never actually created (reproducing the real
 	// incident) — repair must refuse to mark it applied without --force.
 	pairs := []Pair{{Version: 20260101000000, Status: ledger.StatusApplied}}
-	if _, err := Run(db, m, dir, pairs, false); err == nil {
+	if _, err := Run(db, mssqlengine.MSSQL{}, m, dir, pairs, false); err == nil {
 		t.Fatal("expected Run() to refuse marking applied when object is missing, got nil error")
 	}
 
-	if _, err := Run(db, m, dir, pairs, true); err != nil {
+	if _, err := Run(db, mssqlengine.MSSQL{}, m, dir, pairs, true); err != nil {
 		t.Fatalf("Run() with force=true returned error: %v", err)
 	}
 
@@ -94,7 +95,7 @@ func TestRun_RecomputesCursor(t *testing.T) {
 	// Mark the later version reverted — cursor should recompute down to
 	// the earlier still-applied version.
 	pairs := []Pair{{Version: 20260102000000, Status: ledger.StatusReverted}}
-	result, err := Run(db, m, dir, pairs, false)
+	result, err := Run(db, mssqlengine.MSSQL{}, m, dir, pairs, false)
 	if err != nil {
 		t.Fatalf("Run() returned error: %v", err)
 	}
@@ -131,7 +132,7 @@ func TestRun_RevertsWithoutFilePresent(t *testing.T) {
 	// not require finding a file, since there's nothing to check for a
 	// reverted version.
 	pairs := []Pair{{Version: 20260101000000, Status: ledger.StatusReverted}}
-	if _, err := Run(db, m, dir, pairs, false); err != nil {
+	if _, err := Run(db, mssqlengine.MSSQL{}, m, dir, pairs, false); err != nil {
 		t.Fatalf("Run() marking reverted with no file present returned error: %v", err)
 	}
 
@@ -158,7 +159,7 @@ func TestRun_UnknownVersionRejected(t *testing.T) {
 	defer db.Close()
 
 	pairs := []Pair{{Version: 99999999999999, Status: ledger.StatusApplied}}
-	if _, err := Run(db, m, dir, pairs, true); err == nil {
+	if _, err := Run(db, mssqlengine.MSSQL{}, m, dir, pairs, true); err == nil {
 		t.Fatal("expected error for a version with no matching migration file, got nil")
 	}
 }

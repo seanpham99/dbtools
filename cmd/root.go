@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"os"
 
+	// Engine implementations self-register with internal/engine in their
+	// package init(); every registered engine's commands work from here.
+	_ "github.com/dbtools/dbtools/internal/engine/mssqlengine"
 	"github.com/dbtools/dbtools/internal/localenv"
 	"github.com/spf13/cobra"
 )

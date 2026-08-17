@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/generate"
 	"github.com/spf13/cobra"
 )
@@ -62,13 +62,18 @@ func runGenerate(targetName string) error {
 		return err
 	}
 
-	db, err := dbconn.Open(url)
+	eng, err := engine.ForTarget(cfg.EngineName(targetName), url)
+	if err != nil {
+		return err
+	}
+
+	db, err := eng.Open(url)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	tables, unmapped, err := generate.Introspect(db, cfg.Generate.Exclude)
+	tables, unmapped, err := eng.Introspect(db, cfg.Generate.Exclude)
 	if err != nil {
 		return err
 	}

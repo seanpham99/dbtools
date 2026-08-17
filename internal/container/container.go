@@ -33,6 +33,30 @@ func MasterURL() string {
 	return connectionURL("master")
 }
 
+// checkDocker verifies the docker CLI is installed and its daemon is
+// responding, returning an actionable error when either is missing —
+// e.g. on hosts without Docker (such as Replit), where `dbtools start`
+// can never work and the user should point their local target's env var
+// at an external MSSQL instance instead.
+func checkDocker() error {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return dockerUnavailableError("the docker CLI is not installed")
+	}
+	if out, err := exec.Command("docker", "info", "--format", "{{.ServerVersion}}").CombinedOutput(); err != nil {
+		return dockerUnavailableError("the Docker daemon is not responding: " + strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func dockerUnavailableError(cause string) error {
+	return fmt.Errorf(`Docker is not available here (%s).
+
+dbtools start/stop manage a tool-owned local MSSQL container, which needs Docker.
+On hosts without Docker, point your local target's connection env var (e.g.
+DBTOOLS_LOCAL_URL) at an MSSQL instance you run elsewhere, then use
+'dbtools up' / 'dbtools status' directly — no container needed`, cause)
+}
+
 func parseInspectOutput(out []byte, cmdErr error) (exists bool, running bool, err error) {
 	if cmdErr != nil {
 		// Docker CLI message wording for a missing container has changed
@@ -64,6 +88,9 @@ func inspect() (exists bool, running bool, err error) {
 }
 
 func Start() (string, error) {
+	if err := checkDocker(); err != nil {
+		return "", err
+	}
 	exists, running, err := inspect()
 	if err != nil {
 		return "", err
@@ -120,6 +147,9 @@ func createDatabase() error {
 }
 
 func Stop() error {
+	if err := checkDocker(); err != nil {
+		return err
+	}
 	exists, _, err := inspect()
 	if err != nil {
 		return err

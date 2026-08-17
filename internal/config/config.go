@@ -13,6 +13,11 @@ import (
 // environment variable that holds it at runtime.
 type Target struct {
 	URLEnv string `toml:"url_env"`
+	// Engine optionally names the target's database engine ("mssql").
+	// Empty means "infer from the connection URL's scheme"; when set, it
+	// must match that scheme (validated at engine resolution, see
+	// internal/engine.ForTarget).
+	Engine string `toml:"engine"`
 }
 
 // GenerateConfig holds settings for pydantic model generation.
@@ -74,6 +79,13 @@ func (c *Config) ResolveURLOrFlag(targetName, urlFlag string) (string, error) {
 		return urlFlag, nil
 	}
 	return c.ResolveURL(targetName)
+}
+
+// EngineName returns the engine configured for targetName, or "" when
+// the target is unknown or has no explicit engine (meaning: infer from
+// the connection URL's scheme).
+func (c *Config) EngineName(targetName string) string {
+	return c.Targets[targetName].Engine
 }
 
 // TargetNames returns all configured target names in sorted order.

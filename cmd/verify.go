@@ -5,8 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/dbconn"
-	"github.com/dbtools/dbtools/internal/ledger"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/migrator"
 	"github.com/dbtools/dbtools/internal/verify"
 	"github.com/spf13/cobra"
@@ -35,7 +34,12 @@ func runVerify(targetName string) error {
 		return err
 	}
 
-	db, err := dbconn.Open(url)
+	eng, err := engine.ForTarget(cfg.EngineName(targetName), url)
+	if err != nil {
+		return err
+	}
+
+	db, err := eng.Open(url)
 	if err != nil {
 		return err
 	}
@@ -47,11 +51,11 @@ func runVerify(targetName string) error {
 	}
 	defer m.Close()
 
-	if err := ledger.Sync(db, m, cfg.MigrationsDir); err != nil {
+	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
 		return err
 	}
 
-	report, err := verify.Collect(db, cfg.MigrationsDir, targetName)
+	report, err := verify.Collect(db, eng, cfg.MigrationsDir, targetName)
 	if err != nil {
 		return err
 	}

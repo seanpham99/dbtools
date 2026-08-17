@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dbtools/dbtools/internal/ddlcheck"
+	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/ledger"
 	"github.com/dbtools/dbtools/internal/migrator"
 )
@@ -29,8 +30,8 @@ type Report struct {
 // Collect checks every ledger row in db against migrationsDir's files:
 // versions marked "applied" must have every object their migration creates
 // actually present; versions marked "reverted" must not.
-func Collect(db *sql.DB, migrationsDir, targetName string) (*Report, error) {
-	entries, err := ledger.List(db)
+func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*Report, error) {
+	entries, err := eng.Ledger().List(db)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func Collect(db *sql.DB, migrationsDir, targetName string) (*Report, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, obj := range ddlcheck.ExtractDroppedObjects(string(content)) {
+		for _, obj := range eng.DDL().ExtractDroppedObjects(string(content)) {
 			dropped[obj] = true
 		}
 	}
@@ -77,12 +78,12 @@ func Collect(db *sql.DB, migrationsDir, targetName string) (*Report, error) {
 		if err != nil {
 			return nil, err
 		}
-		objects := ddlcheck.ExtractObjects(string(content))
+		objects := eng.DDL().ExtractObjects(string(content))
 
 		status := "OK"
 		var details []string
 		for _, obj := range objects {
-			exists, err := ddlcheck.Exists(db, obj)
+			exists, err := eng.DDL().Exists(db, obj)
 			if err != nil {
 				return nil, err
 			}
