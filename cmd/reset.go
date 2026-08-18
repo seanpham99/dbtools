@@ -3,10 +3,14 @@ package cmd
 import (
 	"fmt"
 
+	"os"
+	"path/filepath"
+
 	"github.com/dbtools/dbtools/internal/apply"
 	"github.com/dbtools/dbtools/internal/config"
 	"github.com/dbtools/dbtools/internal/container"
 	"github.com/dbtools/dbtools/internal/engine"
+	"github.com/dbtools/dbtools/internal/engine/sqliteengine"
 	"github.com/dbtools/dbtools/internal/seed"
 	"github.com/spf13/cobra"
 )
@@ -32,11 +36,16 @@ func init() {
 }
 
 // recreateLocalDatabase drops and recreates the tool-owned local
-// container's database for eng. reset is deliberately scoped to that
-// container — its maintenance URL comes from the container package, never
-// from user configuration, so a mistyped target URL can't aim the drop at
-// a real server.
-func recreateLocalDatabase(eng engine.Engine) error {
+// container's database for eng. For server engines, reset is deliberately
+// scoped to that container — its maintenance URL comes from the container
+// package, never from user configuration, so a mistyped target URL can't
+// aim the drop at a real server. For sqlite there is no server: the local
+// target's own database file is deleted and recreated empty.
+func recreateLocalDatabase(eng engine.Engine, localURL string) error {
+	if eng.Name() == "sqlite" {
+		return recreateSQLiteFile(localURL)
+	}
+
 	maintenanceURL, err := container.MaintenanceURLFor(eng.Name())
 	if err != nil {
 		return err
@@ -74,6 +83,31 @@ CREATE DATABASE %s;`, container.DatabaseName, container.DatabaseName, container.
 	return nil
 }
 
+// recreateSQLiteFile deletes the sqlite database file named by localURL
+// (plus its -wal/-shm sidecars) and recreates it empty, so the following
+// migration replay starts from a truly blank database.
+func recreateSQLiteFile(localURL string) error {
+	path := sqliteengine.PathFromURL(localURL)
+	if path == "" {
+		return fmt.Errorf("sqlite URL %q has no file path", localURL)
+	}
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("removing %s: %w", p, err)
+		}
+	}
+	if dir := filepath.Dir(path); dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("creating %s: %w", dir, err)
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("recreating %s: %w", path, err)
+	}
+	return f.Close()
+}
+
 func runReset() error {
 	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
@@ -92,7 +126,7 @@ func runReset() error {
 		return err
 	}
 
-	if err := resetLocalDatabase(eng); err != nil {
+	if err := resetLocalDatabase(eng, localURL); err != nil {
 		return err
 	}
 

@@ -51,7 +51,7 @@ func TestRunReset_RejectsEngineSchemeMismatchBeforeDestructiveWork(t *testing.T)
 
 	loadConfig = func(string) (*config.Config, error) { return cfg, nil }
 	destroyed := false
-	resetLocalDatabase = func(engine.Engine) error { destroyed = true; return nil }
+	resetLocalDatabase = func(engine.Engine, string) error { destroyed = true; return nil }
 
 	err := runReset()
 	if err == nil {
