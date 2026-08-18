@@ -8,6 +8,7 @@ import (
 	// package init(); every registered engine's commands work from here.
 	_ "github.com/dbtools/dbtools/internal/engine/mssqlengine"
 	_ "github.com/dbtools/dbtools/internal/engine/postgresengine"
+	_ "github.com/dbtools/dbtools/internal/engine/sqliteengine"
 	"github.com/dbtools/dbtools/internal/localenv"
 	"github.com/spf13/cobra"
 )

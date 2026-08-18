@@ -25,7 +25,12 @@ func init() {
 }
 
 func runStop() error {
-	if err := stopContainer(loadLocalEngineName()); err != nil {
+	engineName := loadLocalEngineName()
+	if engineName == "sqlite" {
+		fmt.Println("sqlite needs no server — nothing to stop")
+		return nil
+	}
+	if err := stopContainer(engineName); err != nil {
 		return err
 	}
 	if err := removeLocalEnv(); err != nil {

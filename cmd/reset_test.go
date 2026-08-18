@@ -31,7 +31,7 @@ func TestRunResetRecreatesAppliesAndSeedsLocal(t *testing.T) {
 		}, nil
 	}
 	resetCalled := false
-	resetLocalDatabase = func(engine.Engine) error {
+	resetLocalDatabase = func(engine.Engine, string) error {
 		resetCalled = true
 		return nil
 	}

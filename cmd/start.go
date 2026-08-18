@@ -34,7 +34,13 @@ func runStart() error {
 		return fmt.Errorf(`no "local" target configured in dbtools.toml`)
 	}
 
-	url, err := startContainer(localEngineName(cfg))
+	engineName := localEngineName(cfg)
+	if engineName == "sqlite" {
+		fmt.Println("sqlite needs no server — nothing to start; run 'dbtools up' directly")
+		return nil
+	}
+
+	url, err := startContainer(engineName)
 	if err != nil {
 		return err
 	}
