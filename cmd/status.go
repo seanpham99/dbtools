@@ -100,7 +100,7 @@ func renderStatusTable(results []statusinfo.TargetResult) string {
 }
 
 func runStatus() error {
-	cfg, err := config.Load("dbtools.toml")
+	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}

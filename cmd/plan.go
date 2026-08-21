@@ -44,7 +44,7 @@ type planJSONEntry struct {
 }
 
 func runPlan() error {
-	cfg, err := config.Load("dbtools.toml")
+	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}
@@ -56,6 +56,23 @@ func runPlan() error {
 		return err
 	}
 	fmt.Println(string(b))
+
+	var hasDriftOrPending bool
+	var hasError bool
+	for _, e := range entries {
+		if e.Error != "" {
+			hasError = true
+		}
+		if len(e.Pending) > 0 || len(e.Drift) > 0 || e.Dirty {
+			hasDriftOrPending = true
+		}
+	}
+	if hasError {
+		return ExitCode(1, "")
+	}
+	if hasDriftOrPending {
+		return ExitCode(2, "")
+	}
 	return nil
 }
 

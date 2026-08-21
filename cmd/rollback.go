@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -55,6 +56,15 @@ func runRollback(targetName string, steps int) error {
 	res, err := rollback.Run(cfg, targetName, steps, rollbackURL)
 	if err != nil {
 		return err
+	}
+
+	if jsonOutput {
+		b, err := json.Marshal(res)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
 	}
 
 	if len(res.RevertedVersions) == 0 {

@@ -1,8 +1,8 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
-
 	"os"
 	"path/filepath"
 
@@ -140,11 +140,31 @@ func runReset() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("local: replayed to version %d\n", status.CurrentVersion)
-
-	if err := seedRun(eng, localURL); err != nil {
-		return fmt.Errorf("running %s: %w", seed.Filename, err)
+	seedErr := seedRun(eng, localURL)
+	if seedErr != nil {
+		return fmt.Errorf("running %s: %w", seed.Filename, seedErr)
 	}
+
+	if jsonOutput {
+		b, err := json.Marshal(struct {
+			Target          string `json:"target"`
+			ReplayedVersion uint64 `json:"replayed_version"`
+			HasVersion      bool   `json:"has_version"`
+			SeedApplied     bool   `json:"seed_applied"`
+		}{
+			Target:          "local",
+			ReplayedVersion: status.CurrentVersion,
+			HasVersion:      status.HasVersion,
+			SeedApplied:     true,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
+	}
+
+	fmt.Printf("local: replayed to version %d\n", status.CurrentVersion)
 	fmt.Printf("%s applied (or skipped if absent)\n", seed.Filename)
 	return nil
 }
