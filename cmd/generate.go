@@ -25,6 +25,8 @@ var (
 	generateOut   string
 	generateYes   bool
 	generateCheck bool
+	generateLang  string
+	generateZod   bool
 )
 
 var generateCmd = &cobra.Command{
@@ -44,6 +46,8 @@ func init() {
 	generateCmd.Flags().StringVar(&generateOut, "out", "", "output file path (default from dbtools.toml [generate] out, else db_models.py)")
 	generateCmd.Flags().BoolVar(&generateYes, "yes", false, "confirm generating from the prod target")
 	generateCmd.Flags().BoolVar(&generateCheck, "check", false, "don't write; exit non-zero if output would differ from the existing file (CI drift check)")
+	generateCmd.Flags().StringVar(&generateLang, "lang", "python", "output language: python (pydantic) or ts (TypeScript interfaces + optional zod)")
+	generateCmd.Flags().BoolVar(&generateZod, "zod", false, "with --lang ts: also emit zod schemas for each interface")
 	rootCmd.AddCommand(generateCmd)
 }
 
@@ -88,7 +92,7 @@ func runGenerate(targetName string) error {
 		fmt.Fprintf(os.Stderr, "warning: no Python type mapping for %s, using Any\n", w)
 	}
 
-	outContent, err := generate.Render(tables, targetName)
+	outContent, err := renderForLang(tables, targetName)
 	if err != nil {
 		return err
 	}
@@ -98,7 +102,12 @@ func runGenerate(targetName string) error {
 		outPath = cfg.Generate.Out
 	}
 	if outPath == "" {
-		outPath = "db_models.py"
+		switch generateLang {
+		case "ts":
+			outPath = "db_models.ts"
+		default:
+			outPath = "db_models.py"
+		}
 	}
 
 	if generateCheck {
@@ -119,6 +128,23 @@ func runGenerate(targetName string) error {
 		return fmt.Errorf("writing generated output to %s: %w", outPath, err)
 	}
 
-	fmt.Printf("generated %d pydantic models (%s target) → %s\n", len(tables), targetName, outPath)
+	what := fmt.Sprintf("%d pydantic models", len(tables))
+	if generateLang == "ts" {
+		what = fmt.Sprintf("%d TypeScript interfaces", len(tables))
+		if generateZod {
+			what += " + zod schemas"
+		}
+	}
+	fmt.Printf("generated %s (%s target) → %s\n", what, targetName, outPath)
 	return nil
+}
+
+// renderForLang dispatches generate output to the requested language.
+func renderForLang(tables []generate.TableSchema, targetName string) (string, error) {
+	switch generateLang {
+	case "ts":
+		return generate.RenderTS(tables, targetName, generateZod)
+	default:
+		return generate.Render(tables, targetName)
+	}
 }
