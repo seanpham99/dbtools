@@ -28,9 +28,11 @@ same core.
 | v0.1.2 ✅ | `plan` preview | Read-only preview of pending migrations + ledger drift. Agent/CI-friendly: exit 0 = safe to apply. |
 | v0.2 | **Rollback & down migrations** | Biggest functional gap: down-migration support + safe ledger-level rollback, with production gates. See design below. |
 | v0.2 | **Agent ergonomics** | Universal `--json`, `--dry-run`, non-interactive mode, dirty-ledger refusal. See design below. |
+| v0.2 | **npx installer** | `@dbtools/cli` — thin npm wrapper that downloads the GoReleaser binary (5 platforms) + execs it. No Go→JS rewrite. Version-synced via release pipeline. |
 | v0.3 | **`doctor`** | Read-only health/security check: connectivity, version sync, ledger integrity, drift summary, basic security flags. One-call parseable health. |
 | v0.3/4 | **Clone prod→dev** | Schema + data clone with config-driven masking. Masking on by default; raw copy requires explicit opt-out. |
 | v0.4 | **Backup** | Table-stakes backup/restore. |
+| Mongo | **C → B → A** | Starts only after SQL is stable (gate = v0.2 + npx shipped). See design below. |
 | launch | — | Public launch (announcements, directories) happens only after the v0.2/v0.3 features above. |
 
 ## Rollback & down migrations
@@ -76,8 +78,36 @@ Adopted patterns (each proven by an existing tool):
 MIT. A future hosted/enterprise pivot may revisit licensing (a community-trust event,
 not a silent change); today the permissive license maximizes adoption.
 
+## npx installer
+
+- Package: `@dbtools/cli` (scoped; the bare `dbtools` npm name is owned by an
+  unrelated project).
+- Shape: thin npm wrapper — `npx @dbtools/cli` downloads the GoReleaser binary for
+  the caller's platform (`darwin`/`linux`/`windows` × `amd64`/`arm64`) from GitHub
+  Releases, then execs it. **No Go→JS rewrite.**
+- Versioning: npm version tracks the Go release version, published by the same
+  release pipeline (add npm token secret + publish step).
+
+## Mongo support (post-SQL-stable)
+
+Starts only after the SQL story is stable (gate = v0.2 shipped + npx installer).
+The engine abstraction is SQL-shaped today (`Engine.Open` returns `*sql.DB`,
+`DDLDialect` parses SQL, `verify` checks SQL object existence); Mongo needs a
+non-SQL seam, so it is a semantic fork, not a new engine. Sequence:
+
+1. **C — local dev instance** (start/stop a MongoDB container for local work).
+   Cheapest; teaches the non-SQL seam.
+2. **B — introspection** (read Mongo collection shapes → emit pydantic/TS models
+   via `generate`). Fits the existing `Introspect` seam.
+3. **A — migration target** (apply migration scripts to Mongo; a
+   `mongo_migrations` collection is the ledger). Hardest; needs the engine-seam
+   refactor. Verification is weaker than SQL: no DDL objects to existence-check,
+   only collection-name checks + document sampling. Modeled on migrate-mongo /
+   mongobee, not on the SQL object-existence model.
+
 ## Open questions (deferred)
 
 - Backup scope (v0.4): full vs incremental, engine support, restore test strategy.
 - `doctor` exact check list — spec at v0.3 start.
 - Exact exit-code values — written up in `docs/exit-codes.md` with v0.2.
+- Mongo `generate` output shape — decide at step B (pydantic vs TS).
