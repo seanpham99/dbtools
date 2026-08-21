@@ -53,28 +53,15 @@ func (d *goSplitDriver) Close() error  { return d.inner.Close() }
 func (d *goSplitDriver) Lock() error   { return d.inner.Lock() }
 func (d *goSplitDriver) Unlock() error { return d.inner.Unlock() }
 
+// SetVersion delegates to the stock driver: it writes the version table
+// through the same [SCHEMA_NAME()].[MigrationsTable] path it reads from,
+// honouring x-migrations-table. The previous override hardcoded
+// dbo.schema_migrations, so a login whose default schema was not dbo (or a
+// URL setting x-migrations-table) read one table and wrote another — the
+// cursor never advanced and every `up` replayed the whole migration set
+// against a populated database.
 func (d *goSplitDriver) SetVersion(version int, dirty bool) error {
-	db, err := dbconn.Open(d.rawURL)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	if _, err := tx.Exec("DELETE FROM dbo.schema_migrations"); err != nil {
-		return err
-	}
-	if version >= 0 {
-		if _, err := tx.Exec("INSERT INTO dbo.schema_migrations (version, dirty) VALUES (@p1, @p2)", version, dirty); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return d.inner.SetVersion(version, dirty)
 }
 
 func (d *goSplitDriver) Version() (int, bool, error) { return d.inner.Version() }
