@@ -32,10 +32,7 @@ func init() {
 	rootCmd.AddCommand(planCmd)
 }
 
-// planJSONEntry is one target's plan row. Pending + dirty come from the
-// same collectStatuses path status uses; drift (when the target is
-// reachable and has a ledger) is a read-only verify pass. Errors are
-// per-target, never fatal to the whole run.
+// planJSONEntry is one target's plan row.
 type planJSONEntry struct {
 	Target         string   `json:"target"`
 	CurrentVersion uint64   `json:"current_version,omitempty"`
@@ -62,41 +59,34 @@ func runPlan() error {
 	return nil
 }
 
-// buildPlanEntries collects the plan for every configured target (or the
-// single --target). Pure apart from DB reads, so it's unit-testable
-// against a real sqlite file without capturing stdout.
+// buildPlanEntries collects the plan for every configured target (or the single --target).
 func buildPlanEntries(cfg *config.Config) []planJSONEntry {
-	names := cfg.TargetNames()
-	if planTarget != "" {
-		names = []string{planTarget}
-	}
+	results := statusinfo.CollectAll(cfg, planTarget, planURL)
+	entries := make([]planJSONEntry, 0, len(results))
 
-	entries := make([]planJSONEntry, 0, len(names))
-	for _, name := range names {
-		url, err := cfg.ResolveURLOrFlag(name, planURL)
-		if err != nil {
-			entries = append(entries, planJSONEntry{Target: name, Error: err.Error()})
+	for _, r := range results {
+		if r.Err != nil {
+			entries = append(entries, planJSONEntry{Target: r.Target, Error: r.Err.Error()})
 			continue
 		}
-		eng, err := engine.ForTarget(cfg.EngineName(name), url)
-		if err != nil {
-			entries = append(entries, planJSONEntry{Target: name, Error: err.Error()})
-			continue
-		}
-		s, err := statusinfo.Collect(url, cfg.MigrationsDir, name)
-		if err != nil {
-			entries = append(entries, planJSONEntry{Target: name, Error: err.Error()})
-			continue
-		}
+		s := r.Status
 		e := planJSONEntry{
-			Target:         name,
+			Target:         r.Target,
 			CurrentVersion: s.CurrentVersion,
 			HasVersion:     s.HasVersion,
 			Dirty:          s.Dirty,
 			Pending:        s.Pending,
 		}
 		if s.HasVersion {
-			e.Drift = planDrift(url, eng, cfg.MigrationsDir, name)
+			override := ""
+			if planTarget != "" {
+				override = planURL
+			}
+			url, _ := cfg.ResolveURLOrFlag(r.Target, override)
+			eng, err := engine.ForTarget(cfg.EngineName(r.Target), url)
+			if err == nil {
+				e.Drift = planDrift(url, eng, cfg.MigrationsDir, r.Target)
+			}
 		}
 		entries = append(entries, e)
 	}
@@ -104,10 +94,7 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 }
 
 // planDrift runs a read-only verify pass against url and returns the
-// drift details for applied/reverted versions. Any verify failure is
-// reported as a single "verify error" entry rather than aborting the
-// plan — the plan's job is to surface problems, not to be blocked by
-// them.
+// drift details for applied/reverted versions.
 func planDrift(url string, eng engine.Engine, migrationsDir, targetName string) []string {
 	db, err := eng.Open(url)
 	if err != nil {

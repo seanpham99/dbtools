@@ -1,4 +1,4 @@
-package dbconn
+package mssqlengine
 
 import (
 	"database/sql"
@@ -24,8 +24,7 @@ func RewriteToSQLServerScheme(rawURL string) (string, error) {
 
 // Open opens a direct database/sql connection to rawURL (a dbtools
 // "mssql://"-scheme connection string), for callers that need raw SQL
-// access alongside golang-migrate's own tracked connection — e.g. the
-// migration ledger and drift detector.
+// access alongside golang-migrate's own tracked connection.
 func Open(rawURL string) (*sql.DB, error) {
 	sqlserverURL, err := RewriteToSQLServerScheme(rawURL)
 	if err != nil {

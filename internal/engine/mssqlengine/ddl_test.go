@@ -1,6 +1,10 @@
-package ddlcheck
+package mssqlengine
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
+)
 
 func TestExtractObjects_CreateTableBracketed(t *testing.T) {
 	sql := `CREATE TABLE [app].[widget_order] (
@@ -10,7 +14,7 @@ func TestExtractObjects_CreateTableBracketed(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("ExtractObjects() = %+v, want 1 object", got)
 	}
-	want := ObjectRef{Schema: "app", Name: "widget_order", Kind: "table"}
+	want := ddlcheck.ObjectRef{Schema: "app", Name: "widget_order", Kind: "table"}
 	if got[0] != want {
 		t.Errorf("ExtractObjects()[0] = %+v, want %+v", got[0], want)
 	}
@@ -27,7 +31,7 @@ END;`
 	if len(got) != 1 {
 		t.Fatalf("ExtractObjects() = %+v, want 1 object", got)
 	}
-	want := ObjectRef{Schema: "app", Name: "usp_stage_widget_order", Kind: "procedure"}
+	want := ddlcheck.ObjectRef{Schema: "app", Name: "usp_stage_widget_order", Kind: "procedure"}
 	if got[0] != want {
 		t.Errorf("ExtractObjects()[0] = %+v, want %+v", got[0], want)
 	}
@@ -43,7 +47,7 @@ END;`
 	if len(got) != 1 {
 		t.Fatalf("ExtractObjects() = %+v, want 1 object", got)
 	}
-	want := ObjectRef{Schema: "dbo", Name: "dbtools_test_proc_a", Kind: "procedure"}
+	want := ddlcheck.ObjectRef{Schema: "dbo", Name: "dbtools_test_proc_a", Kind: "procedure"}
 	if got[0] != want {
 		t.Errorf("ExtractObjects()[0] = %+v, want %+v", got[0], want)
 	}
@@ -85,10 +89,10 @@ END;`
 	if len(got) != 2 {
 		t.Fatalf("ExtractObjects() = %+v, want 2 objects", got)
 	}
-	if got[0] != (ObjectRef{Schema: "app", Name: "v_widget_summary", Kind: "view"}) {
+	if got[0] != (ddlcheck.ObjectRef{Schema: "app", Name: "v_widget_summary", Kind: "view"}) {
 		t.Errorf("ExtractObjects()[0] = %+v, want view app.v_widget_summary", got[0])
 	}
-	if got[1] != (ObjectRef{Schema: "app", Name: "fn_widget_offset", Kind: "function"}) {
+	if got[1] != (ddlcheck.ObjectRef{Schema: "app", Name: "fn_widget_offset", Kind: "function"}) {
 		t.Errorf("ExtractObjects()[1] = %+v, want function app.fn_widget_offset", got[1])
 	}
 }
@@ -117,7 +121,7 @@ func TestExtractDroppedObjects_DropTableBracketed(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("ExtractDroppedObjects() = %+v, want 1 object", got)
 	}
-	want := ObjectRef{Schema: "app", Name: "widget_order", Kind: "table"}
+	want := ddlcheck.ObjectRef{Schema: "app", Name: "widget_order", Kind: "table"}
 	if got[0] != want {
 		t.Errorf("ExtractDroppedObjects()[0] = %+v, want %+v", got[0], want)
 	}
@@ -129,7 +133,7 @@ func TestExtractDroppedObjects_GuardedDropWithObjectIDCheck(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("ExtractDroppedObjects() = %+v, want 1 object", got)
 	}
-	want := ObjectRef{Schema: "dbo", Name: "legacy_widget_tracking", Kind: "table"}
+	want := ddlcheck.ObjectRef{Schema: "dbo", Name: "legacy_widget_tracking", Kind: "table"}
 	if got[0] != want {
 		t.Errorf("ExtractDroppedObjects()[0] = %+v, want %+v", got[0], want)
 	}
@@ -145,13 +149,13 @@ DROP FUNCTION app.fn_widget_offset;`
 	if len(got) != 3 {
 		t.Fatalf("ExtractDroppedObjects() = %+v, want 3 objects", got)
 	}
-	if got[0] != (ObjectRef{Schema: "app", Name: "usp_stage_widget_order", Kind: "procedure"}) {
+	if got[0] != (ddlcheck.ObjectRef{Schema: "app", Name: "usp_stage_widget_order", Kind: "procedure"}) {
 		t.Errorf("ExtractDroppedObjects()[0] = %+v, want procedure app.usp_stage_widget_order", got[0])
 	}
-	if got[1] != (ObjectRef{Schema: "app", Name: "v_widget_summary", Kind: "view"}) {
+	if got[1] != (ddlcheck.ObjectRef{Schema: "app", Name: "v_widget_summary", Kind: "view"}) {
 		t.Errorf("ExtractDroppedObjects()[1] = %+v, want view app.v_widget_summary", got[1])
 	}
-	if got[2] != (ObjectRef{Schema: "app", Name: "fn_widget_offset", Kind: "function"}) {
+	if got[2] != (ddlcheck.ObjectRef{Schema: "app", Name: "fn_widget_offset", Kind: "function"}) {
 		t.Errorf("ExtractDroppedObjects()[2] = %+v, want function app.fn_widget_offset", got[2])
 	}
 }
@@ -172,7 +176,7 @@ func TestExtractDroppedObjects_NoSchemaDefaultsToDbo(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("ExtractDroppedObjects() = %+v, want 1 object", got)
 	}
-	want := ObjectRef{Schema: "dbo", Name: "dbtools_test_proc_a", Kind: "table"}
+	want := ddlcheck.ObjectRef{Schema: "dbo", Name: "dbtools_test_proc_a", Kind: "table"}
 	if got[0] != want {
 		t.Errorf("ExtractDroppedObjects()[0] = %+v, want %+v", got[0], want)
 	}

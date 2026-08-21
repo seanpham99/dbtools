@@ -3,10 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/seanpham99/dbtools/internal/config"
-	"github.com/seanpham99/dbtools/internal/engine"
-	"github.com/seanpham99/dbtools/internal/render"
 	"github.com/seanpham99/dbtools/internal/statusinfo"
 	"github.com/spf13/cobra"
 )
@@ -28,10 +27,7 @@ func init() {
 	rootCmd.AddCommand(statusCmd)
 }
 
-// targetFailure is a target this run couldn't reach — e.g. its env var
-// isn't set, which is normal on any machine other than the one host
-// (typically a whitelisted CI/deploy box) that has DBTOOLS_PROD_URL. A
-// failure for one target must never prevent showing the others.
+// targetFailure is a target this run couldn't reach.
 type targetFailure struct {
 	Target string
 	Error  string
@@ -39,9 +35,7 @@ type targetFailure struct {
 
 // statusJSONEntry is the --json shape for one target: either the fields
 // from statusinfo.Status, or just Target+Error when that target couldn't
-// be reached. Kept local to this command (not added to statusinfo.Status
-// itself) so that type stays a plain successful-snapshot value — the same
-// separation used by the read-only TUI dashboard.
+// be reached.
 type statusJSONEntry struct {
 	Target         string   `json:"target"`
 	CurrentVersion uint64   `json:"current_version,omitempty"`
@@ -52,8 +46,7 @@ type statusJSONEntry struct {
 }
 
 // buildStatusEntries merges successful and failed target results into one
-// ordered slice for --json output. Pure — no I/O — so it's unit-testable
-// without a database.
+// ordered slice for --json output.
 func buildStatusEntries(statuses []statusinfo.Status, failures []targetFailure) []statusJSONEntry {
 	entries := make([]statusJSONEntry, 0, len(statuses)+len(failures))
 	for _, s := range statuses {
@@ -71,41 +64,39 @@ func buildStatusEntries(statuses []statusinfo.Status, failures []targetFailure) 
 	return entries
 }
 
-// collectStatuses gathers each configured target's status, recording a
-// failure (never aborting the whole run) for targets that can't be
-// resolved, fail engine validation, or can't be reached. Engine
-// resolution happens before any connection attempt, so a target whose
-// configured engine contradicts its URL scheme is rejected without dialing.
 func collectStatuses(cfg *config.Config) ([]statusinfo.Status, []targetFailure) {
+	results := statusinfo.CollectAll(cfg, statusTarget, statusURL)
 	var statuses []statusinfo.Status
 	var failures []targetFailure
-
-	// With --target, only that one target is checked, and --url applies
-	// to it alone. Without --target, --url is ignored (it would be wrong
-	// to apply one override to every target).
-	names := cfg.TargetNames()
-	if statusTarget != "" {
-		names = []string{statusTarget}
-	}
-
-	for _, name := range names {
-		url, err := cfg.ResolveURLOrFlag(name, statusURL)
-		if err != nil {
-			failures = append(failures, targetFailure{Target: name, Error: err.Error()})
-			continue
+	for _, r := range results {
+		if r.Err != nil {
+			failures = append(failures, targetFailure{Target: r.Target, Error: r.Err.Error()})
+		} else if r.Status != nil {
+			statuses = append(statuses, *r.Status)
 		}
-		if _, err := engine.ForTarget(cfg.EngineName(name), url); err != nil {
-			failures = append(failures, targetFailure{Target: name, Error: err.Error()})
-			continue
-		}
-		s, err := statusinfo.Collect(url, cfg.MigrationsDir, name)
-		if err != nil {
-			failures = append(failures, targetFailure{Target: name, Error: err.Error()})
-			continue
-		}
-		statuses = append(statuses, *s)
 	}
 	return statuses, failures
+}
+
+func renderStatusTable(results []statusinfo.TargetResult) string {
+	var b strings.Builder
+	for _, r := range results {
+		if r.Err != nil {
+			fmt.Fprintf(&b, "%-10s  error: %s\n", r.Target, r.Err.Error())
+			continue
+		}
+		s := r.Status
+		state := "up to date"
+		if n := len(s.Pending); n > 0 {
+			state = fmt.Sprintf("%d pending", n)
+		}
+		dirtyMark := ""
+		if s.Dirty {
+			dirtyMark = " [DIRTY]"
+		}
+		fmt.Fprintf(&b, "%-10s  %s%s\n", s.Target, state, dirtyMark)
+	}
+	return b.String()
 }
 
 func runStatus() error {
@@ -114,9 +105,18 @@ func runStatus() error {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}
 
-	statuses, failures := collectStatuses(cfg)
+	results := statusinfo.CollectAll(cfg, statusTarget, statusURL)
 
 	if jsonOutput {
+		var statuses []statusinfo.Status
+		var failures []targetFailure
+		for _, r := range results {
+			if r.Err != nil {
+				failures = append(failures, targetFailure{Target: r.Target, Error: r.Err.Error()})
+			} else if r.Status != nil {
+				statuses = append(statuses, *r.Status)
+			}
+		}
 		b, err := json.Marshal(buildStatusEntries(statuses, failures))
 		if err != nil {
 			return err
@@ -125,9 +125,6 @@ func runStatus() error {
 		return nil
 	}
 
-	fmt.Print(render.Table(statuses))
-	for _, f := range failures {
-		fmt.Printf("%-10s  error: %s\n", f.Target, f.Error)
-	}
+	fmt.Print(renderStatusTable(results))
 	return nil
 }

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/seanpham99/dbtools/internal/dbconn"
 	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
@@ -40,7 +39,7 @@ func TestRun_RefusesWithoutForceWhenObjectMissing(t *testing.T) {
 	}
 	defer m.Close()
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
 		t.Fatalf("dbconn.Open() returned error: %v", err)
 	}
@@ -57,7 +56,7 @@ func TestRun_RefusesWithoutForceWhenObjectMissing(t *testing.T) {
 		t.Fatalf("Run() with force=true returned error: %v", err)
 	}
 
-	entries, err := ledger.List(db)
+	entries, err := mssqlengine.List(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +85,7 @@ func TestRun_RecomputesCursor(t *testing.T) {
 		t.Fatalf("Up() returned error: %v", err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
 		t.Fatalf("dbconn.Open() returned error: %v", err)
 	}
@@ -121,7 +120,7 @@ func TestRun_RevertsWithoutFilePresent(t *testing.T) {
 	}
 	defer m.Close()
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
 		t.Fatalf("dbconn.Open() returned error: %v", err)
 	}
@@ -136,7 +135,7 @@ func TestRun_RevertsWithoutFilePresent(t *testing.T) {
 		t.Fatalf("Run() marking reverted with no file present returned error: %v", err)
 	}
 
-	entries, err := ledger.List(db)
+	entries, err := mssqlengine.List(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +151,7 @@ func TestRun_UnknownVersionRejected(t *testing.T) {
 		t.Fatalf("migrator.Open() returned error: %v", err)
 	}
 	defer m.Close()
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
 		t.Fatalf("dbconn.Open() returned error: %v", err)
 	}

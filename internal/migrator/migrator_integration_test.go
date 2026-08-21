@@ -196,12 +196,6 @@ func TestStamp(t *testing.T) {
 // Before this fix, goSplitDriver.Run delegated each batch to the inner
 // golang-migrate driver independently, so an earlier batch's INSERT
 // committed even though a later batch in the same file failed.
-//
-// The table itself is created on a separate connection, outside the
-// migration under test, so this test can assert on its row count after
-// Run() fails — if the CREATE TABLE were inside the rolled-back
-// transaction too, the table wouldn't exist at all after rollback and the
-// verification query below would error instead of proving anything.
 func TestGoSplitDriver_Run_RollsBackWholeFileOnMidBatchFailure(t *testing.T) {
 	url := testDatabaseURL(t)
 	if err := testdb.ResetTracking(url); err != nil {

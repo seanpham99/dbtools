@@ -1,6 +1,6 @@
 //go:build integration
 
-package ledger
+package mssqlengine
 
 import (
 	"database/sql"
@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/seanpham99/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/seanpham99/dbtools/internal/testdb"
 )
@@ -22,9 +22,9 @@ func openTestDB(t *testing.T) *sql.DB {
 	if err := testdb.ResetTracking(url); err != nil {
 		t.Fatal(err)
 	}
-	db, err := dbconn.Open(url)
+	db, err := Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("Open() returned error: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
@@ -58,7 +58,7 @@ func TestBackfillAndList(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("List() returned %d entries, want 2 (versions <= current only)", len(entries))
 	}
-	if entries[0].Version != 20260101000000 || entries[0].Status != StatusApplied {
+	if entries[0].Version != 20260101000000 || entries[0].Status != ledger.StatusApplied {
 		t.Errorf("entries[0] = %+v, want version=20260101000000 status=applied", entries[0])
 	}
 	if entries[0].RecordedAt != nil {
@@ -92,25 +92,25 @@ func TestSetStatusInsertsAndUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := SetStatus(db, 20260101000000, StatusApplied, "test insert"); err != nil {
+	if err := SetStatus(db, 20260101000000, ledger.StatusApplied, "test insert"); err != nil {
 		t.Fatalf("SetStatus() (insert) returned error: %v", err)
 	}
 	entries, err := List(db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Status != StatusApplied || entries[0].RecordedAt == nil {
+	if len(entries) != 1 || entries[0].Status != ledger.StatusApplied || entries[0].RecordedAt == nil {
 		t.Fatalf("after insert: entries = %+v, want one applied row with non-nil RecordedAt", entries)
 	}
 
-	if err := SetStatus(db, 20260101000000, StatusReverted, "test update"); err != nil {
+	if err := SetStatus(db, 20260101000000, ledger.StatusReverted, "test update"); err != nil {
 		t.Fatalf("SetStatus() (update) returned error: %v", err)
 	}
 	entries, err = List(db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Status != StatusReverted || entries[0].Note != "test update" {
+	if len(entries) != 1 || entries[0].Status != ledger.StatusReverted || entries[0].Note != "test update" {
 		t.Fatalf("after update: entries = %+v, want one reverted row noted 'test update'", entries)
 	}
 }
@@ -120,13 +120,13 @@ func TestAppliedVersions(t *testing.T) {
 	if err := EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetStatus(db, 20260101000000, StatusApplied, ""); err != nil {
+	if err := SetStatus(db, 20260101000000, ledger.StatusApplied, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetStatus(db, 20260102000000, StatusReverted, ""); err != nil {
+	if err := SetStatus(db, 20260102000000, ledger.StatusReverted, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetStatus(db, 20260103000000, StatusApplied, ""); err != nil {
+	if err := SetStatus(db, 20260103000000, ledger.StatusApplied, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -168,9 +168,9 @@ func TestSync(t *testing.T) {
 		t.Fatalf("Up() returned error: %v", err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("Open() returned error: %v", err)
 	}
 	defer db.Close()
 
@@ -186,7 +186,7 @@ func TestSync(t *testing.T) {
 		t.Fatalf("List() returned %d entries, want 2", len(entries))
 	}
 	for _, e := range entries {
-		if e.Status != StatusApplied {
+		if e.Status != ledger.StatusApplied {
 			t.Errorf("entry %+v: want status applied", e)
 		}
 	}
@@ -198,14 +198,11 @@ func TestSetStatus_WithinTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A committed transaction's writes must be visible afterward — proves
-	// SetStatus/AppliedVersions genuinely work against a *sql.Tx (not just
-	// *sql.DB), which repair.Run relies on to make its writes atomic.
 	tx, err := db.Begin()
 	if err != nil {
 		t.Fatalf("db.Begin() returned error: %v", err)
 	}
-	if err := SetStatus(tx, 20260101000000, StatusApplied, "via tx, committed"); err != nil {
+	if err := SetStatus(tx, 20260101000000, ledger.StatusApplied, "via tx, committed"); err != nil {
 		t.Fatalf("SetStatus() within tx returned error: %v", err)
 	}
 	if _, err := AppliedVersions(tx); err != nil {
@@ -223,13 +220,11 @@ func TestSetStatus_WithinTransaction(t *testing.T) {
 		t.Fatalf("AppliedVersions() after commit = %v, want [20260101000000]", versions)
 	}
 
-	// A rolled-back transaction's writes must NOT be visible — proves a
-	// mid-repair failure (before commit) leaves no partial state behind.
 	tx2, err := db.Begin()
 	if err != nil {
 		t.Fatalf("db.Begin() returned error: %v", err)
 	}
-	if err := SetStatus(tx2, 20260102000000, StatusApplied, "via tx, rolled back"); err != nil {
+	if err := SetStatus(tx2, 20260102000000, ledger.StatusApplied, "via tx, rolled back"); err != nil {
 		t.Fatalf("SetStatus() within tx2 returned error: %v", err)
 	}
 	if err := tx2.Rollback(); err != nil {
@@ -241,6 +236,6 @@ func TestSetStatus_WithinTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(versions) != 1 || versions[0] != 20260101000000 {
-		t.Fatalf("AppliedVersions() after rollback = %v, want unchanged [20260101000000] (20260102000000 must not persist)", versions)
+		t.Fatalf("AppliedVersions() after rollback = %v, want unchanged [20260101000000]", versions)
 	}
 }
