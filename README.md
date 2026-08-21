@@ -1,78 +1,217 @@
 # dbtools
 
-Migration authority and local dev-loop for MSSQL and Postgres (SQLite planned) — see
-`docs/adr/016-dbtools-migration-authority.md` for why this exists and
-`CONTEXT.md` for the terms it introduces (`target`, `push`, `version-sync`,
-`reset`, `seed.sql`).
+[![CI](https://github.com/seanpham99/dbtools/actions/workflows/ci.yml/badge.svg)](https://github.com/seanpham99/dbtools/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/seanpham99/dbtools)](https://goreportcard.com/report/github.com/seanpham99/dbtools)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Commands (v1: core engine)
+**dbtools** is a lightweight, reliable database migration authority and local dev-loop tool for **MSSQL**, **PostgreSQL**, and **SQLite**. Built in Go for high performance and zero external runtime dependencies, `dbtools` guarantees version-sync migration execution, immutable ledger tracking (`content_sha256`), read-only schema drift verification, and live schema introspection to typed Pydantic Python models.
 
-- `dbtools init` — create a starter `dbtools.toml` and `migrations/` directory.
-- `dbtools new <name>` — scaffold a new `{timestamp}_{name}.up.sql` migration file.
-- `dbtools up [--target local]` — apply pending migrations to a target.
-- `dbtools push <target>` — apply pending migrations to a named target (version-sync only — same operation as `up`, explicit-by-name for remote targets).
-- `dbtools start` — start the tool-owned ephemeral local MSSQL container and record its local connection URL.
-- `dbtools stop` — stop and remove the tool-owned local MSSQL container.
-- `dbtools reset` — drop, recreate, and replay the local database, then run `seed.sql` if present.
-- `dbtools status [--json]` — show applied/pending state for every configured target.
-- `dbtools verify <target> [--json]` — check every ledger-tracked migration's objects actually exist (or don't, for reverted versions); non-zero exit on drift. See `docs/adr/021-dbtools-migration-ledger-and-drift-detection.md`.
-- `dbtools repair <target> <version>:<status>[,...] --yes [--force]` — correct the migration ledger's applied/reverted status for one or more versions; refuses to mark a version applied when its objects don't exist unless `--force`. Replaces the old `stamp` command.
-- `dbtools dashboard` — read-only TUI showing every target's status; `r` refreshes and `q`/`ctrl+c` quits.
-- `dbtools generate [target] [--out path] [--yes] [--check]` — introspect a target's live schema and render one `pydantic.BaseModel` per base table to a Python file. `--yes` required when target is `prod`. `--check` compares against the file already on disk and exits non-zero on drift instead of writing (CI use). See "Generate" below.
+---
 
-## Config
+## Key Features
 
-`dbtools.toml` at the project root:
+- **Multi-Engine Support**: Native migration engines for SQL Server (MSSQL), PostgreSQL (with session reset isolation), and SQLite (file-based).
+- **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
+- **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
+- **Environment & Target Protection**: Targets are defined in `dbtools.toml` by environment variable names (`url_env`), ensuring secrets never leak into version control. Protected targets reject destructive local operations (`up`, `reset`).
+- **Python Type Generation**: `dbtools generate` introspects live database schemas and emits clean, versioned `pydantic.BaseModel` classes for Python services, ETL jobs, and data pipelines.
+- **Interactive TUI Dashboard**: Built-in terminal dashboard powered by Bubble Tea for real-time migration observability.
+
+---
+
+## Installation
+
+### Via Go Install (Recommended)
+
+```bash
+go install github.com/seanpham99/dbtools@latest
+```
+
+Ensure `$GOPATH/bin` or `$HOME/go/bin` is in your system `PATH`.
+
+### From Source
+
+```bash
+git clone https://github.com/seanpham99/dbtools.git
+cd dbtools
+go build -o dbtools .
+```
+
+---
+
+## Quick Start
+
+### 1. Initialize Project
+
+Create a starter configuration file (`dbtools.toml`) and migration folder:
+
+```bash
+dbtools init
+```
+
+### 2. Configure Database Targets
+
+In `dbtools.toml`, define your database targets. Target URLs are mapped through environment variables:
 
 ```toml
 migrations_dir = "migrations"
 
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"
-# engine is optional and defaults to the connection URL's scheme
-# (e.g. mssql:// -> mssql, postgres:// -> postgres, sqlite:// -> sqlite).
-# When set, it must
-# match that scheme. Supported engines: mssql, postgres, sqlite.
-# sqlite URLs name a file path (sqlite://relative/or/absolute/path.db);
-# no server is needed — start/stop are no-ops and reset recreates the file.
-engine = "mssql"
+engine = "sqlite" # sqlite, postgres, or mssql
 
 [targets.prod]
 url_env = "DBTOOLS_PROD_URL"
+protected = true
 ```
 
-No target's connection string is ever written in this file — set the named
-environment variable before running `up`/`push`/`status` against that target.
-
-## Generate
-
-`dbtools generate` introspects the target's information schema (MSSQL and
-Postgres) for a
-target and renders one `pydantic.BaseModel` per base table, giving consuming
-Python code (services, ETL scripts, tests) a versioned type contract to
-`model_validate()` against instead of raw dicts. It ships with zero domain
-knowledge — table/column names come straight from the live schema, and Python
-class names are the schema's table names PascalCased (no acronym handling —
-`cpi_index` becomes `CpiIndex`, not `CPIIndex`).
-
-Configurable via an optional `[generate]` block in `dbtools.toml`, entirely
-up to the consuming project:
-
-```toml
-[generate]
-exclude = ["dbtools_migration_history", "schema_migrations"]  # table names never to generate a model for
-out = "models.py"                                              # default --out path
-```
-
-If `exclude` is omitted entirely, it defaults to `["dbtools_migration_history",
-"schema_migrations"]` (dbtools' own ledger tables) — set `exclude` explicitly
-(even to `[]`, to include everything) to override that default rather than add
-to it. See `internal/generate/` for the introspection/rendering code.
-
-## Development
+Set your connection string:
 
 ```bash
-go build ./...
-go test ./...                        # unit tests, no DB required
-go test -tags=integration ./...      # requires DBTOOLS_TEST_MSSQL_URL (see .github/workflows/ci.yml)
+export DBTOOLS_LOCAL_URL="sqlite://dev.db"
+# or for postgres: export DBTOOLS_LOCAL_URL="postgres://user:pass@localhost:5432/mydb?sslmode=disable"
+# or for mssql:    export DBTOOLS_LOCAL_URL="mssql://sa:Secret@localhost:1433?database=mydb&TrustServerCertificate=true"
 ```
+
+### 3. Create and Apply Migrations
+
+```bash
+# Scaffold new migration file ({timestamp}_create_users.up.sql)
+dbtools new create_users
+
+# Edit migrations/YYYYMMDDHHMMSS_create_users.up.sql with your DDL
+echo "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL UNIQUE);" > migrations/*_create_users.up.sql
+
+# Apply migrations to local target
+dbtools up
+
+# Inspect applied status
+dbtools status
+```
+
+---
+
+## CLI Command Reference
+
+| Command | Usage | Description |
+|---|---|---|
+| `init` | `dbtools init` | Creates `dbtools.toml` configuration and `migrations/` directory. |
+| `new` | `dbtools new <name>` | Scaffolds timestamped `.up.sql` migration file. |
+| `up` | `dbtools up [--target <name>]` | Applies pending migrations to local target. Refuses protected/remote targets. |
+| `push` | `dbtools push <target> [--yes]` | Applies pending migrations to named remote target with explicit confirmation. |
+| `status` | `dbtools status [--json]` | Displays applied/pending migration status across all configured targets. |
+| `verify` | `dbtools verify <target> [--json]` | Non-destructive verification of ledger history and live database objects. Non-zero exit on drift. |
+| `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
+| `reset` | `dbtools reset [--target local] [--yes]` | Local-only: drops database, replays all migrations from zero, and executes `seed.sql`. |
+| `generate` | `dbtools generate [target] [--out models.py]` | Introspects live schema and renders Pydantic v2 Python models. |
+| `dashboard` | `dbtools dashboard` | Opens terminal UI showing live target status (`r` to refresh, `q` to quit). |
+| `start` / `stop` | `dbtools start` / `stop` | Starts or stops ephemeral tool-owned local MSSQL Docker container. |
+
+---
+
+## Terminal Observability
+
+### Status Overview
+
+```text
+Target: local (sqlite://dev.db)
+  [APPLIED] 20260101000000_create_users.up.sql (SHA: a1b2c3d4)
+  [PENDING] 20260102000000_add_orders.up.sql
+
+Target: prod (DBTOOLS_PROD_URL) [PROTECTED]
+  [APPLIED] 20260101000000_create_users.up.sql
+  [PENDING] 20260102000000_add_orders.up.sql
+```
+
+### Interactive Dashboard
+
+Launch with `dbtools dashboard`:
+
+```text
+┌───────────────────────────────────────────────────────────┐
+│ dbtools migration status                                  │
+│ Target: local [sqlite]                   Status: UP TO DATE │
+│ Target: prod  [postgres]                 Status: 1 PENDING  │
+│                                                           │
+│ [r] Refresh    [q] Quit                                  │
+└───────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Schema Drift & Ledger Verification
+
+Traditional migration runners maintain only a single scalar version cursor. When migrations are tampered with or objects are altered outside the migration workflow, silent failures occur during deployment.
+
+`dbtools` records:
+1. Migration version timestamp
+2. Applied status (`applied` / `reverted`)
+3. SHA-256 digest of migration file content at execution time
+4. Execution timestamp and execution context note
+
+Running `dbtools verify <target>` inspects whether:
+- Every applied migration file's content still matches its recorded cryptographic hash.
+- Every database object (table, view) created by applied migrations actually exists in the database schema.
+- Drop operations from subsequent migrations correctly excuse dropped tables without falsely flagging drift.
+
+---
+
+## Python Pydantic Model Generation
+
+Automatically generate type-safe Pydantic models directly from your live database schema:
+
+```bash
+dbtools generate local --out models.py
+```
+
+Generated `models.py`:
+
+```python
+# Auto-generated by dbtools generate. DO NOT EDIT.
+from pydantic import BaseModel, ConfigDict
+from typing import Optional
+from datetime import datetime
+
+class Users(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    created_at: Optional[datetime] = None
+```
+
+In CI/CD, enforce that repository models stay in sync with schema migrations using `--check`:
+
+```bash
+dbtools generate local --out models.py --check
+```
+
+---
+
+## Development & Testing
+
+Run unit tests locally (no database engine required):
+
+```bash
+go test ./...
+```
+
+Run integration test suite:
+
+```bash
+# SQLite integration test (runs locally without server)
+DBTOOLS_TEST_SQLITE_URL="sqlite:///tmp/dbtools-it.db" go test -tags=integration ./internal/engine/sqliteengine/... -count=1
+
+# Full matrix test (MSSQL, PostgreSQL, SQLite)
+go test -tags=integration ./...
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, test requirements, and development workflow.
+
+## License
+
+`dbtools` is licensed under the [MIT License](LICENSE).
