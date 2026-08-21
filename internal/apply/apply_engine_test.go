@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/config"
 	// Register the MSSQL engine, as cmd/root.go does for the CLI.
-	_ "github.com/dbtools/dbtools/internal/engine/mssqlengine"
+	_ "github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 )
 
 // A target whose configured engine contradicts its URL scheme must be

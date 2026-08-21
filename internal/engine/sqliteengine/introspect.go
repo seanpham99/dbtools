@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/generate"
+	"github.com/seanpham99/dbtools/internal/generate"
 )
 
 // MapSQLiteToPython maps a SQLite declared column type to a Python type

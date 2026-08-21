@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/config"
-	_ "github.com/dbtools/dbtools/internal/engine/mssqlengine"
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/config"
+	_ "github.com/seanpham99/dbtools/internal/engine/mssqlengine"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 // A target whose configured engine contradicts its URL scheme must show

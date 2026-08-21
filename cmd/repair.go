@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/migrator"
-	"github.com/dbtools/dbtools/internal/repair"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/repair"
 	"github.com/spf13/cobra"
 )
 

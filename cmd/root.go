@@ -6,10 +6,10 @@ import (
 
 	// Engine implementations self-register with internal/engine in their
 	// package init(); every registered engine's commands work from here.
-	_ "github.com/dbtools/dbtools/internal/engine/mssqlengine"
-	_ "github.com/dbtools/dbtools/internal/engine/postgresengine"
-	_ "github.com/dbtools/dbtools/internal/engine/sqliteengine"
-	"github.com/dbtools/dbtools/internal/localenv"
+	_ "github.com/seanpham99/dbtools/internal/engine/mssqlengine"
+	_ "github.com/seanpham99/dbtools/internal/engine/postgresengine"
+	_ "github.com/seanpham99/dbtools/internal/engine/sqliteengine"
+	"github.com/seanpham99/dbtools/internal/localenv"
 	"github.com/spf13/cobra"
 )
 

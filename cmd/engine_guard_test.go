@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
 )
 
 // A configured engine that contradicts the target URL's scheme must be

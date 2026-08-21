@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/ddlcheck"
-	"github.com/dbtools/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
+	"github.com/seanpham99/dbtools/internal/ledger"
 )
 
 // TestLiveLedgerDDLAndIntrospection exercises the Postgres engine against

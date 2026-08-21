@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/generate"
+	"github.com/seanpham99/dbtools/internal/generate"
 )
 
 type fakeEngine struct{ name string }

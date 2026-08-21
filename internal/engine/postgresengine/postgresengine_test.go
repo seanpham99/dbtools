@@ -3,8 +3,8 @@ package postgresengine
 import (
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/ddlcheck"
-	"github.com/dbtools/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
+	"github.com/seanpham99/dbtools/internal/engine"
 )
 
 func TestRegisteredAndRoutedByScheme(t *testing.T) {

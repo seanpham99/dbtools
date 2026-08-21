@@ -3,8 +3,8 @@ package cmd
 import (
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/repair"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/repair"
 )
 
 func TestParseRepairArgs_Single(t *testing.T) {

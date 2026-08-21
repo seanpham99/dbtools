@@ -3,9 +3,9 @@ package cmd
 import (
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 func TestRunResetRecreatesAppliesAndSeedsLocal(t *testing.T) {

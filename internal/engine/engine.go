@@ -20,10 +20,10 @@ import (
 	"net/url"
 	"sort"
 
-	"github.com/dbtools/dbtools/internal/ddlcheck"
-	"github.com/dbtools/dbtools/internal/generate"
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
+	"github.com/seanpham99/dbtools/internal/generate"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // Engine is one pluggable database engine implementation.

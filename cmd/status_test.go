@@ -3,7 +3,7 @@ package cmd
 import (
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 func TestBuildStatusEntries_MixedSuccessAndFailure(t *testing.T) {

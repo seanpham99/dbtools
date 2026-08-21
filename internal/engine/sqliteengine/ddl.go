@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/ddlcheck"
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
 )
 
 // DefaultSchema is SQLite's name for the primary database.

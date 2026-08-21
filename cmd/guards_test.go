@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/apply"
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/apply"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 func TestUpRefusesNonLocalTarget(t *testing.T) {

@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/dbconn"
-	"github.com/dbtools/dbtools/internal/engine/mssqlengine"
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/migrator"
-	"github.com/dbtools/dbtools/internal/testdb"
+	"github.com/seanpham99/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/testdb"
 )
 
 func setupTest(t *testing.T) (dir, url string) {

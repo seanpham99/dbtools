@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/dbconn"
 	// apply.Run resolves engines from the registry; register MSSQL for
 	// this test binary the same way cmd/root.go does for the CLI.
-	_ "github.com/dbtools/dbtools/internal/engine/mssqlengine"
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/testdb"
+	_ "github.com/seanpham99/dbtools/internal/engine/mssqlengine"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/testdb"
 )
 
 func TestRun_AppliesMigrations(t *testing.T) {
