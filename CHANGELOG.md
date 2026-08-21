@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-08-21
+
+v0.2 — rollback + agent ergonomics + TypeScript generation.
+
+### Added
+
+- **Down migrations & ledger-only rollback**:
+  - `dbtools down <target> [N]` — applies `.down.sql` files in reverse, recorded in the ledger.
+  - `dbtools rollback <target>` — ledger-only soft-revert (never data-destroying), the safe prod verb.
+  - Production gate: `down` requires `--preview --yes` on protected targets.
+- **Agent ergonomics (AI-agent + CI contract)**:
+  - Terraform-style exit-code contract: `0` clean, `1` error, `2` drift/pending. Documented in `docs/exit-codes.md`.
+  - `--dry-run` for `up`/`push` (prints SQL, applies nothing).
+  - Universal `--json` output on all commands.
+  - `DBTOOLS_NO_PROMPT=1` / non-TTY fail-closed mode.
+  - Dirty-ledger refusal: `up` refuses when the ledger is dirty.
+- **TypeScript generation**:
+  - `dbtools generate --lang ts [--zod]` — Supabase-style `export interface` per table, optional zod schemas.
+  - SQL→TS mapping (int8→bigint, timestamps→string, json→any), reserved-word escaping, `--check` support.
+- **npx installer**:
+  - `@dbtools/cli` npm wrapper — thin downloader of the GoReleaser binary; version-synced release pipeline.
+
+### Changed
+
+- Engine seams deepened (`internal/migrator.Dir` unified, render dissolved, apply stepping hardened).
+
+---
+
 ## [0.1.0] - 2026-08-21
 
 Initial open-source release of `dbtools` — the database migration authority and local dev-loop for modern engineering teams and AI agents.
