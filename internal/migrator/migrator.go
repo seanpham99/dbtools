@@ -87,6 +87,31 @@ func (mg *Migrator) Step() (applied bool, err error) {
 	return true, nil
 }
 
+// StepDown rolls back the single most recently applied migration using its .down.sql file.
+// applied is false if there was nothing to do.
+func (mg *Migrator) StepDown() (applied bool, err error) {
+	err = mg.m.Steps(-1)
+	if errors.Is(err, migrate.ErrNoChange) || errors.Is(err, os.ErrNotExist) || errors.Is(err, migrate.ErrNilVersion) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reverting migration: %w", err)
+	}
+	return true, nil
+}
+
+// Down rolls back all applied migrations.
+func (mg *Migrator) Down() (applied bool, err error) {
+	err = mg.m.Down()
+	if errors.Is(err, migrate.ErrNoChange) || errors.Is(err, migrate.ErrNilVersion) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("reverting migrations: %w", err)
+	}
+	return true, nil
+}
+
 // Version reports the current migration version. hasVersion is false if no
 // migration has ever been applied (golang-migrate's ErrNilVersion).
 func (mg *Migrator) Version() (version uint64, dirty bool, hasVersion bool, err error) {
