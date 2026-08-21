@@ -81,7 +81,7 @@ func TestCollect_DropThenRecreateIsNotPermanentDrift(t *testing.T) {
 	}
 }
 
-func TestCollect_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.T) {
+func TestCollect_SQLite_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"), []byte("CREATE TABLE dbtools_test_dropped (id INTEGER PRIMARY KEY);"), 0o644)
 	os.WriteFile(filepath.Join(dir, "2_drop_widgets.up.sql"), []byte("DROP TABLE IF EXISTS dbtools_test_dropped;"), 0o644)
