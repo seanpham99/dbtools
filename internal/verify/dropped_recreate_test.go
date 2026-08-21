@@ -126,4 +126,3 @@ func TestCollect_SQLite_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.
 		}
 	}
 }
-

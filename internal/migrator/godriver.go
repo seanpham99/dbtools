@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/seanpham99/dbtools/internal/dbconn"
 	"github.com/golang-migrate/migrate/v4/database"
 	"github.com/golang-migrate/migrate/v4/database/sqlserver"
+	"github.com/seanpham99/dbtools/internal/dbconn"
 )
 
 // goBatchSeparator matches a line containing only sqlcmd/SSMS's GO batch

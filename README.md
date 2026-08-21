@@ -1,7 +1,7 @@
 # dbtools
 
 [![CI](https://github.com/seanpham99/dbtools/actions/workflows/ci.yml/badge.svg)](https://github.com/seanpham99/dbtools/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/seanpham99/dbtools)](https://goreportcard.com/report/github.com/seanpham99/dbtools)
+[![Go Reference](https://pkg.go.dev/badge/github.com/seanpham99/dbtools.svg)](https://pkg.go.dev/github.com/seanpham99/dbtools)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 **dbtools** is a lightweight, reliable database migration authority and local dev-loop tool for **MSSQL**, **PostgreSQL**, and **SQLite**. Built in Go for high performance and zero external runtime dependencies, `dbtools` guarantees version-sync migration execution, immutable ledger tracking (`content_sha256`), read-only schema drift verification, and live schema introspection to typed Pydantic Python models.
