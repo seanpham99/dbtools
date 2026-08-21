@@ -1,4 +1,4 @@
-# @dbtools/cli
+# dbtools-cli
 
 Fast schema migrations and dev databases for MSSQL, PostgreSQL, and SQLite.
 
@@ -6,19 +6,19 @@ Fast schema migrations and dev databases for MSSQL, PostgreSQL, and SQLite.
 
 ```bash
 # Run without installing
-npx @dbtools/cli status
+npx dbtools-cli status
 
 # Apply local migrations
-npx @dbtools/cli up
+npx dbtools-cli up
 
 # Preview migrations and drift with exit-code contract
-npx @dbtools/cli plan --json
+npx dbtools-cli plan --json
 ```
 
 ## Global Installation
 
 ```bash
-npm install -g @dbtools/cli
+npm install -g dbtools-cli
 
 # Now run directly
 dbtools status

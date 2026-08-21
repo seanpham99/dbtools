@@ -4,7 +4,7 @@ const zlib = require('zlib');
 const { execSync } = require('child_process');
 const { getPlatformInfo, extractTarGz } = require('./lib/binary.js');
 
-console.log('Testing @dbtools/cli installer package...');
+console.log('Testing dbtools-cli installer package...');
 
 // 1. Test platform detection
 const info = getPlatformInfo();

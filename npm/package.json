@@ -1,5 +1,5 @@
 {
-  "name": "@dbtools/cli",
+  "name": "dbtools-cli",
   "version": "0.2.0",
   "description": "Fast schema migrations and dev databases for MSSQL, Postgres, and SQLite",
   "bin": {
