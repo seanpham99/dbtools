@@ -42,8 +42,12 @@ jobs:
           MSSQL_PID: Developer
         ports:
           - 1433:1433
+        # Readiness is checked without credentials: SQL Server logs
+        # "Recovery is complete" to the error log once it accepts logins.
+        # (A `-P $VAR` health check is unreliable here — the runner leaves
+        # `$$` for the container shell, where `$$` is the PID.)
         options: >-
-          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $$MSSQL_SA_PASSWORD -C -Q 'SELECT 1'"
+          --health-cmd "bash -c 'grep -q \"Recovery is complete\" /var/opt/mssql/log/errorlog || exit 1'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
