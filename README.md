@@ -104,6 +104,7 @@ dbtools status
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
 | `reset` | `dbtools reset [--target local] [--yes]` | Local-only: drops database, replays all migrations from zero, and executes `seed.sql`. |
 | `generate` | `dbtools generate [target] [--out models.py]` | Introspects live schema and renders Pydantic v2 Python models. |
+| `lint` | `dbtools lint [--dir <path>] [--json]` | Validates filenames, duplicate versions, and empty files without database connection. |
 | `dashboard` | `dbtools dashboard` | Opens terminal UI showing live target status (`r` to refresh, `q` to quit). |
 | `start` / `stop` | `dbtools start` / `stop` | Starts or stops ephemeral tool-owned local MSSQL Docker container. |
 
