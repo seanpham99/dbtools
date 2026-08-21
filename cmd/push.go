@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/dbtools/dbtools/internal/apply"
-	"github.com/dbtools/dbtools/internal/config"
 	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/statusinfo"
 	"github.com/spf13/cobra"
@@ -23,9 +22,12 @@ var pushCmd = &cobra.Command{
 }
 
 func runPush(targetName string) error {
-	cfg, err := config.Load("dbtools.toml")
+	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
+	}
+	if err := requireUnprotected(cfg, targetName); err != nil {
+		return err
 	}
 
 	url, err := cfg.ResolveURLOrFlag(targetName, pushURL)

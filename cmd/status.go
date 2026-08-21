@@ -19,10 +19,12 @@ var statusCmd = &cobra.Command{
 	},
 }
 
+var statusTarget string
 var statusURL string
 
 func init() {
-	statusCmd.Flags().StringVar(&statusURL, "url", "", "connection string override for the single-target status check (status still iterates all targets; override applies only to the named --target)")
+	statusCmd.Flags().StringVar(&statusURL, "url", "", "connection string override (with --target: applies only to that named target; without it, ignored — status still iterates all targets)")
+	statusCmd.Flags().StringVar(&statusTarget, "target", "", "only show this target's status (otherwise every configured target)")
 	rootCmd.AddCommand(statusCmd)
 }
 
@@ -77,7 +79,16 @@ func buildStatusEntries(statuses []statusinfo.Status, failures []targetFailure) 
 func collectStatuses(cfg *config.Config) ([]statusinfo.Status, []targetFailure) {
 	var statuses []statusinfo.Status
 	var failures []targetFailure
-	for _, name := range cfg.TargetNames() {
+
+	// With --target, only that one target is checked, and --url applies
+	// to it alone. Without --target, --url is ignored (it would be wrong
+	// to apply one override to every target).
+	names := cfg.TargetNames()
+	if statusTarget != "" {
+		names = []string{statusTarget}
+	}
+
+	for _, name := range names {
 		url, err := cfg.ResolveURLOrFlag(name, statusURL)
 		if err != nil {
 			failures = append(failures, targetFailure{Target: name, Error: err.Error()})

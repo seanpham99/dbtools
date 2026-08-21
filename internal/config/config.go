@@ -18,6 +18,10 @@ type Target struct {
 	// must match that scheme (validated at engine resolution, see
 	// internal/engine.ForTarget).
 	Engine string `toml:"engine"`
+	// Protected marks a target as not-for-routine-writes: push/repair/
+	// reset refuse it unless the flag is removed. Verify/status (read-only)
+	// still work. The config author's explicit "this is prod, be careful".
+	Protected bool `toml:"protected"`
 }
 
 // GenerateConfig holds settings for pydantic model generation.

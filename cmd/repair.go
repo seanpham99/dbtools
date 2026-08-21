@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/config"
 	"github.com/dbtools/dbtools/internal/engine"
 	"github.com/dbtools/dbtools/internal/ledger"
 	"github.com/dbtools/dbtools/internal/migrator"
@@ -74,9 +73,12 @@ func parseRepairArgs(arg string) ([]repair.Pair, error) {
 }
 
 func runRepair(targetName string, pairs []repair.Pair) error {
-	cfg, err := config.Load("dbtools.toml")
+	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
+	}
+	if err := requireUnprotected(cfg, targetName); err != nil {
+		return err
 	}
 	url, err := cfg.ResolveURL(targetName)
 	if err != nil {
