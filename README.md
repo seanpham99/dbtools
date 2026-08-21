@@ -100,6 +100,7 @@ dbtools status
 | `up` | `dbtools up [--target <name>]` | Applies pending migrations to local target. Refuses protected/remote targets. |
 | `push` | `dbtools push <target> [--yes]` | Applies pending migrations to named remote target with explicit confirmation. |
 | `status` | `dbtools status [--json]` | Displays applied/pending migration status across all configured targets. |
+| `plan` | `dbtools plan [--target X] [--json]` | Read-only preview of pending migrations + ledger drift, without applying anything. Agent/CI-friendly: exit 0 = safe to apply. |
 | `verify` | `dbtools verify <target> [--json]` | Non-destructive verification of ledger history and live database objects. Non-zero exit on drift. |
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
 | `reset` | `dbtools reset [--target local] [--yes]` | Local-only: drops database, replays all migrations from zero, and executes `seed.sql`. |
