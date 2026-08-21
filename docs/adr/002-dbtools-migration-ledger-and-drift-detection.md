@@ -1,4 +1,4 @@
-# ADR 021: Migration Ledger Tracking and Read-Only Drift Detection
+# ADR 002: Migration Ledger Tracking and Read-Only Drift Detection
 
 ## Status
 Accepted

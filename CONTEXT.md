@@ -1,6 +1,6 @@
 # db-tools
 
-`dbtools` is a standalone Go CLI (wrapping `golang-migrate`) providing a Supabase-CLI-style local dev loop and migration authority for MSSQL/Postgres/future engines. Not a business bounded context — a dev-tooling component living at `tools/db-tools/`. See `docs/adr/016-dbtools-migration-authority.md` for why it exists and what it replaces.
+`dbtools` is a standalone Go CLI (wrapping `golang-migrate`) providing a Supabase-CLI-style local dev loop and migration authority for MSSQL/Postgres/future engines. Not a business bounded context — a dev-tooling component living at `tools/db-tools/`. See `docs/adr/001-dbtools-migration-authority.md` for why it exists and what it replaces.
 
 ## Language
 
@@ -13,8 +13,8 @@ Applying migrations not yet recorded in a target's version table (version-sync).
 _Avoid_: sync, deploy, schema sync
 
 **version-sync**:
-The guarantee `up`/`push` provide: a target's recorded migration history matches local migration files up to the latest one applied. Distinct from full schema-sync (verifying every column/type/constraint of live DB structure matches expectations), which `dbtools` still does not implement — that would require per-engine live-schema introspection and diffing, ruled out as a dialect-abstraction cost too large for this tool. `verify`/`repair` (see `docs/adr/021-dbtools-migration-ledger-and-drift-detection.md`) check a much narrower thing — whether the named objects a migration's DDL creates actually exist — which is not the same as schema-sync.
-_Avoid_: "in sync" (always qualify — ambiguous on its own), calling `verify` full schema-sync (it isn't — see ADR-021)
+The guarantee `up`/`push` provide: a target's recorded migration history matches local migration files up to the latest one applied. Distinct from full schema-sync (verifying every column/type/constraint of live DB structure matches expectations), which `dbtools` still does not implement — that would require per-engine live-schema introspection and diffing, ruled out as a dialect-abstraction cost too large for this tool. `verify`/`repair` (see `docs/adr/002-dbtools-migration-ledger-and-drift-detection.md`) check a much narrower thing — whether the named objects a migration's DDL creates actually exist — which is not the same as schema-sync.
+_Avoid_: "in sync" (always qualify — ambiguous on its own), calling `verify` full schema-sync (it isn't — see ADR-002)
 
 **reset**:
 Local-only operation: drop the ephemeral local database, recreate it, replay every migration from the start, then run `seed.sql` if present.

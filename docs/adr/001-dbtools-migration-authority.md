@@ -1,4 +1,4 @@
-# ADR 016: dbtools as Migration Authority and Local Dev-Loop
+# ADR 001: dbtools as Migration Authority and Local Dev-Loop
 
 ## Status
 Accepted
