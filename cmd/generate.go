@@ -92,6 +92,13 @@ func runGenerate(targetName string) error {
 		fmt.Fprintf(os.Stderr, "warning: no Python type mapping for %s, using Any\n", w)
 	}
 
+	if generateLang != "python" && generateLang != "ts" {
+		return fmt.Errorf("unsupported --lang %q (want \"python\" or \"ts\")", generateLang)
+	}
+	if generateZod && generateLang != "ts" {
+		return fmt.Errorf("--zod requires --lang ts")
+	}
+
 	outContent, err := renderForLang(tables, targetName)
 	if err != nil {
 		return err
@@ -121,7 +128,7 @@ func runGenerate(targetName string) error {
 			fmt.Printf("%s is up to date with %s\n", outPath, targetName)
 			return nil
 		}
-		return fmt.Errorf("%s is out of date with %s; run `dbtools generate %s --out %s` to refresh", outPath, targetName, targetName, outPath)
+		return fmt.Errorf("%s is out of date with %s; run `dbtools generate %s --lang %s%s --out %s` to refresh", outPath, targetName, targetName, generateLang, map[bool]string{true: " --zod", false: ""}[generateZod], outPath)
 	}
 
 	if err := os.WriteFile(outPath, []byte(outContent), 0644); err != nil {
@@ -142,9 +149,11 @@ func runGenerate(targetName string) error {
 // renderForLang dispatches generate output to the requested language.
 func renderForLang(tables []generate.TableSchema, targetName string) (string, error) {
 	switch generateLang {
+	case "python":
+		return generate.Render(tables, targetName)
 	case "ts":
 		return generate.RenderTS(tables, targetName, generateZod)
 	default:
-		return generate.Render(tables, targetName)
+		return "", fmt.Errorf("unsupported --lang %q (want \"python\" or \"ts\")", generateLang)
 	}
 }

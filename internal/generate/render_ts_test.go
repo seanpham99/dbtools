@@ -11,6 +11,8 @@ func TestMapSQLToTS(t *testing.T) {
 		want string
 	}{
 		{"bigint", "bigint"},
+		{"int8", "bigint"},
+		{"bigserial", "bigint"},
 		{"int", "number"},
 		{"smallint", "number"},
 		{"integer", "number"},
@@ -114,9 +116,10 @@ func TestRenderTSWithZod(t *testing.T) {
 		"export interface Orders {",
 		"  id: bigint;",
 		"  note?: string;",
+		"import { z } from \"zod\";",
 		"export const OrdersSchema = z.object({",
 		"  id: z.bigint(),",
-		"  note: z.string().nullable(),",
+		"  note: z.string().nullish(),",
 		"});",
 	} {
 		if !strings.Contains(out, want) {
