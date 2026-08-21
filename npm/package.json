@@ -1,0 +1,38 @@
+{
+  "name": "@dbtools/cli",
+  "version": "0.2.0",
+  "description": "Fast schema migrations and dev databases for MSSQL, Postgres, and SQLite",
+  "bin": {
+    "dbtools": "./bin/dbtools.js"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "keywords": [
+    "dbtools",
+    "migrations",
+    "mssql",
+    "postgres",
+    "sqlite",
+    "database",
+    "cli"
+  ],
+  "author": "Sean Pham",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seanpham99/dbtools.git"
+  },
+  "bugs": {
+    "url": "https://github.com/seanpham99/dbtools/issues"
+  },
+  "homepage": "https://github.com/seanpham99/dbtools#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md"
+  ]
+}

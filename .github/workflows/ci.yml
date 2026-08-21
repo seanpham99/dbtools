@@ -30,6 +30,12 @@ jobs:
           install-mode: "goinstall"
       - name: Unit tests
         run: go test ./...
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: NPM package test
+        run: node npm/test.js
 
   integration:
     name: Integration (${{ matrix.db }})
