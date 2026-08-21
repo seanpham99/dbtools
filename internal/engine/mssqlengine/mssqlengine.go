@@ -61,6 +61,10 @@ func (ledgerStore) SetStatus(db ledger.DBTX, version uint64, status ledger.Statu
 	return ledger.SetStatus(db, version, status, note)
 }
 
+func (ledgerStore) SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash string) error {
+	return ledger.SetStatusWithHash(db, version, status, note, contentHash)
+}
+
 func (ledgerStore) List(db ledger.DBTX) ([]ledger.Entry, error) {
 	return ledger.List(db)
 }

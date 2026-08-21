@@ -64,9 +64,16 @@ type DDLDialect interface {
 // ledger (see internal/ledger for the semantics each method must keep).
 type LedgerStore interface {
 	// Sync ensures the ledger table exists and backfills a row for every
-	// version the migrate cursor already considers applied.
+	// version the migrate cursor already considers applied. Refuses to
+	// backfill when the cursor is dirty.
 	Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error
+	// SetStatus upserts version's ledger row, preserving content_sha256
+	// when the row already exists.
 	SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note string) error
+	// SetStatusWithHash is SetStatus plus recording the applied migration
+	// file's content hash, so verify can detect edits after apply. Used by
+	// the apply path only.
+	SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash string) error
 	List(db ledger.DBTX) ([]ledger.Entry, error)
 	AppliedVersions(db ledger.DBTX) ([]uint64, error)
 }
