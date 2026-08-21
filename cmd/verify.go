@@ -20,7 +20,10 @@ var verifyCmd = &cobra.Command{
 	},
 }
 
+var verifyInitLedger bool
+
 func init() {
+	verifyCmd.Flags().BoolVar(&verifyInitLedger, "init-ledger", false, "create the ledger table and backfill rows for already-applied migrations (default: verify is read-only and reports an uninitialised ledger)")
 	rootCmd.AddCommand(verifyCmd)
 }
 
@@ -51,8 +54,27 @@ func runVerify(targetName string) error {
 	}
 	defer m.Close()
 
-	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
-		return err
+	entries, err := eng.Ledger().List(db)
+	if err != nil {
+		// No ledger table at all: with --init-ledger, create it (and
+		// backfill); without it, refuse — verify must not perform DDL/DML
+		// on a target it was asked to inspect read-only.
+		if verifyInitLedger {
+			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
+				return err
+			}
+			entries, err = eng.Ledger().List(db)
+			if err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("ledger for %q is not initialised — refusing to create it on a read-only check; pass --init-ledger to create and backfill it", targetName)
+		}
+	}
+	if len(entries) == 0 {
+		if !verifyInitLedger {
+			return fmt.Errorf("ledger for %q is empty — refusing to create it on a read-only check; pass --init-ledger to create and backfill it", targetName)
+		}
 	}
 
 	report, err := verify.Collect(db, eng, cfg.MigrationsDir, targetName)

@@ -3,6 +3,7 @@ package migrator
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -33,6 +34,26 @@ func (mg *Migrator) Up() (applied bool, err error) {
 	}
 	if err != nil {
 		return false, fmt.Errorf("applying migrations: %w", err)
+	}
+	return true, nil
+}
+
+// Step applies the single next pending migration. applied is false if there
+// was nothing to do. Callers that need to record per-migration side effects
+// (e.g. the ledger) must use Step in a loop instead of Up, so a migration
+// that fails partway through a batch leaves the already-applied ones
+// recorded.
+//
+// golang-migrate's Steps(1) reports os.ErrNotExist ("file does not exist")
+// when the last migration has already been applied and there is no "next"
+// file — treat that as no-change, same as ErrNoChange.
+func (mg *Migrator) Step() (applied bool, err error) {
+	err = mg.m.Steps(1)
+	if errors.Is(err, migrate.ErrNoChange) || errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("applying next migration: %w", err)
 	}
 	return true, nil
 }
