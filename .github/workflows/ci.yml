@@ -25,3 +25,68 @@ jobs:
         run: go vet ./...
       - name: Unit tests
         run: go test ./...
+
+  integration:
+    name: Integration (${{ matrix.db }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [mssql, postgres, sqlite]
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: ${{ secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD }}
+          MSSQL_PID: Developer
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P $$MSSQL_SA_PASSWORD -C -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: dbtools
+          POSTGRES_PASSWORD: dbtools
+          POSTGRES_DB: dbtools_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dbtools"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      # The stock MSSQL image ships no user databases; the integration
+      # suite expects one named `dbtools`. Create it once per run.
+      - name: Create MSSQL test database
+        if: matrix.db == 'mssql'
+        env:
+          MSSQL_SA_PASSWORD: ${{ secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD }}
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C -Q "IF DB_ID('dbtools') IS NULL CREATE DATABASE dbtools" -b
+      - name: Integration tests
+        env:
+          DBTOOLS_TEST_MSSQL_URL: "mssql://sa:${{ secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD }}@localhost:1433?database=dbtools&TrustServerCertificate=true&x-migrations-table=schema_migrations"
+          DBTOOLS_TEST_POSTGRES_URL: "postgres://dbtools:dbtools@localhost:5432/dbtools_test?sslmode=disable"
+          DBTOOLS_TEST_SQLITE_URL: "sqlite:///tmp/dbtools-it.db"
+        run: |
+          case "${{ matrix.db }}" in
+            mssql)
+              go test -tags=integration ./... -count=1
+              ;;
+            postgres)
+              go test -tags=integration ./internal/engine/postgresengine/... -count=1
+              ;;
+            sqlite)
+              go test -tags=integration ./internal/engine/sqliteengine/... -count=1
+              ;;
+          esac
