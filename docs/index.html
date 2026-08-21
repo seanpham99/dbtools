@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>dbtools — Multi-Engine Database Migration Authority & Local Dev-Loop</title>
+  <meta name="description" content="dbtools is a fast, reliable database migration authority for MSSQL, PostgreSQL, and SQLite with cryptographic ledger tracking, zero schema drift detection, and Pydantic model generation.">
+  <link rel="canonical" href="https://seanpham99.github.io/dbtools/">
+
+  <!-- OpenGraph / Social Meta Tags -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://seanpham99.github.io/dbtools/">
+  <meta property="og:title" content="dbtools — Multi-Engine Database Migration Authority">
+  <meta property="og:description" content="Immutable migration ledger tracking, zero schema drift verification, and live Pydantic model generation for MSSQL, PostgreSQL, and SQLite.">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-primary: #0b0f19;
+      --bg-secondary: #111827;
+      --bg-card: rgba(17, 24, 39, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(59, 130, 246, 0.4);
+      --text-primary: #f9fafb;
+      --text-secondary: #9ca3af;
+      --text-muted: #6b7280;
+      --accent-blue: #3b82f6;
+      --accent-cyan: #06b6d4;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --gradient-accent: linear-gradient(135deg, #3b82f6 0%, #06b6d4 50%, #10b981 100%);
+      --code-bg: #030712;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Ambient background glow */
+    .glow-bg {
+      position: fixed;
+      top: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 900px;
+      height: 450px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(6, 182, 212, 0.08) 40%, transparent 70%);
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      max-width: 1140px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Navigation */
+    header {
+      border-bottom: 1px solid var(--border-color);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(11, 15, 25, 0.8);
+    }
+
+    .nav-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 70px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 1.25rem;
+      text-decoration: none;
+      color: var(--text-primary);
+    }
+
+    .brand-badge {
+      background: var(--gradient-accent);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .version-tag {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+      border-radius: 9999px;
+      font-family: var(--font-mono);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--text-primary);
+    }
+
+    .btn-github {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .btn-github:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 90px 0 60px;
+      text-align: center;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #6ee7b7;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 9999px;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      font-size: 3.25rem;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+    }
+
+    .highlight {
+      background: var(--gradient-accent);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: 1.25rem;
+      color: var(--text-secondary);
+      max-width: 780px;
+      margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+
+    /* Install bar */
+    .install-box {
+      display: inline-flex;
+      align-items: center;
+      background: var(--code-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 6px 6px 6px 16px;
+      gap: 14px;
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+      margin-bottom: 40px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .install-command {
+      color: #93c5fd;
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    /* Feature Grid */
+    .section-title {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .section-title h2 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 12px;
+    }
+
+    .section-title p {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-bottom: 80px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 28px;
+      backdrop-filter: blur(10px);
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--border-hover);
+    }
+
+    .card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 18px;
+      font-size: 1.3rem;
+    }
+
+    .icon-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .icon-emerald { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .icon-cyan { background: rgba(6, 182, 212, 0.15); color: #22d3ee; }
+    .icon-amber { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+    .feature-card h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .feature-card p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    /* Terminal Preview */
+    .terminal-section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 80px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .terminal-header {
+      background: rgba(3, 7, 18, 0.8);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #eab308; }
+    .dot-green { background: #22c55e; }
+
+    .terminal-title {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-left: 12px;
+    }
+
+    .terminal-content {
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      color: #e5e7eb;
+      background: var(--code-bg);
+      overflow-x: auto;
+    }
+
+    .prompt-line {
+      color: var(--accent-cyan);
+    }
+
+    .output-ok { color: #34d399; }
+    .output-applied { color: #60a5fa; }
+    .output-hash { color: #9ca3af; }
+
+    /* Commands Reference Table */
+    .table-wrap {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      overflow-x: auto;
+      margin-bottom: 80px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(3, 7, 18, 0.6);
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    td {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-secondary);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    td code {
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #93c5fd;
+      font-size: 0.85rem;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 40px 0;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      margin: 0 12px;
+      transition: color 0.2s;
+    }
+
+    footer a:hover {
+      color: var(--text-primary);
+    }
+
+    @media (max-width: 768px) {
+      h1 { font-size: 2.25rem; }
+      .hero-subtitle { font-size: 1.05rem; }
+      .install-box { flex-direction: column; padding: 12px; width: 100%; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="glow-bg"></div>
+
+  <header>
+    <div class="container">
+      <div class="nav-wrap">
+        <a href="#" class="brand">
+          <span class="brand-badge">dbtools</span>
+          <span class="version-tag">v0.1.0</span>
+        </a>
+        <nav class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#demo">Preview</a>
+          <a href="#commands">Commands</a>
+          <a href="https://github.com/seanpham99/dbtools/blob/main/docs/adr/016-dbtools-migration-authority.md">ADRs</a>
+          <a href="https://github.com/seanpham99/dbtools" class="btn-github" target="_blank" rel="noopener noreferrer">
+            <svg height="18" width="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+            GitHub
+          </a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div class="badge-pill">
+        <span>●</span> Open Source Go CLI & Dev-Loop
+      </div>
+      <h1>Multi-Engine Database <br><span class="highlight">Migration Authority</span></h1>
+      <p class="hero-subtitle">
+        Eliminate schema drift and protect deployment targets across MSSQL, PostgreSQL, and SQLite with cryptographic ledger tracking, drop-aware verification, and Pydantic model generation.
+      </p>
+
+      <div class="install-box">
+        <span class="prompt-line">$</span>
+        <span class="install-command" id="installCmd">go install github.com/seanpham99/dbtools@latest</span>
+        <button class="copy-btn" id="copyBtn" onclick="copyInstall()">Copy</button>
+      </div>
+    </section>
+
+    <section id="features" class="features-section">
+      <div class="section-title">
+        <h2>Engineered for Reliability</h2>
+        <p>Built from the ground up for modern engineering workflows and AI agents.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="card-icon icon-blue">⚡</div>
+          <h3>Native Multi-Engine Dialects</h3>
+          <p>Seamless execution across SQL Server (MSSQL with GO-batching), PostgreSQL (with clean session-state isolation), and serverless SQLite.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-emerald">🔒</div>
+          <h3>Zero-Drift Cryptographic Ledger</h3>
+          <p>Records applied migrations with SHA-256 content hashes in <code>dbtools_migration_history</code> to catch silent post-apply script tampering.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-cyan">🔍</div>
+          <h3>Read-Only Drift Verification</h3>
+          <p><code>dbtools verify</code> introspects live objects against migration definitions and understands drop lifecycles so legitimate drops aren't flagged as drift.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-amber">🛡️</div>
+          <h3>Target Safety & Secret Hygiene</h3>
+          <p>Environments map through <code>url_env</code> variables in <code>dbtools.toml</code>. Production targets require explicit confirmation and reject destructive commands.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-blue">🐍</div>
+          <h3>Python Type Contract Generation</h3>
+          <p><code>dbtools generate</code> renders versioned, type-safe Pydantic v2 BaseModels from live schema metadata, with <code>--check</code> for CI schema sync.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-emerald">📊</div>
+          <h3>Terminal Dashboard UI</h3>
+          <p>Interactive real-time terminal monitor powered by Bubble Tea for instant multi-target status visualization during local development.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="demo">
+      <div class="section-title">
+        <h2>Terminal Observability</h2>
+        <p>Instant clarity on migration state across all configured targets.</p>
+      </div>
+
+      <div class="terminal-section">
+        <div class="terminal-header">
+          <span class="dot dot-red"></span>
+          <span class="dot dot-yellow"></span>
+          <span class="dot dot-green"></span>
+          <span class="terminal-title">dbtools verify --target local</span>
+        </div>
+        <pre class="terminal-content">
+<span class="prompt-line">$ dbtools status</span>
+Target: local (sqlite://dev.db)
+  <span class="output-applied">[APPLIED]</span> 20260101000000_create_users.up.sql <span class="output-hash">(SHA: f4a8b2c1...)</span>
+  <span class="output-applied">[APPLIED]</span> 20260102000000_add_orders.up.sql   <span class="output-hash">(SHA: d7e3a9f0...)</span>
+  <span class="output-ok">Status: Up to date (2 applied, 0 pending)</span>
+
+<span class="prompt-line">$ dbtools verify local</span>
+Target: local
+  [OK] 20260101000000_create_users.up.sql  (dbo.users exists, content hash matches)
+  [OK] 20260102000000_add_orders.up.sql    (dbo.orders exists, content hash matches)
+<span class="output-ok">✓ 2 migrations verified, 0 drift detected.</span>
+        </pre>
+      </div>
+    </section>
+
+    <section id="commands">
+      <div class="section-title">
+        <h2>Command Reference</h2>
+        <p>A concise set of focused, predictable CLI operations.</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Command</th>
+              <th>Usage</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>init</code></td>
+              <td><code>dbtools init</code></td>
+              <td>Creates starter <code>dbtools.toml</code> and <code>migrations/</code> directory.</td>
+            </tr>
+            <tr>
+              <td><code>new</code></td>
+              <td><code>dbtools new &lt;name&gt;</code></td>
+              <td>Scaffolds a timestamped <code>{ts}_{name}.up.sql</code> migration file.</td>
+            </tr>
+            <tr>
+              <td><code>up</code></td>
+              <td><code>dbtools up [--target local]</code></td>
+              <td>Applies pending migrations to local target. Refuses protected targets.</td>
+            </tr>
+            <tr>
+              <td><code>push</code></td>
+              <td><code>dbtools push &lt;target&gt; [--yes]</code></td>
+              <td>Applies pending migrations to named remote target with explicit confirmation.</td>
+            </tr>
+            <tr>
+              <td><code>status</code></td>
+              <td><code>dbtools status [--json]</code></td>
+              <td>Displays applied/pending migration status across all configured targets.</td>
+            </tr>
+            <tr>
+              <td><code>verify</code></td>
+              <td><code>dbtools verify &lt;target&gt;</code></td>
+              <td>Read-only audit: checks file SHA hashes and database object existence. Non-zero exit on drift.</td>
+            </tr>
+            <tr>
+              <td><code>repair</code></td>
+              <td><code>dbtools repair &lt;target&gt; &lt;v&gt;:&lt;status&gt; --yes</code></td>
+              <td>Corrects ledger record status and resynchronizes the version cursor safely.</td>
+            </tr>
+            <tr>
+              <td><code>reset</code></td>
+              <td><code>dbtools reset [--yes]</code></td>
+              <td>Local-only: drops database, replays all migrations, and runs <code>seed.sql</code>.</td>
+            </tr>
+            <tr>
+              <td><code>generate</code></td>
+              <td><code>dbtools generate [target] [--out models.py]</code></td>
+              <td>Introspects schema and outputs typed Pydantic Python models.</td>
+            </tr>
+            <tr>
+              <td><code>dashboard</code></td>
+              <td><code>dbtools dashboard</code></td>
+              <td>Interactive Bubble Tea TUI monitor (<code>r</code> to refresh, <code>q</code> to quit).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2026 dbtools Maintainers. Released under the MIT License.</p>
+      <div style="margin-top: 14px;">
+        <a href="https://github.com/seanpham99/dbtools">GitHub Repository</a>
+        <a href="https://github.com/seanpham99/dbtools/releases">Releases</a>
+        <a href="https://github.com/seanpham99/dbtools/blob/main/docs/adr/016-dbtools-migration-authority.md">ADR-016</a>
+        <a href="https://github.com/seanpham99/dbtools/blob/main/docs/adr/021-dbtools-migration-ledger-and-drift-detection.md">ADR-021</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function copyInstall() {
+      const text = document.getElementById('installCmd').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.innerText = 'Copied!';
+        setTimeout(() => { btn.innerText = 'Copy'; }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
