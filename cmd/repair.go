@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -105,6 +106,15 @@ func runRepair(targetName string, pairs []repair.Pair) error {
 	result, err := repair.Run(db, eng, m, cfg.MigrationsDir, pairs, repairForce)
 	if err != nil {
 		return err
+	}
+
+	if jsonOutput {
+		b, err := json.Marshal(result)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
 	}
 
 	if !result.HasCursor {

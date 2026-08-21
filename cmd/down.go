@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
 	"github.com/seanpham99/dbtools/internal/down"
+	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/spf13/cobra"
 )
 
@@ -39,6 +41,12 @@ func init() {
 	rootCmd.AddCommand(downCmd)
 }
 
+type downPreviewJSON struct {
+	Target         string          `json:"target"`
+	Preview        bool            `json:"preview"`
+	DownMigrations []migrator.File `json:"down_migrations"`
+}
+
 func runDown(targetName string, steps int) error {
 	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
@@ -55,12 +63,23 @@ func runDown(targetName string, steps int) error {
 		return err
 	}
 
-	if len(plan) == 0 {
-		fmt.Printf("%s: no applied migrations to revert\n", targetName)
-		return nil
-	}
-
 	if downPreview {
+		if jsonOutput {
+			b, err := json.Marshal(downPreviewJSON{
+				Target:         targetName,
+				Preview:        true,
+				DownMigrations: plan,
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(b))
+			return nil
+		}
+		if len(plan) == 0 {
+			fmt.Printf("%s: no applied migrations to revert (preview)\n", targetName)
+			return nil
+		}
 		fmt.Printf("%s: %d down migration(s) would be executed:\n", targetName, len(plan))
 		for _, f := range plan {
 			fmt.Printf("  %s\n", f.Filename)
@@ -68,10 +87,30 @@ func runDown(targetName string, steps int) error {
 		return nil
 	}
 
+	if len(plan) == 0 {
+		if jsonOutput {
+			b, err := json.Marshal(down.Result{
+				Target:           targetName,
+				RevertedVersions: nil,
+				CurrentVersion:   0,
+				HasVersion:       false,
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(b))
+			return nil
+		}
+		fmt.Printf("%s: no applied migrations to revert\n", targetName)
+		return nil
+	}
+
 	if target.Protected {
-		fmt.Printf("%s: [PROTECTED TARGET] %d down migration(s) will be executed:\n", targetName, len(plan))
-		for _, f := range plan {
-			fmt.Printf("  %s\n", f.Filename)
+		if !jsonOutput {
+			fmt.Printf("%s: [PROTECTED TARGET] %d down migration(s) will be executed:\n", targetName, len(plan))
+			for _, f := range plan {
+				fmt.Printf("  %s\n", f.Filename)
+			}
 		}
 		if !downYes {
 			return fmt.Errorf("target %q is protected — refusing to run destructive down migrations without --yes", targetName)
@@ -81,6 +120,15 @@ func runDown(targetName string, steps int) error {
 	res, err := down.Run(cfg, targetName, steps, downURL)
 	if err != nil {
 		return err
+	}
+
+	if jsonOutput {
+		b, err := json.Marshal(res)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
 	}
 
 	fmt.Printf("%s: reverted %d migration(s)\n", targetName, len(res.RevertedVersions))

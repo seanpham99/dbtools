@@ -36,7 +36,7 @@ var lintCmd = &cobra.Command{
 			return err
 		}
 
-		if lintJSONFlag {
+		if jsonOutput || lintJSONFlag {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
 			if err := enc.Encode(report); err != nil {
@@ -54,7 +54,7 @@ var lintCmd = &cobra.Command{
 		}
 
 		if report.HasErrors() {
-			os.Exit(1)
+			return ExitCode(1, "")
 		}
 		return nil
 	},

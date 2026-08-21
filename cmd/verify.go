@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/seanpham99/dbtools/internal/verify"
@@ -28,7 +27,7 @@ func init() {
 }
 
 func runVerify(targetName string) error {
-	cfg, err := config.Load("dbtools.toml")
+	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}
@@ -102,7 +101,7 @@ func runVerify(targetName string) error {
 		}
 	}
 	if driftCount > 0 {
-		return fmt.Errorf("drift detected in %d migration(s)", driftCount)
+		return ExitCode(2, fmt.Sprintf("drift detected in %d migration(s)", driftCount))
 	}
 	return nil
 }

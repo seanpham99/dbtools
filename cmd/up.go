@@ -1,13 +1,17 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
 )
 
-var upTarget string
-var upURL string
+var (
+	upTarget string
+	upURL    string
+	upDryRun bool
+)
 
 var upCmd = &cobra.Command{
 	Use:   "up",
@@ -15,9 +19,7 @@ var upCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// up is the fast local dev loop. It deliberately refuses any
 		// non-local target: reaching a remote database requires the
-		// explicit `push <target> --yes` path with its preview + guard
-		// (the two commands share one apply.Run underneath, so there is
-		// no separate code path to drift).
+		// explicit `push <target> --yes` path with its preview + guard.
 		if upTarget != "local" {
 			return fmt.Errorf("refusing to run `up` against %q — use `push %s --yes` for a remote target (it previews pending migrations first)", upTarget, upTarget)
 		}
@@ -25,10 +27,25 @@ var upCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("loading dbtools.toml: %w", err)
 		}
+
+		if upDryRun {
+			return runDryRun(cfg, upTarget, upURL)
+		}
+
 		status, err := applyRun(cfg, upTarget, upURL)
 		if err != nil {
 			return err
 		}
+
+		if jsonOutput {
+			b, err := json.Marshal(status)
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(b))
+			return nil
+		}
+
 		fmt.Printf("%s: now at version %d (%d pending)\n", status.Target, status.CurrentVersion, len(status.Pending))
 		return nil
 	},
@@ -37,5 +54,6 @@ var upCmd = &cobra.Command{
 func init() {
 	upCmd.Flags().StringVar(&upTarget, "target", "local", "target to apply migrations to")
 	upCmd.Flags().StringVar(&upURL, "url", "", "connection string override (overrides target's configured URL env var)")
+	upCmd.Flags().BoolVar(&upDryRun, "dry-run", false, "print pending migration SQL without applying anything")
 	rootCmd.AddCommand(upCmd)
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/apply"
@@ -9,8 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var pushYes bool
-var pushURL string
+var (
+	pushYes    bool
+	pushURL    string
+	pushDryRun bool
+)
 
 var pushCmd = &cobra.Command{
 	Use:   "push [target]",
@@ -30,6 +34,10 @@ func runPush(targetName string) error {
 		return err
 	}
 
+	if pushDryRun {
+		return runDryRun(cfg, targetName, pushURL)
+	}
+
 	url, err := cfg.ResolveURLOrFlag(targetName, pushURL)
 	if err != nil {
 		return err
@@ -44,14 +52,31 @@ func runPush(targetName string) error {
 		return err
 	}
 	if len(preview.Pending) == 0 {
+		if jsonOutput {
+			b, err := json.Marshal(statusinfo.Status{
+				Target:         targetName,
+				CurrentVersion: preview.CurrentVersion,
+				HasVersion:     preview.HasVersion,
+				Dirty:          preview.Dirty,
+				Pending:        nil,
+			})
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(b))
+			return nil
+		}
 		fmt.Printf("%s: already up to date, nothing to push\n", targetName)
 		return nil
 	}
-	fmt.Printf("%s: %d pending migration(s):\n", targetName, len(preview.Pending))
-	for _, f := range preview.Pending {
-		fmt.Printf("  %s\n", f)
-	}
+
 	if !pushYes {
+		if !jsonOutput {
+			fmt.Printf("%s: %d pending migration(s):\n", targetName, len(preview.Pending))
+			for _, f := range preview.Pending {
+				fmt.Printf("  %s\n", f)
+			}
+		}
 		return fmt.Errorf("refusing to push migrations to %q without --yes", targetName)
 	}
 
@@ -59,6 +84,16 @@ func runPush(targetName string) error {
 	if err != nil {
 		return err
 	}
+
+	if jsonOutput {
+		b, err := json.Marshal(status)
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(b))
+		return nil
+	}
+
 	fmt.Printf("%s: now at version %d (%d pending)\n", status.Target, status.CurrentVersion, len(status.Pending))
 	return nil
 }
@@ -66,5 +101,6 @@ func runPush(targetName string) error {
 func init() {
 	pushCmd.Flags().BoolVar(&pushYes, "yes", false, "confirm applying migrations to this target")
 	pushCmd.Flags().StringVar(&pushURL, "url", "", "connection string override (overrides target's configured URL env var)")
+	pushCmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "print pending migration SQL without applying anything")
 	rootCmd.AddCommand(pushCmd)
 }
