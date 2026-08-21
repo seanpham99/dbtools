@@ -29,18 +29,21 @@ type Report struct {
 
 // Collect checks every ledger row in db against migrationsDir's files:
 // versions marked "applied" must have every object their migration creates
-// actually present; versions marked "reverted" must not.
+// actually present AND the migration file's content must still match the
+// hash recorded when it was applied; versions marked "reverted" must not.
 func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*Report, error) {
 	entries, err := eng.Ledger().List(db)
 	if err != nil {
 		return nil, err
 	}
 
-	// Objects any applied migration explicitly DROPs are expected-absent — an
-	// earlier migration's CREATE for the same object no longer existing is
-	// intentional removal, not drift (e.g. a legacy table created by an early
-	// migration and legitimately dropped by a later one).
-	dropped := make(map[ddlcheck.ObjectRef]bool)
+	// Objects any applied migration explicitly DROPs are expected-absent.
+	// Track drops per-object but allow a later migration to re-create the
+	// object: a version's CREATE is only excused by a drop that came
+	// BEFORE it and was not itself superseded by a re-create. (A global
+	// unordered union would mark a re-created object as permanently
+	// dropped and hide genuine later disappearance.)
+	droppedBefore := make(map[ddlcheck.ObjectRef]uint64) // object -> version that dropped it
 	for _, e := range entries {
 		if e.Status != ledger.StatusApplied {
 			continue
@@ -54,7 +57,12 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 			return nil, err
 		}
 		for _, obj := range eng.DDL().ExtractDroppedObjects(string(content)) {
-			dropped[obj] = true
+			droppedBefore[obj] = e.Version
+		}
+		// If this migration itself re-creates the object, it cancels any
+		// earlier drop: a later genuine disappearance must be DRIFT.
+		for _, obj := range eng.DDL().ExtractObjects(string(content)) {
+			delete(droppedBefore, obj)
 		}
 	}
 
@@ -82,12 +90,30 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 
 		status := "OK"
 		var details []string
+
+		// Content-hash check: an applied migration whose file was edited
+		// after apply is drift even when every object still exists — the
+		// DB no longer matches what the file says. Backfilled rows have no
+		// hash (recorded before hashing existed) and are skipped.
+		if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" {
+			sum, err := migrator.ContentHash(migrationsDir, e.Version)
+			if err != nil {
+				return nil, err
+			}
+			if sum != e.ContentSHA256 {
+				status = "DRIFT"
+				details = append(details, "migration file was edited after it was applied (content hash mismatch)")
+			}
+		}
+
 		for _, obj := range objects {
 			exists, err := eng.DDL().Exists(db, obj)
 			if err != nil {
 				return nil, err
 			}
-			if e.Status == ledger.StatusApplied && !exists && !dropped[obj] {
+			droppedAt, wasDropped := droppedBefore[obj]
+			excused := wasDropped && droppedAt < e.Version
+			if e.Status == ledger.StatusApplied && !exists && !excused {
 				status = "DRIFT"
 				details = append(details, fmt.Sprintf("%s.%s: claimed applied but missing", obj.Schema, obj.Name))
 			}
