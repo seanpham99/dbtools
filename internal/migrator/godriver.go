@@ -1,12 +1,16 @@
-package mssqlengine
+package migrator
 
 import (
+	"database/sql"
+	"fmt"
 	"io"
+	"net/url"
 	"regexp"
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4/database"
 	"github.com/golang-migrate/migrate/v4/database/sqlserver"
+	_ "github.com/microsoft/go-mssqldb"
 )
 
 // goBatchSeparator matches a line containing only sqlcmd/SSMS's GO batch
@@ -26,24 +30,32 @@ func init() {
 // multiple CREATE PROCEDURE/VIEW statements that reuse local variable
 // names across what used to be separate sqlcmd batches — and simply
 // deleting GO merges those batches together, causing the same collision.
-// Registered under the "mssql" scheme so dbtools's connection URLs use
-// mssql:// to route through this wrapper.
+// Registered under the "mssql" scheme (not "sqlserver", which
+// golang-migrate's own package still self-registers on import) so
+// dbtools's connection URLs use mssql:// to route through this wrapper.
 type goSplitDriver struct {
 	inner  database.Driver
 	rawURL string
 }
 
 func (d *goSplitDriver) Open(rawURL string) (database.Driver, error) {
-	sqlserverURL, err := RewriteToSQLServerScheme(rawURL)
+	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing URL: %w", err)
 	}
+	if u.Scheme != "mssql" && u.Scheme != "sqlserver" {
+		return nil, fmt.Errorf("expected mssql:// or sqlserver:// URL scheme, got %q", u.Scheme)
+	}
+	u.Scheme = "sqlserver"
+	q := u.Query()
+	q.Del("x-migrations-table")
+	u.RawQuery = q.Encode()
 
-	inner, err := (&sqlserver.SQLServer{}).Open(sqlserverURL)
+	inner, err := (&sqlserver.SQLServer{}).Open(u.String())
 	if err != nil {
 		return nil, err
 	}
-	return &goSplitDriver{inner: inner, rawURL: rawURL}, nil
+	return &goSplitDriver{inner: inner, rawURL: u.String()}, nil
 }
 
 func (d *goSplitDriver) Close() error  { return d.inner.Close() }
@@ -69,7 +81,7 @@ func (d *goSplitDriver) Run(migration io.Reader) error {
 		return err
 	}
 
-	db, err := Open(d.rawURL)
+	db, err := sql.Open("sqlserver", d.rawURL)
 	if err != nil {
 		return err
 	}
