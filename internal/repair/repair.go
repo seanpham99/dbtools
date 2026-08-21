@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // Pair is one version's requested ledger status change.

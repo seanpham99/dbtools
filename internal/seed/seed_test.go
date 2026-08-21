@@ -1,7 +1,7 @@
 package seed
 
 import (
-	"github.com/dbtools/dbtools/internal/engine/mssqlengine"
+	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 	"os"
 	"testing"
 )

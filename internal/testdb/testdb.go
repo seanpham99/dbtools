@@ -1,7 +1,7 @@
 package testdb
 
 import (
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/dbconn"
 )
 
 // ResetTracking drops golang-migrate's version-tracking table and the

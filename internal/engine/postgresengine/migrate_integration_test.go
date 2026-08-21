@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/migrator"
-	"github.com/dbtools/dbtools/internal/seed"
+	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/seed"
 )
 
 // TestLiveMigrateUpAndSeed exercises the full golang-migrate path (Open,

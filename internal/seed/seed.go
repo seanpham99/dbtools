@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/engine"
 )
 
 const Filename = "seed.sql"

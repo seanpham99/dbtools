@@ -1,6 +1,6 @@
 package statusinfo
 
-import "github.com/dbtools/dbtools/internal/migrator"
+import "github.com/seanpham99/dbtools/internal/migrator"
 
 // Status is the point-in-time migration state for one target.
 type Status struct {

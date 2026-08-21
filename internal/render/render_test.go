@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 func sample() []statusinfo.Status {

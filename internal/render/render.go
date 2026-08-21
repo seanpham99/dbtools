@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 // JSON renders statuses as a compact JSON array for --json / agent callers.

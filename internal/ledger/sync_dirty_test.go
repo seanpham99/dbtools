@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/engine/sqliteengine"
-	"github.com/dbtools/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // migratorOpenDB opens the sqlite file directly (like eng.Open would). The

@@ -6,12 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dbtools/dbtools/internal/apply"
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/container"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/engine/sqliteengine"
-	"github.com/dbtools/dbtools/internal/seed"
+	"github.com/seanpham99/dbtools/internal/apply"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/container"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
+	"github.com/seanpham99/dbtools/internal/seed"
 	"github.com/spf13/cobra"
 )
 

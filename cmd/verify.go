@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/migrator"
-	"github.com/dbtools/dbtools/internal/verify"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/verify"
 	"github.com/spf13/cobra"
 )
 

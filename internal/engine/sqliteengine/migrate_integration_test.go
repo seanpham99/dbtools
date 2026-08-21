@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // TestLiveMigrateUpAndLedger exercises the full golang-migrate path and

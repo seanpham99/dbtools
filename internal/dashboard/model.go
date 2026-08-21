@@ -4,7 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/dbtools/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/config"
 )
 
 type Model struct {

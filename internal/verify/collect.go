@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/ddlcheck"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // Entry is one migration version's drift-check result.
@@ -112,7 +112,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 				return nil, err
 			}
 			droppedAt, wasDropped := droppedBefore[obj]
-			excused := wasDropped && droppedAt < e.Version
+			excused := wasDropped && droppedAt > e.Version
 			if e.Status == ledger.StatusApplied && !exists && !excused {
 				status = "DRIFT"
 				details = append(details, fmt.Sprintf("%s.%s: claimed applied but missing", obj.Schema, obj.Name))

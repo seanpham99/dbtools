@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // ledgerStore is the Postgres dialect of the dbtools_migration_history

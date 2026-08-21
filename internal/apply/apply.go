@@ -3,11 +3,11 @@ package apply
 import (
 	"fmt"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/ledger"
-	"github.com/dbtools/dbtools/internal/migrator"
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 // Run resolves targetName's connection string (or uses urlOverride when

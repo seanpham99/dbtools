@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dbtools/dbtools/cmd"
+	"github.com/seanpham99/dbtools/cmd"
 )
 
 func main() {

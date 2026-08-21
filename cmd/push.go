@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/dbtools/dbtools/internal/apply"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/apply"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 	"github.com/spf13/cobra"
 )
 

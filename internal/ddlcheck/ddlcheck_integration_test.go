@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/dbconn"
 )
 
 func TestExists(t *testing.T) {
