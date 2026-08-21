@@ -80,3 +80,50 @@ func TestCollect_DropThenRecreateIsNotPermanentDrift(t *testing.T) {
 		t.Fatalf("Collect() after genuine drop = %+v, want v2 (the re-create) reported DRIFT", report.Entries)
 	}
 }
+
+func TestCollect_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"), []byte("CREATE TABLE dbtools_test_dropped (id INTEGER PRIMARY KEY);"), 0o644)
+	os.WriteFile(filepath.Join(dir, "2_drop_widgets.up.sql"), []byte("DROP TABLE IF EXISTS dbtools_test_dropped;"), 0o644)
+
+	rawURL := "sqlite://" + filepath.Join(dir, "verify_drop.db")
+	eng, err := engine.ForTarget("", rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS dbtools_migration_history (
+		version INTEGER NOT NULL PRIMARY KEY,
+		status TEXT NOT NULL CHECK (status IN ('applied', 'reverted')),
+		recorded_at TIMESTAMP NULL,
+		note TEXT NULL,
+		content_sha256 TEXT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := eng.Ledger().SetStatus(db, 1, ledger.StatusApplied, "creates table"); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Ledger().SetStatus(db, 2, ledger.StatusApplied, "drops table"); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Collect(db, eng, dir, "test-target")
+	if err != nil {
+		t.Fatalf("Collect() returned error: %v", err)
+	}
+	if len(report.Entries) != 2 {
+		t.Fatalf("Collect() returned %d entries, want 2", len(report.Entries))
+	}
+	for _, e := range report.Entries {
+		if e.Status != "OK" {
+			t.Errorf("entry %d = %s (%s), want OK when dropped by later migration", e.Version, e.Status, e.Detail)
+		}
+	}
+}
+

@@ -112,7 +112,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 				return nil, err
 			}
 			droppedAt, wasDropped := droppedBefore[obj]
-			excused := wasDropped && droppedAt < e.Version
+			excused := wasDropped && droppedAt > e.Version
 			if e.Status == ledger.StatusApplied && !exists && !excused {
 				status = "DRIFT"
 				details = append(details, fmt.Sprintf("%s.%s: claimed applied but missing", obj.Schema, obj.Name))
