@@ -83,16 +83,16 @@ jobs:
             -Q "IF DB_ID('dbtools') IS NULL CREATE DATABASE dbtools" -b
       - name: Integration tests
         env:
-          DBTOOLS_TEST_MSSQL_URL: "mssql://sa:${{ secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD }}@localhost:1433?database=dbtools&TrustServerCertificate=true&x-migrations-table=schema_migrations"
-          DBTOOLS_TEST_POSTGRES_URL: "postgres://dbtools:dbtools@localhost:5432/dbtools_test?sslmode=disable"
-          DBTOOLS_TEST_SQLITE_URL: "sqlite:///tmp/dbtools-it.db"
+          DBTOOLS_TEST_MSSQL_URL: ${{ matrix.db == 'mssql' && format('mssql://sa:{0}@localhost:1433?database=dbtools&TrustServerCertificate=true&x-migrations-table=schema_migrations', secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD) || '' }}
+          DBTOOLS_TEST_POSTGRES_URL: ${{ matrix.db == 'postgres' && 'postgres://dbtools:dbtools@localhost:5432/dbtools_test?sslmode=disable' || '' }}
+          DBTOOLS_TEST_SQLITE_URL: ${{ matrix.db == 'sqlite' && 'sqlite:///tmp/dbtools-it.db' || '' }}
         run: |
           case "${{ matrix.db }}" in
             mssql)
               go test -tags=integration -p 1 ./... -count=1
               ;;
             postgres)
-              go test -tags=integration ./internal/engine/postgresengine/... -count=1
+              go test -tags=integration -p 1 ./internal/engine/postgresengine/... ./internal/verify/... -count=1
               ;;
             sqlite)
               go test -tags=integration ./internal/engine/sqliteengine/... -count=1
