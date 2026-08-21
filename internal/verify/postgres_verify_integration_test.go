@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/seanpham99/dbtools/internal/dbconn"
 	"github.com/seanpham99/dbtools/internal/engine/postgresengine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 )
@@ -29,13 +28,16 @@ func TestCollect_Postgres_DetectsMissingObject(t *testing.T) {
 		t.Skip("DBTOOLS_TEST_POSTGRES_URL not set, skipping integration test")
 	}
 
-	db, err := dbconn.Open(url)
+	eng := postgresengine.Postgres{}
+	db, err := eng.Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("eng.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
-	eng := postgresengine.Postgres{}
+	if err := db.Ping(); err != nil {
+		t.Fatalf("db.Ping() returned error: %v", err)
+	}
 
 	// Clean tracking and test tables
 	db.Exec(`DROP TABLE IF EXISTS dbtools_migration_history`)
@@ -86,13 +88,16 @@ func TestCollect_Postgres_DetectsContentHashDrift(t *testing.T) {
 		t.Skip("DBTOOLS_TEST_POSTGRES_URL not set, skipping integration test")
 	}
 
-	db, err := dbconn.Open(url)
+	eng := postgresengine.Postgres{}
+	db, err := eng.Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("eng.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
-	eng := postgresengine.Postgres{}
+	if err := db.Ping(); err != nil {
+		t.Fatalf("db.Ping() returned error: %v", err)
+	}
 
 	db.Exec(`DROP TABLE IF EXISTS dbtools_migration_history`)
 	db.Exec(`DROP TABLE IF EXISTS schema_migrations`)
