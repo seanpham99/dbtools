@@ -92,7 +92,7 @@ jobs:
               go test -tags=integration -p 1 ./... -count=1
               ;;
             postgres)
-              go test -tags=integration ./internal/engine/postgresengine/... ./internal/verify/... -count=1
+              go test -tags=integration -p 1 ./internal/engine/postgresengine/... ./internal/verify/... -count=1
               ;;
             sqlite)
               go test -tags=integration ./internal/engine/sqliteengine/... -count=1
