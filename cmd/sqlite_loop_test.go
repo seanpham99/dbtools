@@ -130,6 +130,37 @@ CREATE VIEW active_users AS SELECT * FROM users;`
 		t.Fatalf("Introspect() tables = %+v, want just users", tables)
 	}
 
+	// down: revert migration 20260817000001
+	downYes = true
+	downPreview = false
+	downURL = ""
+	if err := runDown("local", 1); err != nil {
+		t.Fatalf("runDown() returned error: %v", err)
+	}
+
+	// verify: after down, table is gone and ledger records reverted (not drift)
+	report, err = verify.Collect(db2, eng, "migrations", "local")
+	if err != nil {
+		t.Fatalf("verify.Collect() after down returned error: %v", err)
+	}
+	for _, e := range report.Entries {
+		if e.Status != "OK" {
+			t.Errorf("verify entry %d after down = %s (%s), want OK", e.Version, e.Status, e.Detail)
+		}
+	}
+
+	// re-apply up for rollback test
+	if _, err := apply.Run(cfg, "local", ""); err != nil {
+		t.Fatalf("apply.Run() failed: %v", err)
+	}
+
+	// rollback: soft-revert in ledger without dropping table
+	rollbackYes = true
+	rollbackURL = ""
+	if err := runRollback("local", 1); err != nil {
+		t.Fatalf("runRollback() returned error: %v", err)
+	}
+
 	// start/stop are graceful no-ops
 	if err := runStart(); err != nil {
 		t.Errorf("runStart() returned error: %v", err)

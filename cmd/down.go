@@ -1,0 +1,96 @@
+package cmd
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/seanpham99/dbtools/internal/down"
+	"github.com/spf13/cobra"
+)
+
+var (
+	downYes     bool
+	downPreview bool
+	downURL     string
+)
+
+var downCmd = &cobra.Command{
+	Use:   "down <target> [N]",
+	Short: "Revert the last N applied migrations (default 1) using .down.sql files",
+	Args:  cobra.RangeArgs(1, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		targetName := args[0]
+		steps := 1
+		if len(args) == 2 {
+			n, err := strconv.Atoi(args[1])
+			if err != nil || n <= 0 {
+				return fmt.Errorf("invalid step count %q: must be a positive integer", args[1])
+			}
+			steps = n
+		}
+		return runDown(targetName, steps)
+	},
+}
+
+func init() {
+	downCmd.Flags().BoolVarP(&downYes, "yes", "y", false, "confirm applying down migrations")
+	downCmd.Flags().BoolVar(&downPreview, "preview", false, "preview down migrations that would be executed without applying them")
+	downCmd.Flags().StringVar(&downURL, "url", "", "connection string override")
+	rootCmd.AddCommand(downCmd)
+}
+
+func runDown(targetName string, steps int) error {
+	cfg, err := loadConfig("dbtools.toml")
+	if err != nil {
+		return fmt.Errorf("loading dbtools.toml: %w", err)
+	}
+
+	target, ok := cfg.Targets[targetName]
+	if !ok {
+		return fmt.Errorf("unknown target %q", targetName)
+	}
+
+	plan, err := down.Preview(cfg, targetName, steps, downURL)
+	if err != nil {
+		return err
+	}
+
+	if len(plan) == 0 {
+		fmt.Printf("%s: no applied migrations to revert\n", targetName)
+		return nil
+	}
+
+	if downPreview {
+		fmt.Printf("%s: %d down migration(s) would be executed:\n", targetName, len(plan))
+		for _, f := range plan {
+			fmt.Printf("  %s\n", f.Filename)
+		}
+		return nil
+	}
+
+	if target.Protected {
+		fmt.Printf("%s: [PROTECTED TARGET] %d down migration(s) will be executed:\n", targetName, len(plan))
+		for _, f := range plan {
+			fmt.Printf("  %s\n", f.Filename)
+		}
+		if !downYes {
+			return fmt.Errorf("target %q is protected — refusing to run destructive down migrations without --yes", targetName)
+		}
+	}
+
+	res, err := down.Run(cfg, targetName, steps, downURL)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%s: reverted %d migration(s)\n", targetName, len(res.RevertedVersions))
+	for _, v := range res.RevertedVersions {
+		fmt.Printf("  reverted v%d\n", v)
+	}
+	if res.HasVersion {
+		fmt.Printf("%s: now at version %d\n", targetName, res.CurrentVersion)
+	} else {
+		fmt.Printf("%s: no migrations remaining (version 0)\n", targetName)
+	}
+	return nil
+}

@@ -57,6 +57,69 @@ func TestReadDir(t *testing.T) {
 	if len(hash) != 64 {
 		t.Errorf("d.ContentHash() = %q, want 64-char hex string", hash)
 	}
+
+	// Down file checks
+	downFiles := d.ListDown()
+	if len(downFiles) != 1 {
+		t.Fatalf("d.ListDown() returned %d files, want 1", len(downFiles))
+	}
+	if downFiles[0].Version != 20260101000000 {
+		t.Errorf("down file version = %d, want 20260101000000", downFiles[0].Version)
+	}
+
+	downFile, err := d.FindDown(20260101000000)
+	if err != nil {
+		t.Fatalf("d.FindDown() returned error: %v", err)
+	}
+	if downFile.Filename != "20260101000000_create_users.down.sql" {
+		t.Errorf("d.FindDown() = %q, want 20260101000000_create_users.down.sql", downFile.Filename)
+	}
+
+	downHash, err := d.DownContentHash(20260101000000)
+	if err != nil {
+		t.Fatalf("d.DownContentHash() error: %v", err)
+	}
+	if len(downHash) != 64 {
+		t.Errorf("d.DownContentHash() = %q, want 64-char hex string", downHash)
+	}
+}
+
+func TestDir_DownPlan(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "20260101000000_create_users.up.sql"), []byte("CREATE TABLE users (id INT);"), 0o644)
+	os.WriteFile(filepath.Join(dir, "20260101000000_create_users.down.sql"), []byte("DROP TABLE users;"), 0o644)
+	os.WriteFile(filepath.Join(dir, "20260102000000_add_orders.up.sql"), []byte("CREATE TABLE orders (id INT);"), 0o644)
+	os.WriteFile(filepath.Join(dir, "20260102000000_add_orders.down.sql"), []byte("DROP TABLE orders;"), 0o644)
+
+	d, err := ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	applied := []uint64{20260101000000, 20260102000000}
+	plan1, err := d.DownPlan(applied, 1)
+	if err != nil {
+		t.Fatalf("DownPlan(1) error: %v", err)
+	}
+	if len(plan1) != 1 || plan1[0].Version != 20260102000000 {
+		t.Errorf("DownPlan(1) = %+v, want [20260102000000]", plan1)
+	}
+
+	planAll, err := d.DownPlan(applied, 0)
+	if err != nil {
+		t.Fatalf("DownPlan(0) error: %v", err)
+	}
+	if len(planAll) != 2 || planAll[0].Version != 20260102000000 || planAll[1].Version != 20260101000000 {
+		t.Errorf("DownPlan(0) = %+v, want [20260102000000, 20260101000000]", planAll)
+	}
+
+	// Missing down file error
+	os.Remove(filepath.Join(dir, "20260102000000_add_orders.down.sql"))
+	d2, _ := ReadDir(dir)
+	_, err = d2.DownPlan(applied, 1)
+	if err == nil {
+		t.Fatal("expected error when down file missing, got nil")
+	}
 }
 
 func TestDir_NextVersion(t *testing.T) {

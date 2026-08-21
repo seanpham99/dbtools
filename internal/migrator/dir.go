@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	validUpFilenamePattern = regexp.MustCompile(`^(\d+)_.+\.up\.sql$`)
+	validUpFilenamePattern   = regexp.MustCompile(`^(\d+)_.+\.up\.sql$`)
+	validDownFilenamePattern = regexp.MustCompile(`^(\d+)_.+\.down\.sql$`)
 )
 
 // File represents one plain-SQL migration file on disk.
@@ -26,59 +27,80 @@ type File struct {
 
 // Dir is an in-memory indexed view of a local migrations directory.
 type Dir struct {
-	path      string
-	upFiles   []File
-	byVersion map[uint64]File
+	path          string
+	upFiles       []File
+	downFiles     []File
+	byVersion     map[uint64]File
+	byVersionDown map[uint64]File
 }
 
 // ReadDir scans migrationsDir, parses version numbers, sorts ascending, and indexes
-// all *.up.sql migration files in memory.
+// all *.up.sql and *.down.sql migration files in memory.
 func ReadDir(migrationsDir string) (*Dir, error) {
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &Dir{
-				path:      migrationsDir,
-				upFiles:   nil,
-				byVersion: make(map[uint64]File),
+				path:          migrationsDir,
+				upFiles:       nil,
+				downFiles:     nil,
+				byVersion:     make(map[uint64]File),
+				byVersionDown: make(map[uint64]File),
 			}, nil
 		}
 		return nil, fmt.Errorf("reading migrations dir %q: %w", migrationsDir, err)
 	}
 
 	var upFiles []File
+	var downFiles []File
 	byVersion := make(map[uint64]File)
+	byVersionDown := make(map[uint64]File)
 
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		name := e.Name()
-		m := validUpFilenamePattern.FindStringSubmatch(name)
-		if m == nil {
-			continue
+		if m := validUpFilenamePattern.FindStringSubmatch(name); m != nil {
+			ver, err := strconv.ParseUint(m[1], 10, 64)
+			if err != nil {
+				continue
+			}
+			f := File{
+				Version:  ver,
+				Filename: name,
+				Path:     filepath.Join(migrationsDir, name),
+			}
+			upFiles = append(upFiles, f)
+			byVersion[ver] = f
+		} else if m := validDownFilenamePattern.FindStringSubmatch(name); m != nil {
+			ver, err := strconv.ParseUint(m[1], 10, 64)
+			if err != nil {
+				continue
+			}
+			f := File{
+				Version:  ver,
+				Filename: name,
+				Path:     filepath.Join(migrationsDir, name),
+			}
+			downFiles = append(downFiles, f)
+			byVersionDown[ver] = f
 		}
-		ver, err := strconv.ParseUint(m[1], 10, 64)
-		if err != nil {
-			continue
-		}
-		f := File{
-			Version:  ver,
-			Filename: name,
-			Path:     filepath.Join(migrationsDir, name),
-		}
-		upFiles = append(upFiles, f)
-		byVersion[ver] = f
 	}
 
 	sort.Slice(upFiles, func(i, j int) bool {
 		return upFiles[i].Version < upFiles[j].Version
 	})
+	sort.Slice(downFiles, func(i, j int) bool {
+		return downFiles[i].Version < downFiles[j].Version
+	})
 
 	return &Dir{
-		path:      migrationsDir,
-		upFiles:   upFiles,
-		byVersion: byVersion,
+		path:          migrationsDir,
+		upFiles:       upFiles,
+		downFiles:     downFiles,
+		byVersion:     byVersion,
+		byVersionDown: byVersionDown,
 	}, nil
 }
 
@@ -89,7 +111,14 @@ func (d *Dir) List() []File {
 	return result
 }
 
-// ListVersions returns every migration version in ascending order.
+// ListDown returns every *.down.sql migration file in ascending order.
+func (d *Dir) ListDown() []File {
+	result := make([]File, len(d.downFiles))
+	copy(result, d.downFiles)
+	return result
+}
+
+// ListVersions returns every up migration version in ascending order.
 func (d *Dir) ListVersions() []uint64 {
 	versions := make([]uint64, len(d.upFiles))
 	for i, f := range d.upFiles {
@@ -98,12 +127,20 @@ func (d *Dir) ListVersions() []uint64 {
 	return versions
 }
 
-// Find returns the File matching version, or an error if not found.
+// Find returns the *.up.sql File matching version, or an error if not found.
 func (d *Dir) Find(version uint64) (File, error) {
 	if f, ok := d.byVersion[version]; ok {
 		return f, nil
 	}
 	return File{}, fmt.Errorf("version %d does not match any migration file in %s", version, d.path)
+}
+
+// FindDown returns the *.down.sql File matching version, or an error if not found.
+func (d *Dir) FindDown(version uint64) (File, error) {
+	if f, ok := d.byVersionDown[version]; ok {
+		return f, nil
+	}
+	return File{}, fmt.Errorf("version %d does not have a matching .down.sql migration file in %s", version, d.path)
 }
 
 // PendingAfter returns the files for every migration whose version is greater than
@@ -136,6 +173,32 @@ func (d *Dir) PendingVersions(currentVersion uint64, hasVersion bool) []uint64 {
 		versions[i] = f.Version
 	}
 	return versions
+}
+
+// DownPlan returns the list of down migration files to apply in reverse order (newest first)
+// for the given applied versions (which are in ascending order), up to steps count.
+// If steps <= 0 or steps >= len(appliedVersions), all applied versions are planned.
+func (d *Dir) DownPlan(appliedVersions []uint64, steps int) ([]File, error) {
+	if len(appliedVersions) == 0 {
+		return nil, nil
+	}
+
+	count := steps
+	if count <= 0 || count > len(appliedVersions) {
+		count = len(appliedVersions)
+	}
+
+	plan := make([]File, 0, count)
+	// Iterate backwards from the latest applied version
+	for i := len(appliedVersions) - 1; i >= len(appliedVersions)-count; i-- {
+		ver := appliedVersions[i]
+		downFile, err := d.FindDown(ver)
+		if err != nil {
+			return nil, err
+		}
+		plan = append(plan, downFile)
+	}
+	return plan, nil
 }
 
 // NextVersion computes max(clock_version, max_existing_version + 1), ensuring
@@ -178,6 +241,20 @@ func (d *Dir) ContentHash(version uint64) (string, error) {
 	data, err := os.ReadFile(f.Path)
 	if err != nil {
 		return "", fmt.Errorf("reading migration file %s: %w", f.Filename, err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// DownContentHash computes the SHA-256 hex string of version's *.down.sql file.
+func (d *Dir) DownContentHash(version uint64) (string, error) {
+	f, err := d.FindDown(version)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(f.Path)
+	if err != nil {
+		return "", fmt.Errorf("reading down migration file %s: %w", f.Filename, err)
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:]), nil
