@@ -13,6 +13,9 @@ func TestToPascalCase(t *testing.T) {
 		{"fact_widget_sale", "FactWidgetSale"},
 		{"dim_customer_account", "DimCustomerAccount"},
 		{"api_request_log", "ApiRequestLog"}, // no acronym handling: title-cased like any other word
+		{"trade-log", "TradeLog"},            // C6: non-identifier chars dropped
+		{"2fa_codes", "_2faCodes"},           // C6: leading digit prefixed
+		{"user id", "UserId"},                // C6: spaces split words
 	}
 
 	for _, tt := range tests {
@@ -94,6 +97,15 @@ func TestSanitizeFieldName(t *testing.T) {
 	}
 	if got := SanitizeFieldName("ticker"); got != "ticker" {
 		t.Errorf("SanitizeFieldName(ticker) = %q; want ticker (unchanged)", got)
+	}
+	if got := SanitizeFieldName("user id"); got != "userid" {
+		t.Errorf("SanitizeFieldName(user id) = %q; want userid (C6: spaces dropped)", got)
+	}
+	if got := SanitizeFieldName("2fa"); got != "_2fa" {
+		t.Errorf("SanitizeFieldName(2fa) = %q; want _2fa (C6: leading digit prefixed)", got)
+	}
+	if got := SanitizeFieldName("select"); got != "select" {
+		t.Errorf("SanitizeFieldName(select) = %q; want select (not a keyword)", got)
 	}
 }
 
@@ -183,10 +195,32 @@ func TestRenderMatchesRuffFormatting(t *testing.T) {
 		t.Fatalf("Render returned error: %v", err)
 	}
 
-	if !strings.Contains(out, "    id: int\n\n\nclass Second(BaseModel):") {
+	if !strings.Contains(out, "    id: int = Field(alias=\"id\")\n\n\nclass Second(BaseModel):") {
 		t.Errorf("expected exactly two blank lines between classes, got:\n%s", out)
 	}
-	if !strings.Contains(out, "class First(BaseModel):\n    \"\"\"dbo.first\"\"\"\n\n    id: int") {
+	if !strings.Contains(out, "class First(BaseModel):\n    \"\"\"dbo.first\"\"\"\n\n    id: int = Field(alias=\"id\")") {
 		t.Errorf("expected a blank line after the class docstring, got:\n%s", out)
+	}
+}
+
+func TestRenderFieldAliasRoundTripsOriginalName(t *testing.T) {
+	// C6: a sanitized PyName must keep the original column name via
+	// Field(alias=...), so the mapping still round-trips.
+	tables := []TableSchema{
+		{
+			Schema: "dbo",
+			Name:   "odd_table",
+			Columns: []ColumnSchema{
+				{Name: "2fa code", PyName: "_2facode", PythonType: "str", IsNullable: false},
+			},
+		},
+	}
+
+	out, err := Render(tables, "local")
+	if err != nil {
+		t.Fatalf("Render returned error: %v", err)
+	}
+	if !strings.Contains(out, `_2facode: str = Field(alias="2fa code")`) {
+		t.Errorf("expected sanitized name + original alias, got:\n%s", out)
 	}
 }
