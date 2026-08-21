@@ -82,7 +82,7 @@ func TestRun_RecordsLedgerEntries(t *testing.T) {
 	}
 	defer db.Close()
 
-	entries, err := ledger.List(db)
+	entries, err := mssqlengine.List(db)
 	if err != nil {
 		t.Fatalf("ledger.List() returned error: %v", err)
 	}

@@ -62,7 +62,6 @@ func TestResolveClassNamesUnresolvableCollisionErrors(t *testing.T) {
 	}
 }
 
-
 func TestSanitizeFieldName(t *testing.T) {
 	if got := SanitizeFieldName("class"); got != "class_" {
 		t.Errorf("SanitizeFieldName(class) = %q; want class_", got)

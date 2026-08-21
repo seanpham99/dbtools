@@ -56,7 +56,7 @@ func TestRun_RefusesWithoutForceWhenObjectMissing(t *testing.T) {
 		t.Fatalf("Run() with force=true returned error: %v", err)
 	}
 
-	entries, err := ledger.List(db)
+	entries, err := mssqlengine.List(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestRun_RevertsWithoutFilePresent(t *testing.T) {
 		t.Fatalf("Run() marking reverted with no file present returned error: %v", err)
 	}
 
-	entries, err := ledger.List(db)
+	entries, err := mssqlengine.List(db)
 	if err != nil {
 		t.Fatal(err)
 	}
