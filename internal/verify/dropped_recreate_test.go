@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/engine"
-	_ "github.com/dbtools/dbtools/internal/engine/sqliteengine"
-	"github.com/dbtools/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/engine"
+	_ "github.com/seanpham99/dbtools/internal/engine/sqliteengine"
+	"github.com/seanpham99/dbtools/internal/ledger"
 )
 
 // TestCollect_DropThenRecreateIsNotPermanentDrift is the review's §3

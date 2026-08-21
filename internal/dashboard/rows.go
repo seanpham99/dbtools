@@ -1,9 +1,9 @@
 package dashboard
 
 import (
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 type CollectFunc func(databaseURL, migrationsDir, targetName string) (*statusinfo.Status, error)

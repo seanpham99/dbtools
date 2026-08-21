@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/localenv"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/localenv"
 )
 
 func fakeLocalConfig(urlEnv string) func(string) (*config.Config, error) {

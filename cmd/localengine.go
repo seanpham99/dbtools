@@ -3,7 +3,7 @@ package cmd
 import (
 	"net/url"
 
-	"github.com/dbtools/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/config"
 )
 
 // localEngineName determines which engine the "local" target uses, for

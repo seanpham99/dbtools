@@ -11,7 +11,7 @@ import (
 
 	_ "github.com/microsoft/go-mssqldb"
 
-	"github.com/dbtools/dbtools/internal/engine/mssqlengine"
+	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 )
 
 func TestRun_ExecutesSeedFile(t *testing.T) {

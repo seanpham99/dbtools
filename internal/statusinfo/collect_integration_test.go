@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/testdb"
+	"github.com/seanpham99/dbtools/internal/testdb"
 )
 
 func TestCollect(t *testing.T) {

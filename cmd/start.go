@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/dbtools/dbtools/internal/container"
-	"github.com/dbtools/dbtools/internal/localenv"
+	"github.com/seanpham99/dbtools/internal/container"
+	"github.com/seanpham99/dbtools/internal/localenv"
 	"github.com/spf13/cobra"
 )
 

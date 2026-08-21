@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/generate"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/generate"
 	"github.com/spf13/cobra"
 )
 

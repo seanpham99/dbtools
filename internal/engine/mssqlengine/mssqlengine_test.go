@@ -3,7 +3,7 @@ package mssqlengine
 import (
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/engine"
 )
 
 // The MSSQL engine registers itself in init(); mssql:// URLs must resolve

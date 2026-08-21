@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/ledger"
 )
 
 func TestSetStatusRejectsVersionAboveBigintRange(t *testing.T) {

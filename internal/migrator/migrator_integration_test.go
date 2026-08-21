@@ -11,7 +11,7 @@ import (
 
 	_ "github.com/microsoft/go-mssqldb"
 
-	"github.com/dbtools/dbtools/internal/testdb"
+	"github.com/seanpham99/dbtools/internal/testdb"
 )
 
 func testDatabaseURL(t *testing.T) string {

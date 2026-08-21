@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/generate"
+	"github.com/seanpham99/dbtools/internal/generate"
 )
 
 // MapPostgresToPython maps a Postgres data_type (as reported by

@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // openTarget resolves a target's connection string (or --url override),

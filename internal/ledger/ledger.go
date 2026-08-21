@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dbtools/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // Status is the tracked state of one migration version in the ledger.

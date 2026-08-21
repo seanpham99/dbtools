@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/statusinfo"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 func TestBuildRows_MixedSuccessAndErrors(t *testing.T) {

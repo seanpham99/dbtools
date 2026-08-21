@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/apply"
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/verify"
+	"github.com/seanpham99/dbtools/internal/apply"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/verify"
 )
 
 // TestSQLiteFullLoop exercises the whole command loop — up, ledger,

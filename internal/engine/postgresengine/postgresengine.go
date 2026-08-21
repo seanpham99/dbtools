@@ -9,8 +9,8 @@ import (
 
 	_ "github.com/lib/pq"
 
-	"github.com/dbtools/dbtools/internal/engine"
-	"github.com/dbtools/dbtools/internal/generate"
+	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/generate"
 )
 
 func init() {

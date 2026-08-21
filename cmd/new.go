@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/dbtools/dbtools/internal/config"
-	"github.com/dbtools/dbtools/internal/scaffold"
+	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/scaffold"
 	"github.com/spf13/cobra"
 )
 

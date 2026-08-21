@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/dbconn"
-	"github.com/dbtools/dbtools/internal/migrator"
-	"github.com/dbtools/dbtools/internal/testdb"
+	"github.com/seanpham99/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/testdb"
 )
 
 func openTestDB(t *testing.T) *sql.DB {

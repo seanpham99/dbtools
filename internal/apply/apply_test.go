@@ -3,7 +3,7 @@ package apply
 import (
 	"testing"
 
-	"github.com/dbtools/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/config"
 )
 
 func TestRun_UnknownTarget(t *testing.T) {

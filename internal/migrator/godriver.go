@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/dbtools/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/dbconn"
 	"github.com/golang-migrate/migrate/v4/database"
 	"github.com/golang-migrate/migrate/v4/database/sqlserver"
 )
