@@ -1,9 +1,10 @@
 package seed
 
 import (
-	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 	"os"
 	"testing"
+
+	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 )
 
 func TestSplitBatches(t *testing.T) {

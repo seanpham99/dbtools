@@ -50,8 +50,12 @@ func TestNextVersion_EmptyOrNonExistentDir(t *testing.T) {
 
 func TestNextVersion_ExistingBehindClock(t *testing.T) {
 	tmp := t.TempDir()
-	os.WriteFile(filepath.Join(tmp, "20260810100000_old_migration.up.sql"), []byte(""), 0o644)
-	os.WriteFile(filepath.Join(tmp, "20260815100000_newer_migration.up.sql"), []byte(""), 0o644)
+	if err := os.WriteFile(filepath.Join(tmp, "20260810100000_old_migration.up.sql"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "20260815100000_newer_migration.up.sql"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	now := time.Date(2026, 8, 19, 17, 3, 57, 0, time.UTC)
 	ver, err := NextVersion(now, tmp)
@@ -67,9 +71,15 @@ func TestNextVersion_ExistingAheadOfClock(t *testing.T) {
 	// Reproduces Issue #1: repo has future-dated migrations 20260820100000, 20260820100001
 	// while current clock is 2026-08-19. Next version must be 20260820100002.
 	tmp := t.TempDir()
-	os.WriteFile(filepath.Join(tmp, "20260820100000_step1.up.sql"), []byte(""), 0o644)
-	os.WriteFile(filepath.Join(tmp, "20260820100001_step2.up.sql"), []byte(""), 0o644)
-	os.WriteFile(filepath.Join(tmp, "non_migration_file.txt"), []byte(""), 0o644)
+	if err := os.WriteFile(filepath.Join(tmp, "20260820100000_step1.up.sql"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "20260820100001_step2.up.sql"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "non_migration_file.txt"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	now := time.Date(2026, 8, 19, 17, 3, 57, 0, time.UTC)
 	ver, err := NextVersion(now, tmp)

@@ -9,7 +9,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
-// openTarget resolves a target's connection string (or --url override),
+// OpenTarget resolves a target's connection string (or --url override),
 // validates its engine, and opens both the database connection and the
 // migrate cursor. It is the single shared preamble for every command that
 // acts on one named target — verify, repair, push, generate, apply.
@@ -18,7 +18,7 @@ import (
 // should pass to apply.Run/statusinfo.Collect etc. so the same resolution
 // logic is never duplicated with drift (the guards in this file are only
 // as trustworthy as the one code path that feeds them).
-func openTarget(cfg *config.Config, targetName, urlOverride string) (eng engine.Engine, db *sql.DB, m *migrator.Migrator, url string, err error) {
+func OpenTarget(cfg *config.Config, targetName, urlOverride string) (eng engine.Engine, db *sql.DB, m *migrator.Migrator, url string, err error) {
 	url, err = cfg.ResolveURLOrFlag(targetName, urlOverride)
 	if err != nil {
 		return nil, nil, nil, "", err
