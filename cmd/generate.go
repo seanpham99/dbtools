@@ -48,7 +48,14 @@ func init() {
 }
 
 func runGenerate(targetName string) error {
-	if targetName == "prod" && !generateYes {
+	// generate is read-only, but generating from a prod target without
+	// --yes is still a surprising thing to do (M5: the old guard only
+	// matched the literal name "prod").
+	if cfg, err := config.Load("dbtools.toml"); err == nil {
+		if t, ok := cfg.Targets[targetName]; ok && t.Protected && !generateYes {
+			return fmt.Errorf("refusing to generate from protected target %q without --yes", targetName)
+		}
+	} else if targetName == "prod" && !generateYes {
 		return fmt.Errorf("refusing to generate from %q without --yes", targetName)
 	}
 

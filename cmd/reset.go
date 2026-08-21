@@ -23,15 +23,21 @@ var seedRun = seed.Run
 
 var resetLocalDatabase = recreateLocalDatabase
 
+var resetYes bool
+
 var resetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Drop, recreate, replay migrations, and run seed.sql against the local database",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if !resetYes {
+			return fmt.Errorf("refusing to drop and recreate the local database without --yes")
+		}
 		return runReset()
 	},
 }
 
 func init() {
+	resetCmd.Flags().BoolVar(&resetYes, "yes", false, "confirm the destructive drop/recreate of the local database")
 	rootCmd.AddCommand(resetCmd)
 }
 
