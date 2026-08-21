@@ -35,11 +35,24 @@ func runNew(now time.Time, name string) (string, error) {
 		return "", fmt.Errorf("loading dbtools.toml (run 'dbtools init' first?): %w", err)
 	}
 
-	filename := scaffold.UpFilename(now, name)
+	filename, err := scaffold.NextUpFilename(now, cfg.MigrationsDir, name)
+	if err != nil {
+		return "", fmt.Errorf("determining next migration filename: %w", err)
+	}
 	path := filepath.Join(cfg.MigrationsDir, filename)
 
-	if err := os.WriteFile(path, []byte("-- "+name+"\n"), 0o644); err != nil {
+	if err := os.MkdirAll(cfg.MigrationsDir, 0o755); err != nil {
+		return "", fmt.Errorf("creating migrations dir: %w", err)
+	}
+
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
 		return "", fmt.Errorf("writing migration file: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString("-- " + name + "\n"); err != nil {
+		return "", fmt.Errorf("writing migration content: %w", err)
 	}
 	return path, nil
 }
