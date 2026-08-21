@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/seanpham99/dbtools/internal/ddlcheck"
@@ -37,22 +36,25 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 		return nil, err
 	}
 
+	dir, err := migrator.ReadDir(migrationsDir)
+	if err != nil {
+		return nil, err
+	}
+
 	// Objects any applied migration explicitly DROPs are expected-absent.
 	// Track drops per-object but allow a later migration to re-create the
 	// object: a version's CREATE is only excused by a drop that came
-	// BEFORE it and was not itself superseded by a re-create. (A global
-	// unordered union would mark a re-created object as permanently
-	// dropped and hide genuine later disappearance.)
+	// BEFORE it and was not itself superseded by a re-create.
 	droppedBefore := make(map[ddlcheck.ObjectRef]uint64) // object -> version that dropped it
 	for _, e := range entries {
 		if e.Status != ledger.StatusApplied {
 			continue
 		}
-		filename, err := migrator.FindMigrationFile(migrationsDir, e.Version)
+		file, err := dir.Find(e.Version)
 		if err != nil {
 			continue // surfaces again as a DRIFT entry in the main loop below
 		}
-		content, err := os.ReadFile(filepath.Join(migrationsDir, filename))
+		content, err := os.ReadFile(file.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -68,7 +70,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 
 	report := &Report{Target: targetName}
 	for _, e := range entries {
-		filename, err := migrator.FindMigrationFile(migrationsDir, e.Version)
+		file, err := dir.Find(e.Version)
 		if err != nil {
 			if e.Status == ledger.StatusReverted {
 				// The file was renamed/deleted (e.g. split or squashed by a
@@ -82,7 +84,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 			continue
 		}
 
-		content, err := os.ReadFile(filepath.Join(migrationsDir, filename))
+		content, err := os.ReadFile(file.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -96,7 +98,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 		// DB no longer matches what the file says. Backfilled rows have no
 		// hash (recorded before hashing existed) and are skipped.
 		if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" {
-			sum, err := migrator.ContentHash(migrationsDir, e.Version)
+			sum, err := dir.ContentHash(e.Version)
 			if err != nil {
 				return nil, err
 			}
@@ -123,7 +125,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 			}
 		}
 
-		report.Entries = append(report.Entries, Entry{Version: e.Version, File: filename, Status: status, Detail: strings.Join(details, "; ")})
+		report.Entries = append(report.Entries, Entry{Version: e.Version, File: file.Filename, Status: status, Detail: strings.Join(details, "; ")})
 	}
 	return report, nil
 }

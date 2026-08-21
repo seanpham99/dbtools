@@ -15,6 +15,9 @@ type Row struct {
 }
 
 func BuildRows(cfg *config.Config, collect CollectFunc) []Row {
+	if collect == nil {
+		collect = statusinfo.Collect
+	}
 	rows := make([]Row, 0, len(cfg.Targets))
 	for _, name := range cfg.TargetNames() {
 		url, err := cfg.ResolveURL(name)
@@ -23,7 +26,6 @@ func BuildRows(cfg *config.Config, collect CollectFunc) []Row {
 			continue
 		}
 
-		// Reject an engine/URL-scheme mismatch before collect dials anything.
 		if _, err := engine.ForTarget(cfg.EngineName(name), url); err != nil {
 			rows = append(rows, Row{Target: name, Err: err})
 			continue

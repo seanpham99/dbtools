@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/seanpham99/dbtools/internal/dbconn"
 	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/testdb"
@@ -23,9 +22,9 @@ func TestCollect_DetectsStampedButNeverRunTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("mssqlengine.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
@@ -35,12 +34,12 @@ func TestCollect_DetectsStampedButNeverRunTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := ledger.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
 	// Reproduces the 2026-07-10 incident: the ledger claims this version is
 	// applied, but its CREATE TABLE was never actually run.
-	if err := ledger.SetStatus(db, 20260101000000, ledger.StatusApplied, "simulated stamp-without-running"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "simulated stamp-without-running"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -77,9 +76,9 @@ func TestCollect_RevertedButStillExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("mssqlengine.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
@@ -93,10 +92,10 @@ func TestCollect_RevertedButStillExists(t *testing.T) {
 	}
 	defer db.Exec("DROP TABLE dbtools_test_verify_reverted")
 
-	if err := ledger.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := ledger.SetStatus(db, 20260101000000, ledger.StatusReverted, "test"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusReverted, "test"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -118,9 +117,9 @@ func TestCollect_RevertedWithFileGoneIsNotDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("mssqlengine.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
@@ -130,10 +129,10 @@ func TestCollect_RevertedWithFileGoneIsNotDrift(t *testing.T) {
 	// drift: reverted already means "these objects shouldn't exist".
 	dir := t.TempDir()
 
-	if err := ledger.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := ledger.SetStatus(db, 20260101000000, ledger.StatusReverted, "superseded by a rename, file no longer exists"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusReverted, "superseded by a rename, file no longer exists"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -155,9 +154,9 @@ func TestCollect_AppliedWithFileGoneIsStillDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("mssqlengine.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
@@ -166,10 +165,10 @@ func TestCollect_AppliedWithFileGoneIsStillDrift(t *testing.T) {
 	// must stay DRIFT even after the reverted-with-missing-file exemption.
 	dir := t.TempDir()
 
-	if err := ledger.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := ledger.SetStatus(db, 20260101000000, ledger.StatusApplied, "file missing, still claimed applied"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "file missing, still claimed applied"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -191,15 +190,12 @@ func TestCollect_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("mssqlengine.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
-	// Reproduces the real 2026-07-10 smoke-test scenario at small scale: one
-	// migration creates a table, a later one legitimately drops it, both are
-	// marked applied — the creating version must report OK, not DRIFT.
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "20260101000000_create_widgets.up.sql"),
 		[]byte("CREATE TABLE dbtools_test_verify_dropped (id INT PRIMARY KEY);"), 0o644); err != nil {
@@ -210,13 +206,13 @@ func TestCollect_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := ledger.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := ledger.SetStatus(db, 20260101000000, ledger.StatusApplied, "creates the table"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "creates the table"); err != nil {
 		t.Fatal(err)
 	}
-	if err := ledger.SetStatus(db, 20260102000000, ledger.StatusApplied, "drops the table"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260102000000, ledger.StatusApplied, "drops the table"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -243,17 +239,12 @@ func TestCollect_ReportsAllMissingObjectsInOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("mssqlengine.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
-	// A single migration claiming to create two objects, neither of which
-	// actually exists, must report both in Detail — not just the last one
-	// checked (a real prod incident hit exactly this: a migration created a
-	// table and a procedure, only the table was missing, but the ledger
-	// still needs both surfaced when more than one object drifts at once).
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "20260101000000_create_two_things.up.sql"),
 		[]byte("CREATE TABLE dbtools_test_verify_multi_table (id INT PRIMARY KEY);\nGO\nCREATE PROCEDURE dbtools_test_verify_multi_proc AS BEGIN SELECT 1; END;"),
@@ -261,10 +252,10 @@ func TestCollect_ReportsAllMissingObjectsInOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := ledger.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := ledger.SetStatus(db, 20260101000000, ledger.StatusApplied, "neither object was actually created"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "neither object was actually created"); err != nil {
 		t.Fatal(err)
 	}
 

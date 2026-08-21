@@ -43,21 +43,21 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	// Apply one migration at a time, recording the ledger row immediately
-	// after each success. If migration N fails, migrations 1..N-1 are
-	// applied in the database AND recorded — the next run sees them as
-	// applied and re-attempts only N. (An all-or-nothing m.Up() would
-	// leave the database advanced and the ledger empty, which is exactly
-	// the lie this ledger exists to prevent.)
-	for {
-		versionBefore, dirty, hasVersionBefore, err := m.Version()
-		if err != nil {
-			return nil, fmt.Errorf("target %q: %w", targetName, err)
-		}
-		if dirty {
-			return nil, fmt.Errorf("target %q: migration cursor is dirty at version %d (a previous apply failed partway); run `dbtools repair %s` to resolve it", targetName, versionBefore, targetName)
-		}
+	dir, err := migrator.ReadDir(cfg.MigrationsDir)
+	if err != nil {
+		return nil, fmt.Errorf("target %q: %w", targetName, err)
+	}
 
+	versionBefore, dirty, hasVersionBefore, err := m.Version()
+	if err != nil {
+		return nil, fmt.Errorf("target %q: %w", targetName, err)
+	}
+	if dirty {
+		return nil, fmt.Errorf("target %q: migration cursor is dirty at version %d (a previous apply failed partway); run `dbtools repair %s` to resolve it", targetName, versionBefore, targetName)
+	}
+
+	pending := dir.PendingAfter(versionBefore, hasVersionBefore)
+	for _, expected := range pending {
 		applied, err := m.Step()
 		if err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
@@ -70,12 +70,11 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		if err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}
-		// Step applies exactly the next pending version; guard against a
-		// driver whose cursor jumps in unexpected ways.
-		if versionAfter != versionBefore+1 && !(!hasVersionBefore && versionAfter > versionBefore) {
-			return nil, fmt.Errorf("target %q: migration cursor advanced unexpectedly (was %d, now %d)", targetName, versionBefore, versionAfter)
+		if versionAfter != expected.Version {
+			return nil, fmt.Errorf("target %q: migration cursor advanced unexpectedly (expected version %d, got %d)", targetName, expected.Version, versionAfter)
 		}
-		hash, err := migrator.ContentHash(cfg.MigrationsDir, versionAfter)
+
+		hash, err := dir.ContentHash(versionAfter)
 		if err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}

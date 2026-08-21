@@ -1,4 +1,4 @@
-package generate
+package mssqlengine
 
 import "testing"
 
@@ -86,9 +86,9 @@ func TestExtractOpenJSONContractCrossReferencesTryConvert(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"customer_key":  "int",      // TRY_CONVERT(BIGINT, customer_key) found -> cross-referenced
-		"status":        "str",      // no TRY_CONVERT for status -> falls back to declared NVARCHAR
-		"order_date":    "datetime", // TRY_CONVERT(DATE, order_date) found
+		"customer_key":  "int",
+		"status":        "str",
+		"order_date":    "datetime",
 		"total_amount":  "Decimal",
 		"discount_rate": "Decimal",
 		"batch_id":      "int",
@@ -104,8 +104,6 @@ func TestExtractOpenJSONContractCrossReferencesTryConvert(t *testing.T) {
 }
 
 func TestExtractOpenJSONContractKeepsLegacyKeyAliases(t *testing.T) {
-	// Proc accepts two JSON key spellings for the same concept (loaded_at/loadedAtUtc, source_file_name/sourceFileName)
-	// — both must survive as distinct fields since a caller could send either.
 	params := ExtractOpenJSONContract(metricsStagingProcBody)
 
 	names := make(map[string]bool, len(params))
@@ -127,10 +125,6 @@ func TestExtractOpenJSONContractKeepsLegacyKeyAliases(t *testing.T) {
 }
 
 func TestExtractOpenJSONContractKnownGapCoalescedTryConvert(t *testing.T) {
-	// Known limitation, documented rather than silently wrong: TRY_CONVERT(type,
-	// COALESCE(a, b)) doesn't match the simple TRY_CONVERT(type, column) regex,
-	// so loaded_at falls back to its WITH-declared NVARCHAR -> str, even though
-	// the proc actually converts it to DATETIME2 after the COALESCE resolves.
 	params := ExtractOpenJSONContract(metricsStagingProcBody)
 
 	for _, p := range params {

@@ -8,10 +8,7 @@ import (
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/config"
-	"github.com/seanpham99/dbtools/internal/dbconn"
-	// apply.Run resolves engines from the registry; register MSSQL for
-	// this test binary the same way cmd/root.go does for the CLI.
-	_ "github.com/seanpham99/dbtools/internal/engine/mssqlengine"
+	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/testdb"
 )
@@ -79,7 +76,7 @@ func TestRun_RecordsLedgerEntries(t *testing.T) {
 		t.Fatalf("Run() returned error: %v", err)
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := mssqlengine.Open(url)
 	if err != nil {
 		t.Fatalf("dbconn.Open() returned error: %v", err)
 	}

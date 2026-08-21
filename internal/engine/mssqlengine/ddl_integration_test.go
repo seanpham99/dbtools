@@ -1,12 +1,12 @@
 //go:build integration
 
-package ddlcheck
+package mssqlengine
 
 import (
 	"os"
 	"testing"
 
-	"github.com/seanpham99/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
 )
 
 func TestExists(t *testing.T) {
@@ -15,9 +15,9 @@ func TestExists(t *testing.T) {
 		t.Skip("DBTOOLS_TEST_MSSQL_URL not set, skipping integration test")
 	}
 
-	db, err := dbconn.Open(url)
+	db, err := Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("Open() returned error: %v", err)
 	}
 	defer db.Close()
 
@@ -29,7 +29,7 @@ func TestExists(t *testing.T) {
 	}
 	defer db.Exec("DROP TABLE dbtools_test_ddlcheck_widgets")
 
-	exists, err := Exists(db, ObjectRef{Schema: "dbo", Name: "dbtools_test_ddlcheck_widgets", Kind: "table"})
+	exists, err := Exists(db, ddlcheck.ObjectRef{Schema: "dbo", Name: "dbtools_test_ddlcheck_widgets", Kind: "table"})
 	if err != nil {
 		t.Fatalf("Exists() returned error: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestExists(t *testing.T) {
 		t.Error("Exists() = false, want true for a table that was just created")
 	}
 
-	exists, err = Exists(db, ObjectRef{Schema: "dbo", Name: "dbtools_test_ddlcheck_missing_table", Kind: "table"})
+	exists, err = Exists(db, ddlcheck.ObjectRef{Schema: "dbo", Name: "dbtools_test_ddlcheck_missing_table", Kind: "table"})
 	if err != nil {
 		t.Fatalf("Exists() returned error: %v", err)
 	}
@@ -51,13 +51,13 @@ func TestExists_UnknownKind(t *testing.T) {
 	if url == "" {
 		t.Skip("DBTOOLS_TEST_MSSQL_URL not set, skipping integration test")
 	}
-	db, err := dbconn.Open(url)
+	db, err := Open(url)
 	if err != nil {
-		t.Fatalf("dbconn.Open() returned error: %v", err)
+		t.Fatalf("Open() returned error: %v", err)
 	}
 	defer db.Close()
 
-	if _, err := Exists(db, ObjectRef{Schema: "dbo", Name: "x", Kind: "index"}); err == nil {
+	if _, err := Exists(db, ddlcheck.ObjectRef{Schema: "dbo", Name: "x", Kind: "index"}); err == nil {
 		t.Fatal("expected error for unknown Kind, got nil")
 	}
 }

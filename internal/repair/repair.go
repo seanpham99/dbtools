@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
@@ -33,6 +32,11 @@ func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir stri
 		return nil, err
 	}
 
+	dir, err := migrator.ReadDir(migrationsDir)
+	if err != nil {
+		return nil, err
+	}
+
 	// Validate every pair before writing anything, so a bad pair never
 	// leaves the ledger partially repaired.
 	for _, pair := range pairs {
@@ -42,11 +46,11 @@ func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir stri
 		if pair.Status != ledger.StatusApplied {
 			continue
 		}
-		filename, err := migrator.FindMigrationFile(migrationsDir, pair.Version)
+		file, err := dir.Find(pair.Version)
 		if err != nil {
 			return nil, err
 		}
-		raw, err := os.ReadFile(filepath.Join(migrationsDir, filename))
+		raw, err := os.ReadFile(file.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -56,7 +60,7 @@ func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir stri
 				return nil, err
 			}
 			if !exists && !force {
-				return nil, fmt.Errorf("version %d (%s): %s.%s does not exist — pass --force to mark it applied anyway", pair.Version, filename, obj.Schema, obj.Name)
+				return nil, fmt.Errorf("version %d (%s): %s.%s does not exist — pass --force to mark it applied anyway", pair.Version, file.Filename, obj.Schema, obj.Name)
 			}
 		}
 	}

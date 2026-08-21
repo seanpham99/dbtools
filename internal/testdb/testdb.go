@@ -1,7 +1,7 @@
 package testdb
 
 import (
-	"github.com/seanpham99/dbtools/internal/dbconn"
+	"github.com/seanpham99/dbtools/internal/engine/mssqlengine"
 )
 
 // ResetTracking drops golang-migrate's version-tracking table and the
@@ -10,7 +10,7 @@ import (
 // database — both tables live in the target database, not scoped per
 // migrations-directory.
 func ResetTracking(rawURL string) error {
-	db, err := dbconn.Open(rawURL)
+	db, err := mssqlengine.Open(rawURL)
 	if err != nil {
 		return err
 	}
