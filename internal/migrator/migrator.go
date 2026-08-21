@@ -3,10 +3,12 @@ package migrator
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
 // Migrator wraps a golang-migrate instance for one target's database URL
@@ -17,7 +19,34 @@ type Migrator struct {
 
 // Open connects to databaseURL and points at the plain-SQL migration files
 // in migrationsDir.
+//
+// Postgres URLs are routed through a driver wrapper that resets
+// session-level state per migration (see pgResetDriver) — a pg_dump
+// baseline's set_config('search_path',”,false) would otherwise poison
+// every later migration in the same run. MSSQL URLs route through the
+// GO-splitting wrapper via their mssql:// scheme. Everything else uses
+// golang-migrate's scheme lookup.
 func Open(databaseURL, migrationsDir string) (*Migrator, error) {
+	scheme := ""
+	if u, err := url.Parse(databaseURL); err == nil {
+		scheme = u.Scheme
+	}
+	if scheme == "postgres" || scheme == "postgresql" {
+		drv, err := openPostgresResetDriver(databaseURL)
+		if err != nil {
+			return nil, err
+		}
+		src, err := iofs.New(os.DirFS(migrationsDir), ".")
+		if err != nil {
+			return nil, fmt.Errorf("opening migrations source: %w", err)
+		}
+		m, err := migrate.NewWithInstance("iofs", src, "pgreset", drv)
+		if err != nil {
+			return nil, fmt.Errorf("opening migrator: %w", err)
+		}
+		return &Migrator{m: m}, nil
+	}
+
 	m, err := migrate.New("file://"+migrationsDir, databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("opening migrator: %w", err)
