@@ -1,6 +1,8 @@
 package scaffold
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -20,5 +22,70 @@ func TestUpFilename_AlreadySlug(t *testing.T) {
 	want := "20260102030405_add_widget_table.up.sql"
 	if got != want {
 		t.Errorf("UpFilename() = %q, want %q", got, want)
+	}
+}
+
+func TestNextVersion_EmptyOrNonExistentDir(t *testing.T) {
+	now := time.Date(2026, 8, 19, 17, 3, 57, 0, time.UTC)
+
+	// Non-existent directory returns clock version
+	ver, err := NextVersion(now, "/non/existent/dir/path")
+	if err != nil {
+		t.Fatalf("NextVersion() error: %v", err)
+	}
+	if ver != 20260819170357 {
+		t.Errorf("NextVersion() = %d, want %d", ver, 20260819170357)
+	}
+
+	// Empty directory returns clock version
+	tmp := t.TempDir()
+	ver, err = NextVersion(now, tmp)
+	if err != nil {
+		t.Fatalf("NextVersion() error: %v", err)
+	}
+	if ver != 20260819170357 {
+		t.Errorf("NextVersion() = %d, want %d", ver, 20260819170357)
+	}
+}
+
+func TestNextVersion_ExistingBehindClock(t *testing.T) {
+	tmp := t.TempDir()
+	os.WriteFile(filepath.Join(tmp, "20260810100000_old_migration.up.sql"), []byte(""), 0o644)
+	os.WriteFile(filepath.Join(tmp, "20260815100000_newer_migration.up.sql"), []byte(""), 0o644)
+
+	now := time.Date(2026, 8, 19, 17, 3, 57, 0, time.UTC)
+	ver, err := NextVersion(now, tmp)
+	if err != nil {
+		t.Fatalf("NextVersion() error: %v", err)
+	}
+	if ver != 20260819170357 {
+		t.Errorf("NextVersion() = %d, want clock %d", ver, 20260819170357)
+	}
+}
+
+func TestNextVersion_ExistingAheadOfClock(t *testing.T) {
+	// Reproduces Issue #1: repo has future-dated migrations 20260820100000, 20260820100001
+	// while current clock is 2026-08-19. Next version must be 20260820100002.
+	tmp := t.TempDir()
+	os.WriteFile(filepath.Join(tmp, "20260820100000_step1.up.sql"), []byte(""), 0o644)
+	os.WriteFile(filepath.Join(tmp, "20260820100001_step2.up.sql"), []byte(""), 0o644)
+	os.WriteFile(filepath.Join(tmp, "non_migration_file.txt"), []byte(""), 0o644)
+
+	now := time.Date(2026, 8, 19, 17, 3, 57, 0, time.UTC)
+	ver, err := NextVersion(now, tmp)
+	if err != nil {
+		t.Fatalf("NextVersion() error: %v", err)
+	}
+	if ver != 20260820100002 {
+		t.Errorf("NextVersion() = %d, want max+1 (20260820100002)", ver)
+	}
+
+	fn, err := NextUpFilename(now, tmp, "null unbacked source file names")
+	if err != nil {
+		t.Fatalf("NextUpFilename() error: %v", err)
+	}
+	wantFn := "20260820100002_null_unbacked_source_file_names.up.sql"
+	if fn != wantFn {
+		t.Errorf("NextUpFilename() = %q, want %q", fn, wantFn)
 	}
 }
