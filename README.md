@@ -214,6 +214,8 @@ go test -tags=integration ./...
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, test requirements, and development workflow.
 
+See [docs/roadmap.md](docs/roadmap.md) for the project's direction and planned features.
+
 ## License
 
 `dbtools` is licensed under the [MIT License](LICENSE).
