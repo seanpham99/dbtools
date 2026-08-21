@@ -3,8 +3,6 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/dbtools/dbtools/internal/apply"
-	"github.com/dbtools/dbtools/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -13,13 +11,21 @@ var upURL string
 
 var upCmd = &cobra.Command{
 	Use:   "up",
-	Short: "Apply pending migrations to a target (defaults to 'local')",
+	Short: "Apply pending migrations to the local target",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load("dbtools.toml")
+		// up is the fast local dev loop. It deliberately refuses any
+		// non-local target: reaching a remote database requires the
+		// explicit `push <target> --yes` path with its preview + guard
+		// (the two commands share one apply.Run underneath, so there is
+		// no separate code path to drift).
+		if upTarget != "local" {
+			return fmt.Errorf("refusing to run `up` against %q — use `push %s --yes` for a remote target (it previews pending migrations first)", upTarget, upTarget)
+		}
+		cfg, err := loadConfig("dbtools.toml")
 		if err != nil {
 			return fmt.Errorf("loading dbtools.toml: %w", err)
 		}
-		status, err := apply.Run(cfg, upTarget, upURL)
+		status, err := applyRun(cfg, upTarget, upURL)
 		if err != nil {
 			return err
 		}

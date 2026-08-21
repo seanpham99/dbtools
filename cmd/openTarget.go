@@ -1,0 +1,55 @@
+package cmd
+
+import (
+	"database/sql"
+	"fmt"
+
+	"github.com/dbtools/dbtools/internal/config"
+	"github.com/dbtools/dbtools/internal/engine"
+	"github.com/dbtools/dbtools/internal/migrator"
+)
+
+// openTarget resolves a target's connection string (or --url override),
+// validates its engine, and opens both the database connection and the
+// migrate cursor. It is the single shared preamble for every command that
+// acts on one named target — verify, repair, push, generate, apply.
+//
+// The caller owns closing db and m. The returned url is what the caller
+// should pass to apply.Run/statusinfo.Collect etc. so the same resolution
+// logic is never duplicated with drift (the guards in this file are only
+// as trustworthy as the one code path that feeds them).
+func openTarget(cfg *config.Config, targetName, urlOverride string) (eng engine.Engine, db *sql.DB, m *migrator.Migrator, url string, err error) {
+	url, err = cfg.ResolveURLOrFlag(targetName, urlOverride)
+	if err != nil {
+		return nil, nil, nil, "", err
+	}
+	eng, err = engine.ForTarget(cfg.EngineName(targetName), url)
+	if err != nil {
+		return nil, nil, nil, "", err
+	}
+	db, err = eng.Open(url)
+	if err != nil {
+		return nil, nil, nil, "", err
+	}
+	m, err = migrator.Open(url, cfg.MigrationsDir)
+	if err != nil {
+		db.Close()
+		return nil, nil, nil, "", err
+	}
+	return eng, db, m, url, nil
+}
+
+// requireUnprotected refuses commands that mutate a protected target
+// (status/verify are read-only and allowed). protected is declared in
+// dbtools.toml as targets.<name>.protected = true — the config author's
+// explicit "this environment is not for routine writes" marker.
+func requireUnprotected(cfg *config.Config, targetName string) error {
+	t, ok := cfg.Targets[targetName]
+	if !ok {
+		return fmt.Errorf("unknown target %q", targetName)
+	}
+	if t.Protected {
+		return fmt.Errorf("target %q is protected (declared protected in dbtools.toml) — refusing to modify it; remove the protected flag to write", targetName)
+	}
+	return nil
+}
