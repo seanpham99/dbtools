@@ -80,7 +80,7 @@ func TestRenderTSInterfaces(t *testing.T) {
 	for _, want := range []string{
 		"export interface Users {",
 		"  id: number;",
-		"  email?: string;",
+		"  email?: string | null;",
 		"  class_: string;",
 		"  created_at: string;",
 		"}", // closing brace for the interface (non-greedy; we just check presence)
@@ -115,7 +115,7 @@ func TestRenderTSWithZod(t *testing.T) {
 	for _, want := range []string{
 		"export interface Orders {",
 		"  id: bigint;",
-		"  note?: string;",
+		"  note?: string | null;",
 		"import { z } from \"zod\";",
 		"export const OrdersSchema = z.object({",
 		"  id: z.bigint(),",

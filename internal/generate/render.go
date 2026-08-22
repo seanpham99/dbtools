@@ -244,7 +244,7 @@ import { z } from "zod";
 {{- if $i }}
 {{ end }}export interface {{ $t.ClassName }} {
 {{- range $t.Columns }}
-  {{ TSName .Name }}{{ if .IsNullable }}?{{ end }}: {{ MapSQLToTS .DataType }};
+  {{ TSName .Name }}{{ if .IsNullable }}?: {{ MapSQLToTS .DataType }} | null{{ else }}: {{ MapSQLToTS .DataType }}{{ end }};
 {{- end }}
 }
 {{- if $.WithZod }}
