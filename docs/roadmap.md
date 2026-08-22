@@ -31,7 +31,9 @@ same core.
 | v0.2 ✅ | **TypeScript generation** | `generate --lang ts [--zod]` — Supabase-style interfaces + zod. Shipped in v0.2.0. |
 | v0.2 ✅ | **npx installer** | `dbtools-cli` npm wrapper — thin downloader of the GoReleaser binary (5 platforms). Published via OIDC trusted publishing (no token). Shipped 0.2.1. |
 | v0.3 | **`doctor`** | Read-only health/security check: connectivity, version sync, ledger integrity, drift summary, basic security flags. One-call parseable health. |
+| v0.3 | **Real-data integration suite** | Committed classicmodels-derived fixture corpus (per-dialect: sqlite/postgres/mssql), consolidated runner, edge-case matrix, golden typegen. See test-asset plan. |
 | v0.3/4 | **Clone prod→dev** | Schema + data clone with config-driven masking. Masking on by default; raw copy requires explicit opt-out. |
+| v0.3/4 | **MySQL engine** | Add MySQL as a supported migration engine (golang-migrate has a mysql driver). classicmodels fixtures are MySQL-native — natural fit. Scheduled after v0.3 core. |
 | v0.4 | **Backup** | Table-stakes backup/restore. |
 | Mongo | **C → B → A** | Starts only after SQL is stable (gate = v0.2 shipped — met). See design below. |
 | launch | — | Public launch (announcements, directories) happens only after the v0.2/v0.3 features above. |
