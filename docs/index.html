@@ -591,11 +591,11 @@ Target: local
             <tr>
               <td><code>plan</code></td>
               <td><code>dbtools plan [--target X] [--json]</code></td>
-              <td>Read-only preview of pending migrations + ledger drift. Exit 0 = safe to apply.</td>
+              <td>Read-only preview of pending migrations + ledger drift. Exit 0 = safe to apply, 2 = pending/drift.</td>
             </tr>
             <tr>
               <td><code>verify</code></td>
-              <td><code>dbtools verify &lt;target&gt;</code></td>
+              <td><code>dbtools verify &lt;target&gt; [--json]</code></td>
               <td>Read-only audit: checks file SHA hashes and database object existence. Exit 0 clean / 1 error / 2 drift.</td>
             </tr>
             <tr>

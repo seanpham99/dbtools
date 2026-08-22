@@ -14,8 +14,8 @@
 - **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
 - **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
 - **Rollback & Down Migrations**: `dbtools down` applies `.down.sql` files in reverse; `dbtools rollback` is a ledger-only soft-revert — the safe prod verb. Destructive ops on protected targets require `--preview --yes`.
-- **Agent-First Ergonomics**: Terraform-style exit-code contract (`0` clean / `1` error / `2` drift), `--dry-run` previews, universal `--json`, and `DBTOOLS_NO_PROMPT=1` fail-closed mode for CI and AI agents. See [docs/exit-codes.md](docs/exit-codes.md).
-- **Environment & Target Protection**: Targets are defined in `dbtools.toml` by environment variable names (`url_env`), ensuring secrets never leak into version control. Protected targets reject destructive local operations (`up`, `reset`).
+- **Agent-First Ergonomics**: Terraform-style exit-code contract (`0` clean / `1` error / `2` pending changes or drift), `--dry-run` previews, universal `--json`, and `DBTOOLS_NO_PROMPT=1` fail-closed mode for CI and AI agents. See [docs/exit-codes.md](docs/exit-codes.md).
+- **Environment & Target Protection**: Targets are defined in `dbtools.toml` by environment variable names (`url_env`), ensuring secrets never leak into version control. Protected targets reject destructive operations (`up`, `reset`, and `down` without `--preview --yes`).
 - **Python & TypeScript Type Generation**: `dbtools generate` introspects live database schemas and emits clean, versioned `pydantic.BaseModel` classes or Supabase-style TypeScript interfaces (+ optional zod schemas) for services, ETL jobs, and data pipelines.
 - **Interactive TUI Dashboard**: Built-in terminal dashboard powered by Bubble Tea for real-time migration observability.
 
@@ -115,7 +115,7 @@ dbtools status
 | `push` | `dbtools push <target> [--yes]` | Applies pending migrations to named remote target with explicit confirmation. |
 | `status` | `dbtools status [--json]` | Displays applied/pending migration status across all configured targets. |
 | `plan` | `dbtools plan [--target X] [--json]` | Read-only preview of pending migrations + ledger drift, without applying anything. Agent/CI-friendly: exit 0 = safe to apply. |
-| `verify` | `dbtools verify <target> [--json]` | Non-destructive verification of ledger history and live database objects. Exit 0 clean / 1 error / 2 drift. |
+| `verify` | `dbtools verify <target> [--json]` | Non-destructive verification of ledger history and live database objects. Exit 0 clean / 1 error / 2 drift (content-hash mismatch or missing object). |
 | `down` | `dbtools down <target> [N] [--preview] [--yes]` | Applies `.down.sql` migrations in reverse order, recorded in the ledger. Protected targets require `--preview --yes`. |
 | `rollback` | `dbtools rollback <target> [--yes]` | Ledger-only soft-revert (marks `reverted`, never data-destroying). The safe prod verb. |
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
@@ -257,6 +257,8 @@ if dbtools plan --target prod --json; then
   dbtools push prod --yes --dry-run
 fi
 ```
+
+> Note: exit `2` from `plan` means pending migrations or drift — inspect `--json` output to distinguish before deciding to apply.
 
 ---
 

@@ -45,7 +45,7 @@ dbtools reset
 # Check status of applied/pending migrations
 dbtools status [--json]
 
-# Preview pending migrations + drift (agent/CI-safe: exit 0 = applyable)
+# Preview pending migrations + drift (agent/CI-safe: exit 0 = applyable, 2 = pending/drift)
 dbtools plan [--target X] [--json]
 
 # Verify migration ledger objects exist in target DB (drift check)
