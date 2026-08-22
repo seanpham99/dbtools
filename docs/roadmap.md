@@ -26,13 +26,14 @@ same core.
 | Phase | Feature | Notes |
 |-------|---------|-------|
 | v0.1.2 ✅ | `plan` preview | Read-only preview of pending migrations + ledger drift. Agent/CI-friendly: exit 0 = safe to apply. |
-| v0.2 | **Rollback & down migrations** | Biggest functional gap: down-migration support + safe ledger-level rollback, with production gates. See design below. |
-| v0.2 | **Agent ergonomics** | Universal `--json`, `--dry-run`, non-interactive mode, dirty-ledger refusal. See design below. |
-| v0.2 | **npx installer** | `@dbtools/cli` — thin npm wrapper that downloads the GoReleaser binary (5 platforms) + execs it. No Go→JS rewrite. Version-synced via release pipeline. |
+| v0.2 ✅ | **Rollback & down migrations** | `down` (reverse `.down.sql` apply) + ledger-only `rollback`, with production gates. Shipped in v0.2.0. |
+| v0.2 ✅ | **Agent ergonomics** | Universal `--json`, `--dry-run`, non-interactive mode, dirty-ledger refusal, exit-code contract. Shipped in v0.2.0. |
+| v0.2 ✅ | **TypeScript generation** | `generate --lang ts [--zod]` — Supabase-style interfaces + zod. Shipped in v0.2.0. |
+| v0.2 ✅ | **npx installer** | `dbtools-cli` npm wrapper — thin downloader of the GoReleaser binary (5 platforms). Published via OIDC trusted publishing (no token). Shipped 0.2.1. |
 | v0.3 | **`doctor`** | Read-only health/security check: connectivity, version sync, ledger integrity, drift summary, basic security flags. One-call parseable health. |
 | v0.3/4 | **Clone prod→dev** | Schema + data clone with config-driven masking. Masking on by default; raw copy requires explicit opt-out. |
 | v0.4 | **Backup** | Table-stakes backup/restore. |
-| Mongo | **C → B → A** | Starts only after SQL is stable (gate = v0.2 + npx shipped). See design below. |
+| Mongo | **C → B → A** | Starts only after SQL is stable (gate = v0.2 shipped — met). See design below. |
 | launch | — | Public launch (announcements, directories) happens only after the v0.2/v0.3 features above. |
 
 ## Rollback & down migrations
@@ -80,17 +81,18 @@ not a silent change); today the permissive license maximizes adoption.
 
 ## npx installer
 
-- Package: `@dbtools/cli` (scoped; the bare `dbtools` npm name is owned by an
-  unrelated project).
-- Shape: thin npm wrapper — `npx @dbtools/cli` downloads the GoReleaser binary for
+- Package: `dbtools-cli` (unscoped; the bare `dbtools` npm name is owned by an
+  unrelated project, and scoped names need an npm org).
+- Shape: thin npm wrapper — `npx dbtools-cli` downloads the GoReleaser binary for
   the caller's platform (`darwin`/`linux`/`windows` × `amd64`/`arm64`) from GitHub
   Releases, then execs it. **No Go→JS rewrite.**
 - Versioning: npm version tracks the Go release version, published by the same
-  release pipeline (add npm token secret + publish step).
+  release pipeline via **OIDC trusted publishing** (GitHub `npm` deployment
+  environment + `id-token: write`; no npm token secret).
 
 ## Mongo support (post-SQL-stable)
 
-Starts only after the SQL story is stable (gate = v0.2 shipped + npx installer).
+Starts only after the SQL story is stable (gate = v0.2 shipped + npx installer — **met as of 0.2.1**).
 The engine abstraction is SQL-shaped today (`Engine.Open` returns `*sql.DB`,
 `DDLDialect` parses SQL, `verify` checks SQL object existence); Mongo needs a
 non-SQL seam, so it is a semantic fork, not a new engine. Sequence:

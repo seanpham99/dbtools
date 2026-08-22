@@ -45,8 +45,18 @@ dbtools reset
 # Check status of applied/pending migrations
 dbtools status [--json]
 
+# Preview pending migrations + drift (agent/CI-safe: exit 0 = applyable)
+dbtools plan [--target X] [--json]
+
 # Verify migration ledger objects exist in target DB (drift check)
 dbtools verify <target_name> [--json]
+# Exit codes: 0 clean, 1 error, 2 drift/pending — see docs/exit-codes.md
+
+# Apply .down.sql migrations in reverse (destructive; protected targets need --preview --yes)
+dbtools down <target_name> [N] [--preview] [--yes]
+
+# Ledger-only soft-revert (marks 'reverted', never data-destroying) — safe prod verb
+dbtools rollback <target_name> [--yes]
 
 # Repair ledger status (replaces old 'stamp' command)
 dbtools repair <target_name> <version>:<status> --yes [--force]
@@ -55,6 +65,9 @@ dbtools repair <target_name> <version>:<status> --yes [--force]
 dbtools generate [target] [--out db_models.py] [--yes] [--check]
 # --yes required when target is prod. --check exits non-zero if the file on disk
 # is stale instead of writing (use in CI to catch un-regenerated db_models.py).
+
+# Generate TypeScript interfaces (+ optional zod schemas) from live DB schema
+dbtools generate [target] --lang ts [--zod] [--out db_models.ts]
 
 # Read-only TUI status dashboard ('r' to refresh, 'q' to quit)
 dbtools dashboard
@@ -98,10 +111,12 @@ url_env = "DBTOOLS_PROD_URL"
 ## Red Flags - STOP and Correct
 
 - ❌ Hardcoding connection strings or password credentials in `dbtools.toml`.
-- ❌ Using non-existent commands: `dbtools migrate`, `dbtools rollback`, `dbtools sync`, `dbtools stamp`.
+- ❌ Using non-existent commands: `dbtools migrate`, `dbtools sync`, `dbtools stamp`.
 - ❌ Expecting `dbtools push` to diff live schema (it only performs version-sync).
 - ❌ Creating multiple seed files instead of single root `seed.sql`.
 - ❌ Modifying applied migration files instead of scaffolding a new one with `dbtools new`.
+- ❌ Running `dbtools down` on a protected target without `--preview --yes` (refused).
+- ❌ Calling `dbtools plan`/`verify` and ignoring the exit code — `2` means drift/pending, not success.
 
 ## Rationalizations Table
 
@@ -109,4 +124,4 @@ url_env = "DBTOOLS_PROD_URL"
 |---|---|
 | "I can put localhost URL directly in `dbtools.toml`" | Violates security & convention. Always use `url_env` (e.g. `DBTOOLS_LOCAL_URL`). |
 | "I'll use `dbtools stamp` to fix migration state" | `stamp` command is removed. Use `dbtools repair`. |
-| "I need to run rollback on production" | `dbtools` uses forward-only migration pattern; use `repair` or write a new reverting migration. |
+| "I need to run rollback on production" | Use `dbtools rollback` (ledger-only, non-destructive) or `dbtools down` with `--preview --yes` on a protected target — never silently. |
