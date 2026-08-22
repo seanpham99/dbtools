@@ -19,6 +19,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check CHANGELOG entry
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          # awk string-compare (no regex) on line start; grep -F would treat ^ as literal
+          if ! awk -v v="## [$VERSION]" 'index($0, v) == 1 { found=1 } END { exit !found }' CHANGELOG.md; then
+            echo "::error::CHANGELOG.md is missing an entry for [$VERSION]. Add one (Keep a Changelog format) before tagging."
+            exit 1
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
