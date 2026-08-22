@@ -37,6 +37,20 @@ jobs:
       - name: NPM package test
         run: node npm/test.js
 
+  container:
+    name: Integration (container)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      # internal/container manages its own docker lifecycle (start/stop/idempotent)
+      # with tool-owned names/ports. Runs WITHOUT service containers so its
+      # published ports (14330/54320) can't collide with anything else.
+      - name: Container integration tests
+        run: go test -tags=integration -p 1 ./internal/container/... -count=1
+
   integration:
     name: Integration (${{ matrix.db }})
     runs-on: ubuntu-latest
@@ -100,7 +114,9 @@ jobs:
         run: |
           case "${{ matrix.db }}" in
             mssql)
-              go test -tags=integration -p 1 ./... -count=1
+              # internal/container has its own docker lifecycle (container job);
+              # exclude it here to avoid colliding with the service containers.
+              go test -tags=integration -p 1 $(go list ./... | grep -v '/internal/container$') -count=1
               ;;
             postgres)
               go test -tags=integration -p 1 ./internal/engine/postgresengine/... ./internal/verify/... -count=1
