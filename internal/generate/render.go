@@ -201,7 +201,11 @@ func TSName(name string) string {
 // MapSQLToTS maps a SQL DATA_TYPE string to a TS type. Mirrors Supabase's
 // gen types conventions: int8→bigint, timestamps→string, json→any.
 func MapSQLToTS(dataType string) string {
-	switch strings.ToLower(dataType) {
+	t := strings.ToLower(strings.TrimSpace(dataType))
+	if i := strings.IndexByte(t, '('); i >= 0 {
+		t = strings.TrimSpace(t[:i])
+	}
+	switch t {
 	case "bigint", "int8", "bigserial":
 		return "bigint"
 	case "int", "smallint", "tinyint", "integer", "serial", "smallserial":
