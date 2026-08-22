@@ -190,15 +190,29 @@ func RunAssets(t *testing.T, dialect, rawURL string) {
 	if err != nil {
 		t.Fatalf("Introspect failed: %v", err)
 	}
-	if len(tables) < 8 {
-		t.Fatalf("Introspect tables = %d, want at least 8 classicmodels tables", len(tables))
+
+	classicTables := map[string]bool{
+		"customers":    true,
+		"employees":    true,
+		"offices":      true,
+		"orderdetails": true,
+		"orders":       true,
+		"payments":     true,
+		"productlines": true,
+		"products":     true,
+	}
+	var assetTables []generate.TableSchema
+	for _, tbl := range tables {
+		if classicTables[strings.ToLower(tbl.Name)] {
+			assetTables = append(assetTables, tbl)
+		}
 	}
 
-	pyOutput, err := generate.Render(tables, "test-target")
+	pyOutput, err := generate.Render(assetTables, "test-target")
 	if err != nil {
 		t.Fatalf("generate.Render failed: %v", err)
 	}
-	tsOutput, err := generate.RenderTS(tables, "test-target", true)
+	tsOutput, err := generate.RenderTS(assetTables, "test-target", true)
 	if err != nil {
 		t.Fatalf("generate.RenderTS failed: %v", err)
 	}

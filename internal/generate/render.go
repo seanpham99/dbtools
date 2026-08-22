@@ -216,7 +216,7 @@ func MapSQLToTS(dataType string) string {
 		return "number"
 	case "bit", "boolean", "bool":
 		return "boolean"
-	case "char", "varchar", "nchar", "nvarchar", "text", "ntext", "citext", "uuid", "uniqueidentifier":
+	case "char", "varchar", "character", "character varying", "nchar", "nvarchar", "text", "ntext", "citext", "uuid", "uniqueidentifier":
 		return "string"
 	case "date", "datetime", "datetime2", "smalldatetime", "datetimeoffset", "timestamp", "timestamptz", "timestamp with time zone", "timestamp without time zone":
 		return "string" // Supabase emits string for dates/timestamps
