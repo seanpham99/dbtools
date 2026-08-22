@@ -12,97 +12,97 @@ from pydantic import BaseModel, Field
 class Customers(BaseModel):
     """public.customers"""
 
-    customerNumber: int = Field(alias="customerNumber")
-    customerName: str = Field(alias="customerName")
-    contactLastName: str = Field(alias="contactLastName")
-    contactFirstName: str = Field(alias="contactFirstName")
+    customernumber: int = Field(alias="customernumber")
+    customername: str = Field(alias="customername")
+    contactlastname: str = Field(alias="contactlastname")
+    contactfirstname: str = Field(alias="contactfirstname")
     phone: str = Field(alias="phone")
-    addressLine1: str = Field(alias="addressLine1")
-    addressLine2: Optional[str] = Field(alias="addressLine2")
+    addressline1: str = Field(alias="addressline1")
+    addressline2: Optional[str] = Field(alias="addressline2")
     city: str = Field(alias="city")
     state: Optional[str] = Field(alias="state")
-    postalCode: Optional[str] = Field(alias="postalCode")
+    postalcode: Optional[str] = Field(alias="postalcode")
     country: str = Field(alias="country")
-    salesRepEmployeeNumber: Optional[int] = Field(alias="salesRepEmployeeNumber")
-    creditLimit: Optional[Decimal] = Field(alias="creditLimit")
+    salesrepemployeenumber: Optional[int] = Field(alias="salesrepemployeenumber")
+    creditlimit: Optional[Decimal] = Field(alias="creditlimit")
 
 
 class Employees(BaseModel):
     """public.employees"""
 
-    employeeNumber: int = Field(alias="employeeNumber")
-    lastName: str = Field(alias="lastName")
-    firstName: str = Field(alias="firstName")
+    employeenumber: int = Field(alias="employeenumber")
+    lastname: str = Field(alias="lastname")
+    firstname: str = Field(alias="firstname")
     extension: str = Field(alias="extension")
     email: str = Field(alias="email")
-    officeCode: str = Field(alias="officeCode")
-    reportsTo: Optional[int] = Field(alias="reportsTo")
-    jobTitle: str = Field(alias="jobTitle")
+    officecode: str = Field(alias="officecode")
+    reportsto: Optional[int] = Field(alias="reportsto")
+    jobtitle: str = Field(alias="jobtitle")
 
 
 class Offices(BaseModel):
     """public.offices"""
 
-    officeCode: str = Field(alias="officeCode")
+    officecode: str = Field(alias="officecode")
     city: str = Field(alias="city")
     phone: str = Field(alias="phone")
-    addressLine1: str = Field(alias="addressLine1")
-    addressLine2: Optional[str] = Field(alias="addressLine2")
+    addressline1: str = Field(alias="addressline1")
+    addressline2: Optional[str] = Field(alias="addressline2")
     state: Optional[str] = Field(alias="state")
     country: str = Field(alias="country")
-    postalCode: str = Field(alias="postalCode")
+    postalcode: str = Field(alias="postalcode")
     territory: str = Field(alias="territory")
 
 
 class Orderdetails(BaseModel):
     """public.orderdetails"""
 
-    orderNumber: int = Field(alias="orderNumber")
-    productCode: str = Field(alias="productCode")
-    quantityOrdered: int = Field(alias="quantityOrdered")
-    priceEach: Decimal = Field(alias="priceEach")
-    orderLineNumber: int = Field(alias="orderLineNumber")
+    ordernumber: int = Field(alias="ordernumber")
+    productcode: str = Field(alias="productcode")
+    quantityordered: int = Field(alias="quantityordered")
+    priceeach: Decimal = Field(alias="priceeach")
+    orderlinenumber: int = Field(alias="orderlinenumber")
 
 
 class Orders(BaseModel):
     """public.orders"""
 
-    orderNumber: int = Field(alias="orderNumber")
-    orderDate: datetime = Field(alias="orderDate")
-    requiredDate: datetime = Field(alias="requiredDate")
-    shippedDate: Optional[datetime] = Field(alias="shippedDate")
+    ordernumber: int = Field(alias="ordernumber")
+    orderdate: datetime = Field(alias="orderdate")
+    requireddate: datetime = Field(alias="requireddate")
+    shippeddate: Optional[datetime] = Field(alias="shippeddate")
     status: str = Field(alias="status")
     comments: Optional[str] = Field(alias="comments")
-    customerNumber: int = Field(alias="customerNumber")
+    customernumber: int = Field(alias="customernumber")
 
 
 class Payments(BaseModel):
     """public.payments"""
 
-    customerNumber: int = Field(alias="customerNumber")
-    checkNumber: str = Field(alias="checkNumber")
-    paymentDate: datetime = Field(alias="paymentDate")
+    customernumber: int = Field(alias="customernumber")
+    checknumber: str = Field(alias="checknumber")
+    paymentdate: datetime = Field(alias="paymentdate")
     amount: Decimal = Field(alias="amount")
 
 
 class Productlines(BaseModel):
     """public.productlines"""
 
-    productLine: str = Field(alias="productLine")
-    textDescription: Optional[str] = Field(alias="textDescription")
-    htmlDescription: Optional[str] = Field(alias="htmlDescription")
+    productline: str = Field(alias="productline")
+    textdescription: Optional[str] = Field(alias="textdescription")
+    htmldescription: Optional[str] = Field(alias="htmldescription")
     image: Optional[bytes] = Field(alias="image")
 
 
 class Products(BaseModel):
     """public.products"""
 
-    productCode: str = Field(alias="productCode")
-    productName: str = Field(alias="productName")
-    productLine: str = Field(alias="productLine")
-    productScale: str = Field(alias="productScale")
-    productVendor: str = Field(alias="productVendor")
-    productDescription: str = Field(alias="productDescription")
-    quantityInStock: int = Field(alias="quantityInStock")
-    buyPrice: Decimal = Field(alias="buyPrice")
-    MSRP: Decimal = Field(alias="MSRP")
+    productcode: str = Field(alias="productcode")
+    productname: str = Field(alias="productname")
+    productline: str = Field(alias="productline")
+    productscale: str = Field(alias="productscale")
+    productvendor: str = Field(alias="productvendor")
+    productdescription: str = Field(alias="productdescription")
+    quantityinstock: int = Field(alias="quantityinstock")
+    buyprice: Decimal = Field(alias="buyprice")
+    msrp: Decimal = Field(alias="msrp")

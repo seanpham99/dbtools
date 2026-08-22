@@ -93,6 +93,19 @@ func RunAssets(t *testing.T, dialect, rawURL string) {
 	}
 	t.Setenv("DBTOOLS_TEST_URL", rawURL)
 
+	t.Cleanup(func() {
+		for _, tbl := range tablesToDrop {
+			if dialect == "postgres" {
+				_, _ = db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", tbl))
+			} else if dialect == "mssql" {
+				_, _ = db.Exec(fmt.Sprintf("IF OBJECT_ID('dbo.%s', 'U') IS NOT NULL DROP TABLE dbo.%s", tbl, tbl))
+			} else {
+				_, _ = db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", tbl))
+			}
+		}
+		_ = testdb.ResetTracking(rawURL)
+	})
+
 	// --- E1: Apply all migrations in sequence via apply.Run ---
 	status, err := apply.Run(cfg, "test-target", "")
 	if err != nil {
@@ -213,10 +226,10 @@ func RunAssets(t *testing.T, dialect, rawURL string) {
 		}
 
 		if StripGeneratedHeader(pyOutput) != StripGeneratedHeader(goldenPy) {
-			t.Errorf("generated python models differ from golden for %s", dialect)
+			t.Errorf("generated python models differ from golden for %s.\nACTUAL:\n%s\nEXPECTED:\n%s", dialect, StripGeneratedHeader(pyOutput), StripGeneratedHeader(goldenPy))
 		}
 		if StripGeneratedHeader(tsOutput) != StripGeneratedHeader(goldenTS) {
-			t.Errorf("generated ts models differ from golden for %s", dialect)
+			t.Errorf("generated ts models differ from golden for %s.\nACTUAL:\n%s\nEXPECTED:\n%s", dialect, StripGeneratedHeader(tsOutput), StripGeneratedHeader(goldenTS))
 		}
 	}
 

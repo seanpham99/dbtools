@@ -2,152 +2,152 @@
 // Source target: test-target @ 2026-08-22T04:00:00Z
 import { z } from "zod";
 export interface Customers {
-  customerNumber: number;
-  customerName: string;
-  contactLastName: string;
-  contactFirstName: string;
+  customernumber: number;
+  customername: string;
+  contactlastname: string;
+  contactfirstname: string;
   phone: string;
-  addressLine1: string;
-  addressLine2?: string | null;
+  addressline1: string;
+  addressline2?: string | null;
   city: string;
   state?: string | null;
-  postalCode?: string | null;
+  postalcode?: string | null;
   country: string;
-  salesRepEmployeeNumber?: number | null;
-  creditLimit?: number | null;
+  salesrepemployeenumber?: number | null;
+  creditlimit?: number | null;
 }
 export const CustomersSchema = z.object({
-  customerNumber: z.number(),
-  customerName: z.string(),
-  contactLastName: z.string(),
-  contactFirstName: z.string(),
+  customernumber: z.number(),
+  customername: z.string(),
+  contactlastname: z.string(),
+  contactfirstname: z.string(),
   phone: z.string(),
-  addressLine1: z.string(),
-  addressLine2: z.string().nullish(),
+  addressline1: z.string(),
+  addressline2: z.string().nullish(),
   city: z.string(),
   state: z.string().nullish(),
-  postalCode: z.string().nullish(),
+  postalcode: z.string().nullish(),
   country: z.string(),
-  salesRepEmployeeNumber: z.number().nullish(),
-  creditLimit: z.number().nullish(),
+  salesrepemployeenumber: z.number().nullish(),
+  creditlimit: z.number().nullish(),
 });
 export interface Employees {
-  employeeNumber: number;
-  lastName: string;
-  firstName: string;
+  employeenumber: number;
+  lastname: string;
+  firstname: string;
   extension: string;
   email: string;
-  officeCode: string;
-  reportsTo?: number | null;
-  jobTitle: string;
+  officecode: string;
+  reportsto?: number | null;
+  jobtitle: string;
 }
 export const EmployeesSchema = z.object({
-  employeeNumber: z.number(),
-  lastName: z.string(),
-  firstName: z.string(),
+  employeenumber: z.number(),
+  lastname: z.string(),
+  firstname: z.string(),
   extension: z.string(),
   email: z.string(),
-  officeCode: z.string(),
-  reportsTo: z.number().nullish(),
-  jobTitle: z.string(),
+  officecode: z.string(),
+  reportsto: z.number().nullish(),
+  jobtitle: z.string(),
 });
 export interface Offices {
-  officeCode: string;
+  officecode: string;
   city: string;
   phone: string;
-  addressLine1: string;
-  addressLine2?: string | null;
+  addressline1: string;
+  addressline2?: string | null;
   state?: string | null;
   country: string;
-  postalCode: string;
+  postalcode: string;
   territory: string;
 }
 export const OfficesSchema = z.object({
-  officeCode: z.string(),
+  officecode: z.string(),
   city: z.string(),
   phone: z.string(),
-  addressLine1: z.string(),
-  addressLine2: z.string().nullish(),
+  addressline1: z.string(),
+  addressline2: z.string().nullish(),
   state: z.string().nullish(),
   country: z.string(),
-  postalCode: z.string(),
+  postalcode: z.string(),
   territory: z.string(),
 });
 export interface Orderdetails {
-  orderNumber: number;
-  productCode: string;
-  quantityOrdered: number;
-  priceEach: number;
-  orderLineNumber: number;
+  ordernumber: number;
+  productcode: string;
+  quantityordered: number;
+  priceeach: number;
+  orderlinenumber: number;
 }
 export const OrderdetailsSchema = z.object({
-  orderNumber: z.number(),
-  productCode: z.string(),
-  quantityOrdered: z.number(),
-  priceEach: z.number(),
-  orderLineNumber: z.number(),
+  ordernumber: z.number(),
+  productcode: z.string(),
+  quantityordered: z.number(),
+  priceeach: z.number(),
+  orderlinenumber: z.number(),
 });
 export interface Orders {
-  orderNumber: number;
-  orderDate: string;
-  requiredDate: string;
-  shippedDate?: string | null;
+  ordernumber: number;
+  orderdate: string;
+  requireddate: string;
+  shippeddate?: string | null;
   status: string;
   comments?: string | null;
-  customerNumber: number;
+  customernumber: number;
 }
 export const OrdersSchema = z.object({
-  orderNumber: z.number(),
-  orderDate: z.string(),
-  requiredDate: z.string(),
-  shippedDate: z.string().nullish(),
+  ordernumber: z.number(),
+  orderdate: z.string(),
+  requireddate: z.string(),
+  shippeddate: z.string().nullish(),
   status: z.string(),
   comments: z.string().nullish(),
-  customerNumber: z.number(),
+  customernumber: z.number(),
 });
 export interface Payments {
-  customerNumber: number;
-  checkNumber: string;
-  paymentDate: string;
+  customernumber: number;
+  checknumber: string;
+  paymentdate: string;
   amount: number;
 }
 export const PaymentsSchema = z.object({
-  customerNumber: z.number(),
-  checkNumber: z.string(),
-  paymentDate: z.string(),
+  customernumber: z.number(),
+  checknumber: z.string(),
+  paymentdate: z.string(),
   amount: z.number(),
 });
 export interface Productlines {
-  productLine: string;
-  textDescription?: string | null;
-  htmlDescription?: string | null;
+  productline: string;
+  textdescription?: string | null;
+  htmldescription?: string | null;
   image?: any | null;
 }
 export const ProductlinesSchema = z.object({
-  productLine: z.string(),
-  textDescription: z.string().nullish(),
-  htmlDescription: z.string().nullish(),
+  productline: z.string(),
+  textdescription: z.string().nullish(),
+  htmldescription: z.string().nullish(),
   image: z.any().nullish(),
 });
 export interface Products {
-  productCode: string;
-  productName: string;
-  productLine: string;
-  productScale: string;
-  productVendor: string;
-  productDescription: string;
-  quantityInStock: number;
-  buyPrice: number;
-  MSRP: number;
+  productcode: string;
+  productname: string;
+  productline: string;
+  productscale: string;
+  productvendor: string;
+  productdescription: string;
+  quantityinstock: number;
+  buyprice: number;
+  msrp: number;
 }
 export const ProductsSchema = z.object({
-  productCode: z.string(),
-  productName: z.string(),
-  productLine: z.string(),
-  productScale: z.string(),
-  productVendor: z.string(),
-  productDescription: z.string(),
-  quantityInStock: z.number(),
-  buyPrice: z.number(),
-  MSRP: z.number(),
+  productcode: z.string(),
+  productname: z.string(),
+  productline: z.string(),
+  productscale: z.string(),
+  productvendor: z.string(),
+  productdescription: z.string(),
+  quantityinstock: z.number(),
+  buyprice: z.number(),
+  msrp: z.number(),
 });
