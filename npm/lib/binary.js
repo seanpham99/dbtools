@@ -16,18 +16,18 @@ function getPlatformInfo() {
 
   let osName = '';
   if (platform === 'linux') {
-    osName = 'Linux';
+    osName = 'linux';
   } else if (platform === 'darwin') {
-    osName = 'Darwin';
+    osName = 'darwin';
   } else if (platform === 'win32') {
-    osName = 'Windows';
+    osName = 'windows';
   } else {
     throw new Error(`Unsupported OS: ${platform}`);
   }
 
   let archName = '';
   if (arch === 'x64') {
-    archName = 'x86_64';
+    archName = 'amd64';
   } else if (arch === 'arm64') {
     archName = 'arm64';
   } else {
@@ -103,7 +103,7 @@ async function getBinaryPath() {
     return process.env.DBTOOLS_BINARY_PATH;
   }
 
-  const version = process.env.DBTOOLS_VERSION || pkg.version;
+  const version = process.env.DBTOOLS_VERSION || pkg.binaryVersion || pkg.version;
   const { osName, archName, ext, binName, platform } = getPlatformInfo();
 
   const cacheDir = getCacheDir(version);

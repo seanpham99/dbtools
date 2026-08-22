@@ -1,9 +1,10 @@
 {
   "name": "dbtools-cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
+  "binaryVersion": "0.2.0",
   "description": "Fast schema migrations and dev databases for MSSQL, Postgres, and SQLite",
   "bin": {
-    "dbtools": "./bin/dbtools.js"
+    "dbtools": "bin/dbtools.js"
   },
   "scripts": {
     "test": "node test.js"
@@ -21,7 +22,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/seanpham99/dbtools.git"
+    "url": "git+https://github.com/seanpham99/dbtools.git"
   },
   "bugs": {
     "url": "https://github.com/seanpham99/dbtools/issues"
