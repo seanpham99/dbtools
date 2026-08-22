@@ -64,6 +64,9 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 		report.Healthy = false
 		return report
 	}
+	// Set engine early so human/JSON output has it even when a later
+	// connectivity check fails before engine resolution.
+	report.Engine = tConfig.Engine
 
 	// 1. Security flags & config check
 	secStatus := "ok"
