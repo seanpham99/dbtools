@@ -4,7 +4,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/seanpham99/dbtools.svg)](https://pkg.go.dev/github.com/seanpham99/dbtools)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**dbtools** is a lightweight, reliable database migration authority and local dev-loop tool for **MSSQL**, **PostgreSQL**, and **SQLite**. Built in Go for high performance and zero external runtime dependencies, `dbtools` guarantees version-sync migration execution, immutable ledger tracking (`content_sha256`), read-only schema drift verification, and live schema introspection to typed Pydantic Python models.
+**dbtools** is a lightweight, reliable database migration authority and local dev-loop tool for **MSSQL**, **PostgreSQL**, and **SQLite**. Built in Go for high performance and zero external runtime dependencies, `dbtools` guarantees version-sync migration execution, immutable ledger tracking (`content_sha256`), read-only schema drift verification, and live schema introspection to typed Pydantic Python or TypeScript models.
 
 ---
 
@@ -13,15 +13,29 @@
 - **Multi-Engine Support**: Native migration engines for SQL Server (MSSQL), PostgreSQL (with session reset isolation), and SQLite (file-based).
 - **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
 - **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
-- **Environment & Target Protection**: Targets are defined in `dbtools.toml` by environment variable names (`url_env`), ensuring secrets never leak into version control. Protected targets reject destructive local operations (`up`, `reset`).
-- **Python Type Generation**: `dbtools generate` introspects live database schemas and emits clean, versioned `pydantic.BaseModel` classes for Python services, ETL jobs, and data pipelines.
+- **Rollback & Down Migrations**: `dbtools down` applies `.down.sql` files in reverse; `dbtools rollback` is a ledger-only soft-revert — the safe prod verb. Destructive ops on protected targets require `--preview --yes`.
+- **Agent-First Ergonomics**: Terraform-style exit-code contract (`0` clean / `1` error / `2` pending changes or drift), `--dry-run` previews, universal `--json`, and `DBTOOLS_NO_PROMPT=1` fail-closed mode for CI and AI agents. See [docs/exit-codes.md](docs/exit-codes.md).
+- **Environment & Target Protection**: Targets are defined in `dbtools.toml` by environment variable names (`url_env`), ensuring secrets never leak into version control. Protected targets reject destructive operations (`up`, `reset`, and `down` without `--preview --yes`).
+- **Python & TypeScript Type Generation**: `dbtools generate` introspects live database schemas and emits clean, versioned `pydantic.BaseModel` classes or Supabase-style TypeScript interfaces (+ optional zod schemas) for services, ETL jobs, and data pipelines.
 - **Interactive TUI Dashboard**: Built-in terminal dashboard powered by Bubble Tea for real-time migration observability.
 
 ---
 
 ## Installation
 
-### Via Go Install (Recommended)
+### Via npm (Recommended for JS/TS users)
+
+```bash
+npx dbtools-cli status
+```
+
+or install globally:
+
+```bash
+npm install -g dbtools-cli
+```
+
+### Via Go Install
 
 ```bash
 go install github.com/seanpham99/dbtools@latest
@@ -101,10 +115,12 @@ dbtools status
 | `push` | `dbtools push <target> [--yes]` | Applies pending migrations to named remote target with explicit confirmation. |
 | `status` | `dbtools status [--json]` | Displays applied/pending migration status across all configured targets. |
 | `plan` | `dbtools plan [--target X] [--json]` | Read-only preview of pending migrations + ledger drift, without applying anything. Agent/CI-friendly: exit 0 = safe to apply. |
-| `verify` | `dbtools verify <target> [--json]` | Non-destructive verification of ledger history and live database objects. Non-zero exit on drift. |
+| `verify` | `dbtools verify <target> [--json]` | Non-destructive verification of ledger history and live database objects. Exit 0 clean / 1 error / 2 drift (content-hash mismatch or missing object). |
+| `down` | `dbtools down <target> [N] [--preview] [--yes]` | Applies `.down.sql` migrations in reverse order, recorded in the ledger. Protected targets require `--preview --yes`. |
+| `rollback` | `dbtools rollback <target> [--yes]` | Ledger-only soft-revert (marks `reverted`, never data-destroying). The safe prod verb. |
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
 | `reset` | `dbtools reset [--target local] [--yes]` | Local-only: drops database, replays all migrations from zero, and executes `seed.sql`. |
-| `generate` | `dbtools generate [target] [--out models.py]` | Introspects live schema and renders Pydantic v2 Python models. |
+| `generate` | `dbtools generate [target] [--lang python\|ts] [--zod] [--out file]` | Introspects live schema and renders Pydantic v2 models (`python`, default) or Supabase-style TypeScript interfaces (`ts`; `--zod` adds zod schemas). |
 | `lint` | `dbtools lint [--dir <path>] [--json]` | Validates filenames, duplicate versions, and empty files without database connection. |
 | `dashboard` | `dbtools dashboard` | Opens terminal UI showing live target status (`r` to refresh, `q` to quit). |
 | `start` / `stop` | `dbtools start` / `stop` | Starts or stops ephemeral tool-owned local MSSQL Docker container. |
@@ -187,6 +203,62 @@ In CI/CD, enforce that repository models stay in sync with schema migrations usi
 ```bash
 dbtools generate local --out models.py --check
 ```
+
+---
+
+## TypeScript Generation
+
+Supabase-style type generation for JS/TS services:
+
+```bash
+# TypeScript interfaces
+dbtools generate local --lang ts --out models.ts
+
+# TypeScript interfaces + zod schemas
+dbtools generate local --lang ts --zod --out models.ts
+```
+
+Generated `models.ts`:
+
+```typescript
+// Code generated by dbtools generate. DO NOT EDIT.
+export interface Users {
+  id: number;
+  email: string;
+  created_at?: string; // nullable columns become optional
+}
+
+export const UsersSchema = z.object({
+  id: z.number(),
+  email: z.string(),
+  created_at: z.string().nullish(),
+});
+```
+
+`--check` works the same for TS output (CI drift detection).
+
+---
+
+## Agent & CI Ergonomics
+
+`dbtools` is designed to be called by AI agents and CI pipelines without interactive prompts:
+
+- **Stable exit-code contract**: `0` clean, `1` error, `2` drift/pending changes. See [docs/exit-codes.md](docs/exit-codes.md).
+- **`--dry-run`**: preview SQL without applying (`dbtools up --dry-run`).
+- **Universal `--json`**: machine-readable output on stdout for `status`, `plan`, `verify`, and friends.
+- **`DBTOOLS_NO_PROMPT=1`**: never block on stdin; destructive ops fail closed. Also auto-enabled when stdout is not a TTY.
+- **Dirty-ledger refusal**: `up` refuses to apply when the ledger is dirty (a previous apply failed partway), surfacing the failure as exit `2` rather than silently continuing.
+
+Example agent loop:
+
+```bash
+if dbtools plan --target prod --json; then
+  # exit 0: safe to apply
+  dbtools push prod --yes --dry-run
+fi
+```
+
+> Note: exit `2` from `plan` means pending migrations or drift — inspect `--json` output to distinguish before deciding to apply.
 
 ---
 

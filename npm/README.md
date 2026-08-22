@@ -2,6 +2,8 @@
 
 Fast schema migrations and dev databases for MSSQL, PostgreSQL, and SQLite.
 
+This is the npm distribution of [`dbtools`](https://github.com/seanpham99/dbtools) — a thin wrapper that downloads the official Go binary for your platform. Features: version-sync migrations, SHA-256 ledger, read-only drift verification, rollback/down, TypeScript + Pydantic type generation, and agent-friendly exit codes / `--json` output.
+
 ## Usage with npx (zero installation)
 
 ```bash

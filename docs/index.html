@@ -457,12 +457,12 @@
       </div>
       <h1>Multi-Engine Database <br><span class="highlight">Migration Authority</span></h1>
       <p class="hero-subtitle">
-        Eliminate schema drift and protect deployment targets across MSSQL, PostgreSQL, and SQLite with cryptographic ledger tracking, drop-aware verification, and Pydantic model generation.
+        Eliminate schema drift and protect deployment targets across MSSQL, PostgreSQL, and SQLite with cryptographic ledger tracking, drop-aware verification, rollback/down migrations, and Python + TypeScript model generation — built for CI and AI agents.
       </p>
 
       <div class="install-box">
         <span class="prompt-line">$</span>
-        <span class="install-command" id="installCmd">go install github.com/seanpham99/dbtools@latest</span>
+        <span class="install-command" id="installCmd">npx dbtools-cli status</span>
         <button class="copy-btn" id="copyBtn" onclick="copyInstall()">Copy</button>
       </div>
     </section>
@@ -500,8 +500,14 @@
 
         <div class="feature-card">
           <div class="card-icon icon-blue">🐍</div>
-          <h3>Python Type Contract Generation</h3>
-          <p><code>dbtools generate</code> renders versioned, type-safe Pydantic v2 BaseModels from live schema metadata, with <code>--check</code> for CI schema sync.</p>
+          <h3>Python & TypeScript Type Generation</h3>
+          <p><code>dbtools generate</code> renders versioned, type-safe Pydantic v2 BaseModels or Supabase-style TypeScript interfaces (+ optional zod schemas) from live schema metadata, with <code>--check</code> for CI schema sync.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="card-icon icon-emerald">🤖</div>
+          <h3>Agent-First Ergonomics</h3>
+          <p>Terraform-style exit-code contract (0 clean / 1 error / 2 drift), <code>--dry-run</code> previews, universal <code>--json</code>, and <code>DBTOOLS_NO_PROMPT=1</code> fail-closed mode — built for CI and AI agents.</p>
         </div>
 
         <div class="feature-card">
@@ -583,9 +589,24 @@ Target: local
               <td>Displays applied/pending migration status across all configured targets.</td>
             </tr>
             <tr>
+              <td><code>plan</code></td>
+              <td><code>dbtools plan [--target X] [--json]</code></td>
+              <td>Read-only preview of pending migrations + ledger drift. Exit 0 = safe to apply, 2 = pending/drift.</td>
+            </tr>
+            <tr>
               <td><code>verify</code></td>
-              <td><code>dbtools verify &lt;target&gt;</code></td>
-              <td>Read-only audit: checks file SHA hashes and database object existence. Non-zero exit on drift.</td>
+              <td><code>dbtools verify &lt;target&gt; [--json]</code></td>
+              <td>Read-only audit: checks file SHA hashes and database object existence. Exit 0 clean / 1 error / 2 drift.</td>
+            </tr>
+            <tr>
+              <td><code>down</code></td>
+              <td><code>dbtools down &lt;target&gt; [N] [--preview] [--yes]</code></td>
+              <td>Applies <code>.down.sql</code> migrations in reverse, recorded in the ledger. Protected targets require <code>--preview --yes</code>.</td>
+            </tr>
+            <tr>
+              <td><code>rollback</code></td>
+              <td><code>dbtools rollback &lt;target&gt; [--yes]</code></td>
+              <td>Ledger-only soft-revert (never data-destroying) — the safe prod verb.</td>
             </tr>
             <tr>
               <td><code>repair</code></td>
@@ -599,8 +620,8 @@ Target: local
             </tr>
             <tr>
               <td><code>generate</code></td>
-              <td><code>dbtools generate [target] [--out models.py]</code></td>
-              <td>Introspects schema and outputs typed Pydantic Python models.</td>
+              <td><code>dbtools generate [target] [--lang python|ts] [--zod] [--out file]</code></td>
+              <td>Introspects schema and outputs typed Pydantic Python models or TypeScript interfaces (+ zod).</td>
             </tr>
             <tr>
               <td><code>lint</code></td>
