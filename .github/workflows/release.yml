@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   goreleaser:
@@ -44,6 +45,6 @@ jobs:
           if [ "$(node -p "require('./package.json').version")" != "$VERSION" ]; then
             npm version "$VERSION" --no-git-tag-version
           fi
-          npm publish --access public
+          npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
