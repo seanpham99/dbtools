@@ -589,6 +589,11 @@ Target: local
               <td>Displays applied/pending migration status across all configured targets.</td>
             </tr>
             <tr>
+              <td><code>doctor</code></td>
+              <td><code>dbtools doctor [target] [--json]</code></td>
+              <td>Strictly read-only health, integrity, drift, and security audit. Exit 0 healthy / 1 error / 2 issues.</td>
+            </tr>
+            <tr>
               <td><code>plan</code></td>
               <td><code>dbtools plan [--target X] [--json]</code></td>
               <td>Read-only preview of pending migrations + ledger drift. Exit 0 = safe to apply, 2 = pending/drift.</td>

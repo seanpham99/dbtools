@@ -45,6 +45,9 @@ dbtools reset
 # Check status of applied/pending migrations
 dbtools status [--json]
 
+# Comprehensive health, integrity, and drift check (read-only; exit 0 healthy, 1 error, 2 issues)
+dbtools doctor [target_name] [--json]
+
 # Preview pending migrations + drift (agent/CI-safe: exit 0 = applyable, 2 = pending/drift)
 dbtools plan [--target X] [--json]
 
