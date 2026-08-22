@@ -40,9 +40,21 @@ checksum:
   algorithm: sha256
 
 changelog:
-  sort: asc
+  groups:
+    - title: "Features"
+      regexp: "^feat(\\([[:word:]]+\\))?!?:"
+      order: 0
+    - title: "Bug fixes"
+      regexp: "^(fix|perf)(\\([[:word:]]+\\))?!?:"
+      order: 1
+    - title: "Refactors"
+      regexp: "^refactor:"
+      order: 2
+    - title: "Other changes"
+      order: 999
   filters:
     exclude:
       - "^docs:"
       - "^test:"
       - "^ci:"
+      - "^chore:"
