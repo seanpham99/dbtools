@@ -135,6 +135,15 @@ func (mg *Migrator) Stamp(version uint64) error {
 	return nil
 }
 
+// Force sets version as the current applied migration version and clears any
+// dirty flag in the version-tracking table without executing migration SQL.
+func (mg *Migrator) Force(version uint64) error {
+	if err := mg.m.Force(int(version)); err != nil {
+		return fmt.Errorf("forcing version %d: %w", version, err)
+	}
+	return nil
+}
+
 // Close releases the underlying database connection.
 func (mg *Migrator) Close() error {
 	sourceErr, dbErr := mg.m.Close()
