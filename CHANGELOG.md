@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-08-24
+
+v0.3 — health & security doctor audit, classicmodels real-data integration corpus, dirty recovery, and dev-loop enhancements.
+
+### Added
+
+- **Health & Security Audit (`dbtools doctor`)**:
+  - `dbtools doctor [target] [--json]` — strictly read-only check across connectivity, ledger integrity (hash comparison), version sync, live object drift summary, dirty ledger detection, and security configuration (target protection and url_env usage).
+  - Exit code contract: `0` healthy, `1` error/unreachable, `2` issues detected (drift, dirty, pending migrations, security warnings). Documented in `docs/doctor-checks.md`.
+- **Classicmodels Real-Data Integration Suite**:
+  - Committed real-data fixture corpus ported across SQLite, PostgreSQL, and MSSQL with canonical schema, foreign keys, and seed data.
+  - Consolidated test runner in `internal/testutil` exercising multi-version migration sequences, content hash drift, and golden typegen regression checks.
+- **Dirty Migration Recovery (`dbtools force`)**:
+  - `dbtools force <version> [--target <target>] [--yes]` — recovers from interrupted or dirty migration states by aligning the tracking version and clearing the dirty bit.
+- **Local Dev-Loop DX Enhancements**:
+  - `dbtools start` container readiness polling — polls port and ping until database engine accepts connections (`--timeout`, `--no-wait`).
+  - Automatic target database creation — creates missing local/unprotected databases on container instances seamlessly during dev loop.
+  - `dbtools reset [target]` — allows specifying any unprotected target (defaults to `local`).
+  - `dbtools status [target]` — supports positional target filtering and displays `[unconfigured]` for unset environment variables without erroring during general status.
+
+---
+
 ## [0.2.0] - 2026-08-21
 
 v0.2 — rollback + agent ergonomics + TypeScript generation.

@@ -434,7 +434,7 @@
       <div class="nav-wrap">
         <a href="#" class="brand">
           <span class="brand-badge">dbtools</span>
-          <span class="version-tag">v0.1.0</span>
+          <span class="version-tag">v0.3.0</span>
         </a>
         <nav class="nav-links">
           <a href="#features">Features</a>
@@ -585,8 +585,8 @@ Target: local
             </tr>
             <tr>
               <td><code>status</code></td>
-              <td><code>dbtools status [--json]</code></td>
-              <td>Displays applied/pending migration status across all configured targets.</td>
+              <td><code>dbtools status [target] [--json]</code></td>
+              <td>Displays applied/pending migration status across configured targets (<code>[unconfigured]</code> for unset env vars).</td>
             </tr>
             <tr>
               <td><code>doctor</code></td>
@@ -619,9 +619,14 @@ Target: local
               <td>Corrects ledger record status and resynchronizes the version cursor safely.</td>
             </tr>
             <tr>
+              <td><code>force</code></td>
+              <td><code>dbtools force &lt;version&gt; [--target target] [--yes]</code></td>
+              <td>Sets tracking version cursor and clears dirty state directly without executing SQL.</td>
+            </tr>
+            <tr>
               <td><code>reset</code></td>
-              <td><code>dbtools reset [--yes]</code></td>
-              <td>Local-only: drops database, replays all migrations, and runs <code>seed.sql</code>.</td>
+              <td><code>dbtools reset [target] [--yes]</code></td>
+              <td>Unprotected targets: drops database, replays all migrations, and runs <code>seed.sql</code>.</td>
             </tr>
             <tr>
               <td><code>generate</code></td>
@@ -637,6 +642,11 @@ Target: local
               <td><code>dashboard</code></td>
               <td><code>dbtools dashboard</code></td>
               <td>Interactive Bubble Tea TUI monitor (<code>r</code> to refresh, <code>q</code> to quit).</td>
+            </tr>
+            <tr>
+              <td><code>start</code> / <code>stop</code></td>
+              <td><code>dbtools start [--timeout 30s] [--no-wait]</code> / <code>stop</code></td>
+              <td>Starts or stops ephemeral tool-owned local database container with readiness polling.</td>
             </tr>
           </tbody>
         </table>
