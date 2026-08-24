@@ -85,10 +85,14 @@ func ensurePostgresDatabase(rawURL string) error {
 	}
 
 	var exists bool
-	_ = mainDB.QueryRow("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", dbName).Scan(&exists)
+	if err := mainDB.QueryRow("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", dbName).Scan(&exists); err != nil {
+		return fmt.Errorf("checking postgres database %q existence: %w", dbName, err)
+	}
 	if !exists {
 		safeName := strings.ReplaceAll(dbName, `"`, `""`)
-		_, _ = mainDB.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, safeName))
+		if _, err := mainDB.Exec(fmt.Sprintf(`CREATE DATABASE "%s"`, safeName)); err != nil {
+			return fmt.Errorf("creating postgres database %q: %w", dbName, err)
+		}
 	}
 	return nil
 }
@@ -137,6 +141,8 @@ func ensureMSSQLDatabase(rawURL string) error {
 	safeName := strings.ReplaceAll(dbName, "]", "]]")
 	safeLiteral := strings.ReplaceAll(dbName, "'", "''")
 	query := fmt.Sprintf("IF DB_ID(N'%s') IS NULL CREATE DATABASE [%s]", safeLiteral, safeName)
-	_, _ = mainDB.Exec(query)
+	if _, err := mainDB.Exec(query); err != nil {
+		return fmt.Errorf("creating mssql database %q: %w", dbName, err)
+	}
 	return nil
 }
