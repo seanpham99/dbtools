@@ -23,21 +23,33 @@ var seedRun = seed.Run
 
 var resetLocalDatabase = recreateLocalDatabase
 
-var resetYes bool
+var (
+	resetYes    bool
+	resetTarget string
+)
 
 var resetCmd = &cobra.Command{
-	Use:   "reset",
-	Short: "Drop, recreate, replay migrations, and run seed.sql against the local database",
+	Use:   "reset [target]",
+	Short: "Drop, recreate, replay migrations, and run seed.sql against an unprotected target",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !resetYes {
-			return fmt.Errorf("refusing to drop and recreate the local database without --yes")
+		target := resetTarget
+		if len(args) > 0 && args[0] != "" {
+			target = args[0]
 		}
-		return runReset()
+		if target == "" {
+			target = "local"
+		}
+		if !resetYes {
+			return fmt.Errorf("refusing to drop and recreate target %q database without --yes", target)
+		}
+		return runReset(target)
 	},
 }
 
 func init() {
-	resetCmd.Flags().BoolVar(&resetYes, "yes", false, "confirm the destructive drop/recreate of the local database")
+	resetCmd.Flags().StringVar(&resetTarget, "target", "local", "target database to reset (default: local)")
+	resetCmd.Flags().BoolVar(&resetYes, "yes", false, "confirm the destructive drop/recreate of the target database")
 	rootCmd.AddCommand(resetCmd)
 }
 
@@ -114,33 +126,41 @@ func recreateSQLiteFile(localURL string) error {
 	return f.Close()
 }
 
-func runReset() error {
+func runReset(targetNames ...string) error {
+	targetName := "local"
+	if len(targetNames) > 0 && targetNames[0] != "" {
+		targetName = targetNames[0]
+	}
 	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}
 
-	// Validate the configured local target (URL resolvable, engine matches
+	if err := requireUnprotected(cfg, targetName); err != nil {
+		return err
+	}
+
+	// Validate the configured target (URL resolvable, engine matches
 	// its scheme) BEFORE the destructive drop/recreate — a misconfigured
-	// target must never leave the local database wiped and then fail.
-	localURL, err := cfg.ResolveURL("local")
+	// target must never leave the database wiped and then fail.
+	targetURL, err := cfg.ResolveURL(targetName)
 	if err != nil {
 		return err
 	}
-	eng, err := engine.ForTarget(cfg.EngineName("local"), localURL)
+	eng, err := engine.ForTarget(cfg.EngineName(targetName), targetURL)
 	if err != nil {
 		return err
 	}
 
-	if err := resetLocalDatabase(eng, localURL); err != nil {
+	if err := resetLocalDatabase(eng, targetURL); err != nil {
 		return err
 	}
 
-	status, err := applyRun(cfg, "local", "")
+	status, err := applyRun(cfg, targetName, "")
 	if err != nil {
 		return err
 	}
-	seedErr := seedRun(eng, localURL)
+	seedErr := seedRun(eng, targetURL)
 	if seedErr != nil {
 		return fmt.Errorf("running %s: %w", seed.Filename, seedErr)
 	}
@@ -152,7 +172,7 @@ func runReset() error {
 			HasVersion      bool   `json:"has_version"`
 			SeedApplied     bool   `json:"seed_applied"`
 		}{
-			Target:          "local",
+			Target:          targetName,
 			ReplayedVersion: status.CurrentVersion,
 			HasVersion:      status.HasVersion,
 			SeedApplied:     true,
@@ -164,7 +184,7 @@ func runReset() error {
 		return nil
 	}
 
-	fmt.Printf("local: replayed to version %d\n", status.CurrentVersion)
+	fmt.Printf("%s: replayed to version %d\n", targetName, status.CurrentVersion)
 	fmt.Printf("%s applied (or skipped if absent)\n", seed.Filename)
 	return nil
 }

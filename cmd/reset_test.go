@@ -52,8 +52,8 @@ func TestRunResetRecreatesAppliesAndSeedsLocal(t *testing.T) {
 		return nil
 	}
 
-	if err := runReset(); err != nil {
-		t.Fatalf("runReset() returned error: %v", err)
+	if err := runReset("local"); err != nil {
+		t.Fatalf("runReset(local) returned error: %v", err)
 	}
 	if !resetCalled {
 		t.Fatal("runReset() did not recreate the local database")
@@ -63,5 +63,23 @@ func TestRunResetRecreatesAppliesAndSeedsLocal(t *testing.T) {
 	}
 	if !seedCalled {
 		t.Fatal("runReset() did not run seed.sql")
+	}
+}
+
+func TestRunResetRefusesProtectedTarget(t *testing.T) {
+	origLoadConfig := loadConfig
+	t.Cleanup(func() { loadConfig = origLoadConfig })
+
+	loadConfig = func(path string) (*config.Config, error) {
+		return &config.Config{
+			MigrationsDir: "migrations",
+			Targets: map[string]config.Target{
+				"prod": {URLEnv: "DBTOOLS_PROD_URL", Protected: true},
+			},
+		}, nil
+	}
+
+	if err := runReset("prod"); err == nil {
+		t.Fatal("runReset(prod) succeeded on protected target, want error")
 	}
 }

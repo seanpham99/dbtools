@@ -12,6 +12,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	_ "github.com/microsoft/go-mssqldb"
 )
 
 // DatabaseName is the local development database every engine's container
@@ -51,6 +52,16 @@ var mssqlSpec = spec{
 		}
 	},
 	readyProbe: func(s spec) error {
+		u, err := url.Parse(s.url(s, "master"))
+		if err == nil {
+			u.Scheme = "sqlserver"
+			if db, err := sql.Open("sqlserver", u.String()); err == nil {
+				defer db.Close()
+				if pingErr := db.Ping(); pingErr == nil {
+					return nil
+				}
+			}
+		}
 		return exec.Command("docker", "exec", s.name, "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", password, "-C", "-Q", "SELECT 1").Run()
 	},
 	createDBArgs: func(s spec) []string {
@@ -191,9 +202,10 @@ func inspect(containerName string) (exists bool, running bool, err error) {
 	return parseInspectOutput(out.Bytes(), runErr)
 }
 
-// StartFor starts (or reuses) engineName's tool-owned local container and
-// returns the local database's connection URL.
-func StartFor(engineName string) (string, error) {
+// StartForWithTimeout starts (or reuses) engineName's tool-owned local container,
+// waits up to timeout for readiness if wait is true, and returns the local
+// database's connection URL.
+func StartForWithTimeout(engineName string, timeout time.Duration, wait bool) (string, error) {
 	s, err := specFor(engineName)
 	if err != nil {
 		return "", err
@@ -218,8 +230,10 @@ func StartFor(engineName string) (string, error) {
 		}
 	}
 
-	if err := waitReady(s); err != nil {
-		return "", err
+	if wait {
+		if err := waitReadyWithTimeout(s, timeout); err != nil {
+			return "", err
+		}
 	}
 	if s.createDBArgs != nil {
 		if out, err := exec.Command("docker", s.createDBArgs(s)...).CombinedOutput(); err != nil {
@@ -229,15 +243,24 @@ func StartFor(engineName string) (string, error) {
 	return s.url(s, DatabaseName), nil
 }
 
-func waitReady(s spec) error {
-	deadline := time.Now().Add(60 * time.Second)
+// StartFor starts (or reuses) engineName's tool-owned local container and
+// returns the local database's connection URL.
+func StartFor(engineName string) (string, error) {
+	return StartForWithTimeout(engineName, 30*time.Second, true)
+}
+
+func waitReadyWithTimeout(s spec, timeout time.Duration) error {
+	if timeout <= 0 {
+		return nil
+	}
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if err := s.readyProbe(s); err == nil {
 			return nil
 		}
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
-	return fmt.Errorf("%s did not become ready within 60s", s.engine)
+	return fmt.Errorf("%s did not become ready within %v", s.engine, timeout)
 }
 
 // StopFor stops and removes engineName's tool-owned local container.

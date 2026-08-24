@@ -2,15 +2,21 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/localenv"
 	"github.com/spf13/cobra"
 )
 
-var startContainer = container.StartFor
+var startContainer = container.StartForWithTimeout
 
 var writeLocalEnv = localenv.Write
+
+var (
+	startTimeout time.Duration
+	startNoWait  bool
+)
 
 var startCmd = &cobra.Command{
 	Use:   "start",
@@ -21,6 +27,8 @@ var startCmd = &cobra.Command{
 }
 
 func init() {
+	startCmd.Flags().DurationVar(&startTimeout, "timeout", 30*time.Second, "maximum time to wait for the database engine to become ready")
+	startCmd.Flags().BoolVar(&startNoWait, "no-wait", false, "return immediately after starting container without waiting for database readiness")
 	rootCmd.AddCommand(startCmd)
 }
 
@@ -40,7 +48,10 @@ func runStart() error {
 		return nil
 	}
 
-	url, err := startContainer(engineName)
+	if !startNoWait {
+		fmt.Println("waiting for database engine to accept connections...")
+	}
+	url, err := startContainer(engineName, startTimeout, !startNoWait)
 	if err != nil {
 		return err
 	}

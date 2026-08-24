@@ -27,6 +27,9 @@ func OpenTarget(cfg *config.Config, targetName, urlOverride string) (eng engine.
 	if err != nil {
 		return nil, nil, nil, "", err
 	}
+	if t, ok := cfg.Targets[targetName]; !ok || !t.Protected {
+		_ = engine.EnsureDatabase(eng, url)
+	}
 	db, err = eng.Open(url)
 	if err != nil {
 		return nil, nil, nil, "", err

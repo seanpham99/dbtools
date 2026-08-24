@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/localenv"
@@ -55,7 +56,7 @@ func TestRunStartWritesLocalEnv(t *testing.T) {
 	})
 
 	loadConfig = fakeLocalConfig("DBTOOLS_LOCAL_URL")
-	startContainer = func(string) (string, error) {
+	startContainer = func(string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 	var wrote map[string]string
@@ -83,7 +84,7 @@ func TestRunStartUsesConfiguredURLEnv(t *testing.T) {
 	})
 
 	loadConfig = fakeLocalConfig("CUSTOM_LOCAL_URL")
-	startContainer = func(string) (string, error) {
+	startContainer = func(string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 	var wrote map[string]string
@@ -154,7 +155,7 @@ func TestRunStartWritesFileRelativeToWorkingDirectory(t *testing.T) {
 		startContainer = origStartContainer
 	})
 	loadConfig = fakeLocalConfig("DBTOOLS_LOCAL_URL")
-	startContainer = func(string) (string, error) {
+	startContainer = func(string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 
