@@ -46,6 +46,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "20"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm
         run: |
@@ -55,3 +56,5 @@ jobs:
             npm version "$VERSION" --no-git-tag-version
           fi
           npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
