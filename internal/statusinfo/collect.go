@@ -17,9 +17,10 @@ type Status struct {
 
 // TargetResult is the outcome of collecting status for a single named target.
 type TargetResult struct {
-	Target string
-	Status *Status
-	Err    error
+	Target       string
+	Status       *Status
+	Unconfigured bool
+	Err          error
 }
 
 // Collect opens databaseURL, reads its current migration version, and
@@ -67,6 +68,10 @@ func CollectAll(cfg *config.Config, targetFilter, urlOverride string) []TargetRe
 		}
 		url, err := cfg.ResolveURLOrFlag(name, override)
 		if err != nil {
+			if targetFilter == "" && config.IsUnsetEnv(err) {
+				results = append(results, TargetResult{Target: name, Unconfigured: true})
+				continue
+			}
 			results = append(results, TargetResult{Target: name, Err: err})
 			continue
 		}

@@ -11,10 +11,15 @@ import (
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show migration status for every configured target",
+	Use:   "status [target]",
+	Short: "Show migration status for every configured target (or a single target)",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runStatus()
+		target := statusTarget
+		if len(args) > 0 && args[0] != "" {
+			target = args[0]
+		}
+		return runStatus(target)
 	},
 }
 
@@ -33,35 +38,15 @@ type targetFailure struct {
 	Error  string
 }
 
-// statusJSONEntry is the --json shape for one target: either the fields
-// from statusinfo.Status, or just Target+Error when that target couldn't
-// be reached.
+// statusJSONEntry is the --json shape for one target.
 type statusJSONEntry struct {
 	Target         string   `json:"target"`
 	CurrentVersion uint64   `json:"current_version,omitempty"`
 	HasVersion     bool     `json:"has_version,omitempty"`
 	Dirty          bool     `json:"dirty,omitempty"`
 	Pending        []string `json:"pending,omitempty"`
+	Unconfigured   bool     `json:"unconfigured,omitempty"`
 	Error          string   `json:"error,omitempty"`
-}
-
-// buildStatusEntries merges successful and failed target results into one
-// ordered slice for --json output.
-func buildStatusEntries(statuses []statusinfo.Status, failures []targetFailure) []statusJSONEntry {
-	entries := make([]statusJSONEntry, 0, len(statuses)+len(failures))
-	for _, s := range statuses {
-		entries = append(entries, statusJSONEntry{
-			Target:         s.Target,
-			CurrentVersion: s.CurrentVersion,
-			HasVersion:     s.HasVersion,
-			Dirty:          s.Dirty,
-			Pending:        s.Pending,
-		})
-	}
-	for _, f := range failures {
-		entries = append(entries, statusJSONEntry{Target: f.Target, Error: f.Error})
-	}
-	return entries
 }
 
 func collectStatuses(cfg *config.Config) ([]statusinfo.Status, []targetFailure) {
@@ -81,6 +66,10 @@ func collectStatuses(cfg *config.Config) ([]statusinfo.Status, []targetFailure) 
 func renderStatusTable(results []statusinfo.TargetResult) string {
 	var b strings.Builder
 	for _, r := range results {
+		if r.Unconfigured {
+			fmt.Fprintf(&b, "%-10s  [unconfigured]\n", r.Target)
+			continue
+		}
 		if r.Err != nil {
 			fmt.Fprintf(&b, "%-10s  error: %s\n", r.Target, r.Err.Error())
 			continue
@@ -99,25 +88,42 @@ func renderStatusTable(results []statusinfo.TargetResult) string {
 	return b.String()
 }
 
-func runStatus() error {
+func runStatus(targetNames ...string) error {
+	target := statusTarget
+	if len(targetNames) > 0 && targetNames[0] != "" {
+		target = targetNames[0]
+	}
 	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}
 
-	results := statusinfo.CollectAll(cfg, statusTarget, statusURL)
+	results := statusinfo.CollectAll(cfg, target, statusURL)
 
 	if jsonOutput {
-		var statuses []statusinfo.Status
-		var failures []targetFailure
+		entries := make([]statusJSONEntry, 0, len(results))
 		for _, r := range results {
-			if r.Err != nil {
-				failures = append(failures, targetFailure{Target: r.Target, Error: r.Err.Error()})
+			if r.Unconfigured {
+				entries = append(entries, statusJSONEntry{
+					Target:       r.Target,
+					Unconfigured: true,
+				})
+			} else if r.Err != nil {
+				entries = append(entries, statusJSONEntry{
+					Target: r.Target,
+					Error:  r.Err.Error(),
+				})
 			} else if r.Status != nil {
-				statuses = append(statuses, *r.Status)
+				entries = append(entries, statusJSONEntry{
+					Target:         r.Status.Target,
+					CurrentVersion: r.Status.CurrentVersion,
+					HasVersion:     r.Status.HasVersion,
+					Dirty:          r.Status.Dirty,
+					Pending:        r.Status.Pending,
+				})
 			}
 		}
-		b, err := json.Marshal(buildStatusEntries(statuses, failures))
+		b, err := json.Marshal(entries)
 		if err != nil {
 			return err
 		}

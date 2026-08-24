@@ -1,43 +1,49 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
-func TestBuildStatusEntries_MixedSuccessAndFailure(t *testing.T) {
-	statuses := []statusinfo.Status{
-		{Target: "local", CurrentVersion: 20260101000000, HasVersion: true, Dirty: false, Pending: nil},
-	}
-	failures := []targetFailure{
-		{Target: "prod", Error: `environment variable DBTOOLS_PROD_URL is not set`},
+func TestRenderStatusTable(t *testing.T) {
+	results := []statusinfo.TargetResult{
+		{
+			Target: "local",
+			Status: &statusinfo.Status{
+				Target:         "local",
+				CurrentVersion: 20260101000000,
+				HasVersion:     true,
+				Dirty:          false,
+				Pending:        nil,
+			},
+		},
+		{
+			Target:       "prod",
+			Unconfigured: true,
+		},
+		{
+			Target: "staging",
+			Status: &statusinfo.Status{
+				Target:         "staging",
+				CurrentVersion: 20260101000000,
+				HasVersion:     true,
+				Dirty:          true,
+				Pending:        []string{"20260102000000_add.up.sql"},
+			},
+		},
 	}
 
-	got := buildStatusEntries(statuses, failures)
+	out := renderStatusTable(results)
 
-	if len(got) != 2 {
-		t.Fatalf("buildStatusEntries() returned %d entries, want 2", len(got))
+	if !strings.Contains(out, "local       up to date") {
+		t.Errorf("rendered output missing local status: %s", out)
 	}
-	if got[0].Target != "local" || got[0].CurrentVersion != 20260101000000 || got[0].Error != "" {
-		t.Errorf("entry[0] = %+v, want a successful local entry with no error", got[0])
+	if !strings.Contains(out, "prod        [unconfigured]") {
+		t.Errorf("rendered output missing unconfigured prod status: %s", out)
 	}
-	if got[1].Target != "prod" || got[1].Error == "" {
-		t.Errorf("entry[1] = %+v, want a failed prod entry with a non-empty error", got[1])
-	}
-}
-
-func TestBuildStatusEntries_AllFailed(t *testing.T) {
-	failures := []targetFailure{
-		{Target: "staging", Error: "boom"},
-	}
-
-	got := buildStatusEntries(nil, failures)
-
-	if len(got) != 1 {
-		t.Fatalf("buildStatusEntries() returned %d entries, want 1", len(got))
-	}
-	if got[0].Target != "staging" || got[0].Error != "boom" {
-		t.Errorf("entry[0] = %+v, want {Target: staging, Error: boom}", got[0])
+	if !strings.Contains(out, "staging     1 pending [DIRTY]") {
+		t.Errorf("rendered output missing dirty staging status: %s", out)
 	}
 }

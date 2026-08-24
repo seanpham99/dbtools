@@ -1,12 +1,29 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
+
+// UnsetEnvError indicates a target's connection URL environment variable is not defined.
+type UnsetEnvError struct {
+	Target string
+	URLEnv string
+}
+
+func (e *UnsetEnvError) Error() string {
+	return fmt.Sprintf("target %q: environment variable %s is not set", e.Target, e.URLEnv)
+}
+
+// IsUnsetEnv reports whether err is an UnsetEnvError.
+func IsUnsetEnv(err error) bool {
+	var unset *UnsetEnvError
+	return errors.As(err, &unset)
+}
 
 // Target is one named database environment declared in dbtools.toml.
 // Its connection string is never stored in the file — URLEnv names the
@@ -68,7 +85,7 @@ func (c *Config) ResolveURL(targetName string) (string, error) {
 	}
 	url := os.Getenv(t.URLEnv)
 	if url == "" {
-		return "", fmt.Errorf("target %q: environment variable %s is not set", targetName, t.URLEnv)
+		return "", &UnsetEnvError{Target: targetName, URLEnv: t.URLEnv}
 	}
 	return url, nil
 }
