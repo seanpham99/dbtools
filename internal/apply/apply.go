@@ -27,6 +27,10 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
+	if t, ok := cfg.Targets[targetName]; !ok || !t.Protected {
+		_ = engine.EnsureDatabase(eng, url)
+	}
+
 	m, err := migrator.Open(url, cfg.MigrationsDir)
 	if err != nil {
 		return nil, err
