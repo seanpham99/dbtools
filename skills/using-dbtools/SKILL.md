@@ -35,15 +35,15 @@ dbtools up [--target local]
 # Apply pending migrations to named target (explicit target name)
 dbtools push <target_name>
 
-# Start/stop tool-owned ephemeral local MSSQL container
-dbtools start
+# Start/stop tool-owned ephemeral local database container (with readiness polling)
+dbtools start [--timeout 30s] [--no-wait]
 dbtools stop
 
-# Local-only reset: drop, recreate, replay migrations, run seed.sql
-dbtools reset
+# Reset unprotected target: drop, recreate, replay migrations, run seed.sql
+dbtools reset [target]
 
-# Check status of applied/pending migrations
-dbtools status [--json]
+# Check status of applied/pending migrations across targets or for a specific target
+dbtools status [target] [--json]
 
 # Comprehensive health, integrity, and drift check (read-only; exit 0 healthy, 1 error, 2 issues)
 dbtools doctor [target_name] [--json]
@@ -60,6 +60,9 @@ dbtools down <target_name> [N] [--preview] [--yes]
 
 # Ledger-only soft-revert (marks 'reverted', never data-destroying) — safe prod verb
 dbtools rollback <target_name> [--yes]
+
+# Force tracking version cursor and clear dirty state without executing SQL
+dbtools force <version> [--target target] [--yes]
 
 # Repair ledger status (replaces old 'stamp' command)
 dbtools repair <target_name> <version>:<status> --yes [--force]

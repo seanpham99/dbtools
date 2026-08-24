@@ -113,18 +113,19 @@ dbtools status
 | `new` | `dbtools new <name>` | Scaffolds timestamped `.up.sql` migration file. |
 | `up` | `dbtools up [--target <name>]` | Applies pending migrations to local target. Refuses protected/remote targets. |
 | `push` | `dbtools push <target> [--yes]` | Applies pending migrations to named remote target with explicit confirmation. |
-| `status` | `dbtools status [--json]` | Displays applied/pending migration status across all configured targets. |
+| `status` | `dbtools status [target] [--json]` | Displays applied/pending migration status across configured targets (`[unconfigured]` for unset env vars). |
 | `doctor` | `dbtools doctor [target] [--json]` | Strictly read-only health, integrity, drift, and security audit. Exit 0 healthy / 1 error / 2 issues. |
 | `plan` | `dbtools plan [--target X] [--json]` | Read-only preview of pending migrations + ledger drift, without applying anything. Agent/CI-friendly: exit 0 = safe to apply. |
 | `verify` | `dbtools verify <target> [--json]` | Non-destructive verification of ledger history and live database objects. Exit 0 clean / 1 error / 2 drift (content-hash mismatch or missing object). |
 | `down` | `dbtools down <target> [N] [--preview] [--yes]` | Applies `.down.sql` migrations in reverse order, recorded in the ledger. Protected targets require `--preview --yes`. |
 | `rollback` | `dbtools rollback <target> [--yes]` | Ledger-only soft-revert (marks `reverted`, never data-destroying). The safe prod verb. |
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
-| `reset` | `dbtools reset [--target local] [--yes]` | Local-only: drops database, replays all migrations from zero, and executes `seed.sql`. |
+| `force` | `dbtools force <version> [--target <target>] [--yes]` | Sets tracking version cursor and clears dirty state without running migration SQL. |
+| `reset` | `dbtools reset [target] [--yes]` | Unprotected targets: drops database, replays all migrations from zero, and executes `seed.sql`. |
 | `generate` | `dbtools generate [target] [--lang python\|ts] [--zod] [--out file]` | Introspects live schema and renders Pydantic v2 models (`python`, default) or Supabase-style TypeScript interfaces (`ts`; `--zod` adds zod schemas). |
 | `lint` | `dbtools lint [--dir <path>] [--json]` | Validates filenames, duplicate versions, and empty files without database connection. |
 | `dashboard` | `dbtools dashboard` | Opens terminal UI showing live target status (`r` to refresh, `q` to quit). |
-| `start` / `stop` | `dbtools start` / `stop` | Starts or stops ephemeral tool-owned local MSSQL Docker container. |
+| `start` / `stop` | `dbtools start [--timeout 30s] [--no-wait]` / `stop` | Starts or stops ephemeral tool-owned local database Docker container with readiness polling. |
 
 ---
 
