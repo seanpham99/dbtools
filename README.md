@@ -17,6 +17,7 @@
 - **Rollback & Down Migrations**: `dbtools down` applies `.down.sql` files in reverse; `dbtools rollback` is a ledger-only soft-revert — the safe prod verb. Destructive ops on protected targets require `--preview --yes`.
 - **Agent-First Ergonomics**: Terraform-style exit-code contract (`0` clean / `1` error / `2` pending changes or drift), `--dry-run` previews, universal `--json`, and `DBTOOLS_NO_PROMPT=1` fail-closed mode for CI and AI agents. See [docs/exit-codes.md](docs/exit-codes.md).
 - **Environment & Target Protection**: Targets are defined in `dbtools.toml` by environment variable names (`url_env`), ensuring secrets never leak into version control. Protected targets reject destructive operations (`up`, `reset`, and `down` without `--preview --yes`).
+- **Private-Network Job Execution & Structured Logging**: `--log-format=json` (or `DBTOOLS_LOG_FORMAT=json`), PostgreSQL server `NOTICE` forwarding, character-offset error position translation with carets, and `SQLSTATE 42501` permission self-diagnostics for headless jobs. See [skills/using-dbtools/private-network-jobs.md](skills/using-dbtools/private-network-jobs.md).
 - **Python & TypeScript Type Generation**: `dbtools generate` introspects live database schemas and emits clean, versioned `pydantic.BaseModel` classes or Supabase-style TypeScript interfaces (+ optional zod schemas) for services, ETL jobs, and data pipelines.
 - **Interactive TUI Dashboard**: Built-in terminal dashboard powered by Bubble Tea for real-time migration observability.
 
@@ -44,7 +45,9 @@ docker run --rm -v "$(pwd)":/workspace ghcr.io/seanpham99/dbtools:0.4.0 status
 
 `linux/amd64`/`linux/arm64`, ships on `gcr.io/distroless/static` (CA
 certs included). See [skills/using-dbtools/docker-image.md](skills/using-dbtools/docker-image.md)
-for the build-`FROM` pattern used by private-network job runners.
+for the build-`FROM` pattern used by private-network job runners, and
+[skills/using-dbtools/private-network-jobs.md](skills/using-dbtools/private-network-jobs.md)
+for running in container jobs.
 
 ### Via Go Install
 
