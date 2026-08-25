@@ -20,6 +20,7 @@ nuance than a table row can hold, read the matching file before using them:
 | Exit-code contract (`plan`/`verify`/`up`/`down`) and CI/agent loop pattern | `ci-gate.md` |
 | `dbtools generate` — Pydantic/TS codegen, `--check` CI drift gate | `codegen.md` |
 | MySQL `url_env` connection-string format and gotchas | `mysql.md` |
+| Container lifecycle project scoping, ports, volume persistence | `container.md` |
 
 ## Terminology & Key Concepts
 
@@ -49,12 +50,18 @@ dbtools up [--target local]
 # Apply pending migrations to named target (explicit target name)
 dbtools push <target_name>
 
-# Start/stop tool-owned ephemeral local database container (with readiness polling)
+# Start/stop/restart the tool-owned local database container (project-scoped
+# name and port; data survives stop unless --no-backup is passed)
 dbtools start [--timeout 30s] [--no-wait]
-dbtools stop
+dbtools stop [--no-backup]
+dbtools restart [--timeout 30s] [--no-wait]
+
+# Stream logs from the tool-owned local database container
+dbtools logs [-f]
 
 # Reset unprotected target: drop, recreate, replay migrations, run seed.sql
 dbtools reset [target]
+
 
 # Check status of applied/pending migrations across targets or for a specific target
 dbtools status [target] [--json]
