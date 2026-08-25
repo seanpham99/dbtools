@@ -4,6 +4,7 @@ package container
 import (
 	"errors"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -87,22 +88,9 @@ func TestSpecFor_UnknownEngineListsSupported(t *testing.T) {
 	if err == nil {
 		t.Fatal("specFor(oracle) returned nil error, want error")
 	}
-	if got := err.Error(); !(contains(got, "mssql") && contains(got, "postgres") && contains(got, "mysql")) {
+	if got := err.Error(); !(strings.Contains(got, "mssql") && strings.Contains(got, "postgres") && strings.Contains(got, "mysql")) {
 		t.Fatalf("specFor(oracle) error = %q, want it to list mssql, postgres, and mysql", got)
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || indexOf(s, substr) >= 0)
-}
-
-func indexOf(s, substr string) int {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }
 
 func TestParseInspectOutputNoSuchContainer(t *testing.T) {
