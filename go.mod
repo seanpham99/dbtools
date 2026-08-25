@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/charmbracelet/bubbles v0.20.0
 	github.com/charmbracelet/bubbletea v1.2.4
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/lib/pq v1.12.3
 	github.com/microsoft/go-mssqldb v1.0.0
