@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/seanpham99/dbtools/internal/rollback"
 	"github.com/spf13/cobra"
 )
@@ -68,18 +69,18 @@ func runRollback(targetName string, steps int) error {
 	}
 
 	if len(res.RevertedVersions) == 0 {
-		fmt.Printf("%s: no applied migrations to soft-revert\n", targetName)
+		logger.Infof("%s: no applied migrations to soft-revert", targetName)
 		return nil
 	}
 
-	fmt.Printf("%s: soft-reverted %d migration(s) in ledger (no tables dropped)\n", targetName, len(res.RevertedVersions))
+	logger.Infof("%s: soft-reverted %d migration(s) in ledger (no tables dropped)", targetName, len(res.RevertedVersions))
 	for _, v := range res.RevertedVersions {
-		fmt.Printf("  marked v%d reverted\n", v)
+		logger.Infof("  marked v%d reverted", v)
 	}
 	if res.HasCursor {
-		fmt.Printf("%s: cursor recomputed to version %d\n", targetName, res.NewCursor)
+		logger.Infof("%s: cursor recomputed to version %d", targetName, res.NewCursor)
 	} else {
-		fmt.Printf("%s: no applied migrations remaining\n", targetName)
+		logger.Infof("%s: no applied migrations remaining", targetName)
 	}
 	return nil
 }

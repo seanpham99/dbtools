@@ -6,6 +6,7 @@ import (
 
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/seanpham99/dbtools/internal/statusinfo"
 	"github.com/spf13/cobra"
 )
@@ -66,15 +67,15 @@ func runPush(targetName string) error {
 			fmt.Println(string(b))
 			return nil
 		}
-		fmt.Printf("%s: already up to date, nothing to push\n", targetName)
+		logger.Infof("%s: already up to date, nothing to push", targetName)
 		return nil
 	}
 
 	if !pushYes {
 		if !jsonOutput {
-			fmt.Printf("%s: %d pending migration(s):\n", targetName, len(preview.Pending))
+			logger.Infof("%s: %d pending migration(s):", targetName, len(preview.Pending))
 			for _, f := range preview.Pending {
-				fmt.Printf("  %s\n", f)
+				logger.Infof("  %s", f)
 			}
 		}
 		return fmt.Errorf("refusing to push migrations to %q without --yes", targetName)
@@ -94,7 +95,7 @@ func runPush(targetName string) error {
 		return nil
 	}
 
-	fmt.Printf("%s: now at version %d (%d pending)\n", status.Target, status.CurrentVersion, len(status.Pending))
+	logger.Infof("%s: now at version %d (%d pending)", status.Target, status.CurrentVersion, len(status.Pending))
 	return nil
 }
 

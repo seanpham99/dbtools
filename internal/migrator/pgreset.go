@@ -14,6 +14,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/lib/pq"
+	"github.com/seanpham99/dbtools/internal/logger"
 )
 
 // openPostgresResetDriver builds the postgres driver for rawURL and wraps
@@ -30,7 +31,7 @@ func openPostgresResetDriver(rawURL string) (database.Driver, error) {
 		return nil, fmt.Errorf("creating postgres connector: %w", err)
 	}
 	nhConnector := pq.ConnectorWithNoticeHandler(connector, func(n *pq.Error) {
-		fmt.Printf("postgres: %s: %s\n", n.Severity, n.Message)
+		logger.Infof("postgres: %s: %s", n.Severity, n.Message)
 	})
 	db := sql.OpenDB(nhConnector)
 	inner, err := postgres.WithInstance(db, &postgres.Config{})

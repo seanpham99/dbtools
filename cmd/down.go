@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/seanpham99/dbtools/internal/down"
+	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/spf13/cobra"
 )
@@ -77,12 +78,12 @@ func runDown(targetName string, steps int) error {
 			return nil
 		}
 		if len(plan) == 0 {
-			fmt.Printf("%s: no applied migrations to revert (preview)\n", targetName)
+			logger.Infof("%s: no applied migrations to revert (preview)", targetName)
 			return nil
 		}
-		fmt.Printf("%s: %d down migration(s) would be executed:\n", targetName, len(plan))
+		logger.Infof("%s: %d down migration(s) would be executed:", targetName, len(plan))
 		for _, f := range plan {
-			fmt.Printf("  %s\n", f.Filename)
+			logger.Infof("  %s", f.Filename)
 		}
 		return nil
 	}
@@ -101,15 +102,15 @@ func runDown(targetName string, steps int) error {
 			fmt.Println(string(b))
 			return nil
 		}
-		fmt.Printf("%s: no applied migrations to revert\n", targetName)
+		logger.Infof("%s: no applied migrations to revert", targetName)
 		return nil
 	}
 
 	if target.Protected {
 		if !jsonOutput {
-			fmt.Printf("%s: [PROTECTED TARGET] %d down migration(s) will be executed:\n", targetName, len(plan))
+			logger.Infof("%s: [PROTECTED TARGET] %d down migration(s) will be executed:", targetName, len(plan))
 			for _, f := range plan {
-				fmt.Printf("  %s\n", f.Filename)
+				logger.Infof("  %s", f.Filename)
 			}
 		}
 		if !downYes {
@@ -131,14 +132,14 @@ func runDown(targetName string, steps int) error {
 		return nil
 	}
 
-	fmt.Printf("%s: reverted %d migration(s)\n", targetName, len(res.RevertedVersions))
+	logger.Infof("%s: reverted %d migration(s)", targetName, len(res.RevertedVersions))
 	for _, v := range res.RevertedVersions {
-		fmt.Printf("  reverted v%d\n", v)
+		logger.Infof("  reverted v%d", v)
 	}
 	if res.HasVersion {
-		fmt.Printf("%s: now at version %d\n", targetName, res.CurrentVersion)
+		logger.Infof("%s: now at version %d", targetName, res.CurrentVersion)
 	} else {
-		fmt.Printf("%s: no migrations remaining (version 0)\n", targetName)
+		logger.Infof("%s: no migrations remaining (version 0)", targetName)
 	}
 	return nil
 }
