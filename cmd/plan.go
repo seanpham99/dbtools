@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/config"
@@ -18,12 +19,22 @@ import (
 var planCmd = &cobra.Command{
 	Use:   "plan",
 	Short: "Preview pending migrations and drift without applying anything (read-only)",
-	// Exit 2 (pending/drift) is a documented, expected outcome of a
-	// correct run, not a usage mistake — cobra's default usage-block dump
-	// on any non-nil error trains agents and CI logs to ignore stderr.
-	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runPlan()
+		// Reset explicitly: cmd is a package-level singleton, so a prior
+		// invocation's exit-2 outcome (which sets this true, below) would
+		// otherwise leak into every later invocation in the same process
+		// — including, notably, every other test in this package's suite.
+		cmd.SilenceUsage = false
+		err := runPlan()
+		// Exit 2 (pending/drift) is a documented, expected outcome of a
+		// correct run, not a usage mistake — only silence usage for that
+		// specific case, so an actual invalid-flag/argument error (which
+		// cobra also routes through this same error path) still shows it.
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 

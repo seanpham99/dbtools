@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,11 +16,20 @@ var statusCmd = &cobra.Command{
 	Short: "Show migration status for every configured target (or a single target)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// See plan's identical rationale for this explicit reset.
+		cmd.SilenceUsage = false
 		target := statusTarget
 		if len(args) > 0 && args[0] != "" {
 			target = args[0]
 		}
-		return runStatus(target)
+		err := runStatus(target)
+		// A target connection failure is a documented exit-1 outcome
+		// (see #55), not a usage mistake — same rationale as plan/verify.
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 

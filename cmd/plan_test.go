@@ -209,3 +209,33 @@ func TestPlanCommand_SilencesUsageOnExit2(t *testing.T) {
 		t.Fatalf("plan's exit-2 outcome printed the cobra usage block: %s", stderr.String())
 	}
 }
+
+// TestPlanCommand_UnknownFlagStillPrintsUsage guards against RunE's
+// exit-2 usage-silencing bleeding into cobra's own flag-parsing errors —
+// SilenceUsage must only be set for the documented ExitCodeError case,
+// not unconditionally on the command.
+func TestPlanCommand_UnknownFlagStillPrintsUsage(t *testing.T) {
+	// planCmd is a package-level singleton: an earlier test's exit-2 case
+	// may have left SilenceUsage set from a prior invocation. A flag-parse
+	// error never reaches RunE (where that flag gets reset per-invocation),
+	// so this test must restore known state itself.
+	origSilenceUsage := planCmd.SilenceUsage
+	planCmd.SilenceUsage = false
+	t.Cleanup(func() { planCmd.SilenceUsage = origSilenceUsage })
+
+	// Cobra writes the error via PrintErrln (stderr) but the usage block
+	// via Println (stdout) — capture both into one buffer so the
+	// assertion doesn't depend on which stream cobra picks.
+	var out strings.Builder
+	rootCmd.SetErr(&out)
+	rootCmd.SetOut(&out)
+	t.Cleanup(func() { rootCmd.SetErr(nil); rootCmd.SetOut(nil) })
+
+	rootCmd.SetArgs([]string{"plan", "--no-such-flag"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("plan --no-such-flag returned nil error, want a flag-parsing error")
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("plan with an invalid flag did not print usage: %s", out.String())
+	}
+}

@@ -1,6 +1,7 @@
 package localenv
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,13 +23,21 @@ func Path() string {
 // accidentally commit the generated local database password Write puts
 // in local.env on the next `git add -A`. Self-ignoring — no edit to the
 // project's own root .gitignore needed. Never overwrites an existing
-// file, in case a user has customized it.
+// file, in case a user has customized it — created with O_EXCL so a
+// concurrent dbtools process racing to create the same file loses the
+// write cleanly (ErrExist) rather than one process's WriteFile silently
+// truncating the other's already-written content.
 func ensureGitignored() error {
 	path := filepath.Join(Dir, ".gitignore")
-	if _, err := os.Stat(path); err == nil {
-		return nil
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil
+		}
+		return fmt.Errorf("writing %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, []byte(gitignoreContents), 0o644); err != nil {
+	defer f.Close()
+	if _, err := f.WriteString(gitignoreContents); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	return nil
