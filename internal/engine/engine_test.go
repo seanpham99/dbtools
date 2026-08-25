@@ -46,6 +46,26 @@ func TestForURL(t *testing.T) {
 	}
 }
 
+func TestForURL_PostgresqlSchemeAliasesToPostgres(t *testing.T) {
+	withFake(t, "postgres")
+
+	e, err := ForURL("postgresql://user:pass@host:5432/db?sslmode=disable")
+	if err != nil {
+		t.Fatalf("ForURL(postgresql://...) returned error: %v", err)
+	}
+	if e.Name() != "postgres" {
+		t.Fatalf("ForURL(postgresql://...) resolved %q, want postgres", e.Name())
+	}
+}
+
+func TestForTarget_PostgresqlSchemeMatchesConfiguredPostgresEngine(t *testing.T) {
+	withFake(t, "postgres")
+
+	if _, err := ForTarget("postgres", "postgresql://user:pass@host:5432/db"); err != nil {
+		t.Fatalf("ForTarget(postgres, postgresql://...) returned error: %v, want nil (postgresql is an alias for postgres)", err)
+	}
+}
+
 func TestForTarget(t *testing.T) {
 	withFake(t, "fakedb")
 
