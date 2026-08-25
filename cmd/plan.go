@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/config"
@@ -19,7 +20,21 @@ var planCmd = &cobra.Command{
 	Use:   "plan",
 	Short: "Preview pending migrations and drift without applying anything (read-only)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runPlan()
+		// Reset explicitly: cmd is a package-level singleton, so a prior
+		// invocation's exit-2 outcome (which sets this true, below) would
+		// otherwise leak into every later invocation in the same process
+		// — including, notably, every other test in this package's suite.
+		cmd.SilenceUsage = false
+		err := runPlan()
+		// Exit 2 (pending/drift) is a documented, expected outcome of a
+		// correct run, not a usage mistake — only silence usage for that
+		// specific case, so an actual invalid-flag/argument error (which
+		// cobra also routes through this same error path) still shows it.
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 
@@ -35,7 +50,7 @@ func init() {
 // planJSONEntry is one target's plan row.
 type planJSONEntry struct {
 	Target         string   `json:"target"`
-	CurrentVersion uint64   `json:"current_version,omitempty"`
+	CurrentVersion uint64   `json:"current_version"`
 	HasVersion     bool     `json:"has_version,omitempty"`
 	Dirty          bool     `json:"dirty,omitempty"`
 	Pending        []string `json:"pending,omitempty"`

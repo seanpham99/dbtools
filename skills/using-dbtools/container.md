@@ -47,6 +47,12 @@ supports** (currently mssql and postgres only — `dbtools reset` on a MySQL
 target errors with "reset does not support engine \"mysql\"", a known,
 separate gap from container lifecycle).
 
+`dbtools start`/`restart` write the resolved connection URL — including
+the local container's generated password — to `.dbtools/local.env`.
+`.dbtools/.gitignore` (contents: `*`) is created automatically the first
+time that happens, so the directory is self-ignoring even in a project
+that hasn't already excluded it. Never overwritten if it already exists.
+
 ## Commands
 
 - `dbtools restart [--timeout] [--no-wait]` — `stop` then `start`, same

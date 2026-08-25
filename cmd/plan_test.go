@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,5 +100,142 @@ func TestPlanJSONPreview(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("plan drift = %v, want an entry mentioning the edited migration 20260817000001", entries[0].Drift)
+	}
+}
+
+// TestPlanJSON_CurrentVersionZeroIsSerialized guards against `omitempty`
+// dropping a legitimately-applied version 0 from the JSON contract (a
+// squash-to-baseline migration named e.g. 00000000000000_baseline.up.sql
+// applies at version 0 — not a contrived input). A consumer must be able
+// to see current_version:0 in the output, not have the key vanish.
+func TestPlanJSON_CurrentVersionZeroIsSerialized(t *testing.T) {
+	dir := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll("migrations", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("migrations", "00000000000000_baseline.up.sql"), []byte(`CREATE TABLE baseline (id INTEGER PRIMARY KEY);`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbURL := "sqlite://" + filepath.Join(dir, "local.db")
+	t.Setenv("DBTOOLS_LOCAL_URL", dbURL)
+	cfg := &config.Config{
+		MigrationsDir: "migrations",
+		Targets:       map[string]config.Target{"local": {URLEnv: "DBTOOLS_LOCAL_URL"}},
+	}
+	loadConfig = func(string) (*config.Config, error) { return cfg, nil }
+	t.Cleanup(func() { loadConfig = config.Load })
+
+	if _, err := apply.Run(cfg, "local", ""); err != nil {
+		t.Fatalf("apply.Run() returned error: %v", err)
+	}
+
+	planTarget = "local"
+	defer func() { planTarget = "" }()
+
+	entries := buildPlanEntries(cfg)
+	if len(entries) != 1 {
+		t.Fatalf("plan entries = %d, want 1", len(entries))
+	}
+	if !entries[0].HasVersion {
+		t.Fatalf("plan has_version = false after applying version 0, want true")
+	}
+	if entries[0].CurrentVersion != 0 {
+		t.Fatalf("plan current_version = %d, want 0", entries[0].CurrentVersion)
+	}
+
+	b, err := json.Marshal(entries[0])
+	if err != nil {
+		t.Fatalf("json.Marshal() returned error: %v", err)
+	}
+	if !strings.Contains(string(b), `"current_version":0`) {
+		t.Fatalf("marshaled plan entry = %s, want it to contain \"current_version\":0 (omitempty must not drop a real version-0 result)", b)
+	}
+}
+
+// TestPlanCommand_SilencesUsageOnExit2 guards against cobra's default
+// usage-block dump when plan's RunE returns its documented exit-2 error
+// for pending migrations — that outcome is a correct, expected result of
+// a read-only preview, not a flag/argument mistake, and printing the full
+// flags block trains agents/CI logs to ignore stderr.
+func TestPlanCommand_SilencesUsageOnExit2(t *testing.T) {
+	dir := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll("migrations", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("migrations", "20260817000001_users.up.sql"), []byte(`CREATE TABLE users (id INTEGER PRIMARY KEY);`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbURL := "sqlite://" + filepath.Join(dir, "local.db")
+	t.Setenv("DBTOOLS_LOCAL_URL", dbURL)
+	cfg := &config.Config{
+		MigrationsDir: "migrations",
+		Targets:       map[string]config.Target{"local": {URLEnv: "DBTOOLS_LOCAL_URL"}},
+	}
+	loadConfig = func(string) (*config.Config, error) { return cfg, nil }
+	t.Cleanup(func() { loadConfig = config.Load })
+	t.Cleanup(func() { planTarget = "" })
+
+	var stderr strings.Builder
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetOut(&strings.Builder{})
+	t.Cleanup(func() { rootCmd.SetErr(nil); rootCmd.SetOut(nil) })
+
+	rootCmd.SetArgs([]string{"plan", "--target", "local"})
+	err = rootCmd.Execute()
+	if err == nil {
+		t.Fatal("plan with a pending migration returned nil error, want the documented exit-2 error")
+	}
+	if strings.Contains(stderr.String(), "Usage:") {
+		t.Fatalf("plan's exit-2 outcome printed the cobra usage block: %s", stderr.String())
+	}
+}
+
+// TestPlanCommand_UnknownFlagStillPrintsUsage guards against RunE's
+// exit-2 usage-silencing bleeding into cobra's own flag-parsing errors —
+// SilenceUsage must only be set for the documented ExitCodeError case,
+// not unconditionally on the command.
+func TestPlanCommand_UnknownFlagStillPrintsUsage(t *testing.T) {
+	// planCmd is a package-level singleton: an earlier test's exit-2 case
+	// may have left SilenceUsage set from a prior invocation. A flag-parse
+	// error never reaches RunE (where that flag gets reset per-invocation),
+	// so this test must restore known state itself.
+	origSilenceUsage := planCmd.SilenceUsage
+	planCmd.SilenceUsage = false
+	t.Cleanup(func() { planCmd.SilenceUsage = origSilenceUsage })
+
+	// Cobra writes the error via PrintErrln (stderr) but the usage block
+	// via Println (stdout) — capture both into one buffer so the
+	// assertion doesn't depend on which stream cobra picks.
+	var out strings.Builder
+	rootCmd.SetErr(&out)
+	rootCmd.SetOut(&out)
+	t.Cleanup(func() { rootCmd.SetErr(nil); rootCmd.SetOut(nil) })
+
+	rootCmd.SetArgs([]string{"plan", "--no-such-flag"})
+	if err := rootCmd.Execute(); err == nil {
+		t.Fatal("plan --no-such-flag returned nil error, want a flag-parsing error")
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("plan with an invalid flag did not print usage: %s", out.String())
 	}
 }

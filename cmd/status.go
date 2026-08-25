@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,11 +16,20 @@ var statusCmd = &cobra.Command{
 	Short: "Show migration status for every configured target (or a single target)",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// See plan's identical rationale for this explicit reset.
+		cmd.SilenceUsage = false
 		target := statusTarget
 		if len(args) > 0 && args[0] != "" {
 			target = args[0]
 		}
-		return runStatus(target)
+		err := runStatus(target)
+		// A target connection failure is a documented exit-1 outcome
+		// (see #55), not a usage mistake — same rationale as plan/verify.
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 
@@ -41,7 +51,7 @@ type targetFailure struct {
 // statusJSONEntry is the --json shape for one target.
 type statusJSONEntry struct {
 	Target         string   `json:"target"`
-	CurrentVersion uint64   `json:"current_version,omitempty"`
+	CurrentVersion uint64   `json:"current_version"`
 	HasVersion     bool     `json:"has_version,omitempty"`
 	Dirty          bool     `json:"dirty,omitempty"`
 	Pending        []string `json:"pending,omitempty"`
@@ -100,6 +110,14 @@ func runStatus(targetNames ...string) error {
 
 	results := statusinfo.CollectAll(cfg, target, statusURL)
 
+	var connErr error
+	for _, r := range results {
+		if r.Err != nil {
+			connErr = r.Err
+			break
+		}
+	}
+
 	if jsonOutput {
 		entries := make([]statusJSONEntry, 0, len(results))
 		for _, r := range results {
@@ -128,9 +146,15 @@ func runStatus(targetNames ...string) error {
 			return err
 		}
 		fmt.Println(string(b))
+		if connErr != nil {
+			return ExitCode(1, "")
+		}
 		return nil
 	}
 
 	fmt.Print(renderStatusTable(results))
+	if connErr != nil {
+		return ExitCode(1, "")
+	}
 	return nil
 }

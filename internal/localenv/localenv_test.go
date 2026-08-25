@@ -2,6 +2,7 @@ package localenv
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -33,6 +34,46 @@ func TestWriteAndLoad(t *testing.T) {
 	}
 	if got["DBTOOLS_LOCAL_URL"] != "mssql://sa:pw@localhost:14330?database=dbtools_local" {
 		t.Fatalf("Load()[DBTOOLS_LOCAL_URL] = %q, want %q", got["DBTOOLS_LOCAL_URL"], "mssql://sa:pw@localhost:14330?database=dbtools_local")
+	}
+}
+
+func TestWrite_CreatesSelfIgnoringGitignore(t *testing.T) {
+	chdirTemp(t)
+
+	if err := Write(map[string]string{"DBTOOLS_LOCAL_URL": "postgres://postgres:pw@localhost:5432/dbtools_local"}); err != nil {
+		t.Fatalf("Write() returned error: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(Dir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("reading %s/.gitignore returned error: %v (Write must create it so local.env's generated password is never committed)", Dir, err)
+	}
+	if string(got) != "*\n" {
+		t.Fatalf("%s/.gitignore contents = %q, want %q", Dir, got, "*\n")
+	}
+}
+
+func TestWrite_NeverOverwritesExistingGitignore(t *testing.T) {
+	chdirTemp(t)
+
+	if err := os.MkdirAll(Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	custom := "# custom, do not touch\n"
+	if err := os.WriteFile(filepath.Join(Dir, ".gitignore"), []byte(custom), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Write(map[string]string{"DBTOOLS_LOCAL_URL": "postgres://postgres:pw@localhost:5432/dbtools_local"}); err != nil {
+		t.Fatalf("Write() returned error: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(Dir, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != custom {
+		t.Fatalf("%s/.gitignore contents = %q, want unchanged %q", Dir, got, custom)
 	}
 }
 

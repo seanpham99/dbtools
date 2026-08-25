@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/engine"
@@ -15,7 +16,16 @@ var verifyCmd = &cobra.Command{
 	Short: "Check for drift between the migration ledger and the live database",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runVerify(args[0])
+		// See plan's identical rationale for this explicit reset.
+		cmd.SilenceUsage = false
+		err := runVerify(args[0])
+		// See plan's identical rationale: only silence usage for the
+		// documented exit-2 outcome, not for a real invalid-argument error.
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 

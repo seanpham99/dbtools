@@ -109,13 +109,33 @@ func ForName(name string) (Engine, error) {
 	return e, nil
 }
 
+// schemeAliases maps a connection-string scheme onto the engine name it
+// should resolve to, for schemes that name the same engine as a
+// registered one but don't match it literally. "postgresql://" is the
+// canonical libpq URI scheme (accepted by pg_dump, Azure Database for
+// PostgreSQL, Prisma, and Docker's own POSTGRES_* examples) and is at
+// least as common in the wild as "postgres://", which is the only form
+// dbtools registers its engine under.
+var schemeAliases = map[string]string{
+	"postgresql": "postgres",
+}
+
+// normalizeScheme maps scheme onto its canonical registered engine name,
+// or returns it unchanged when it isn't an alias.
+func normalizeScheme(scheme string) string {
+	if canonical, ok := schemeAliases[scheme]; ok {
+		return canonical
+	}
+	return scheme
+}
+
 // ForURL resolves the engine for rawURL by its scheme.
 func ForURL(rawURL string) (Engine, error) {
 	scheme := migrator.SchemeOf(rawURL)
 	if scheme == "" {
 		return nil, fmt.Errorf("connection URL has no scheme (want one of %v, e.g. mssql://...)", Names())
 	}
-	return ForName(scheme)
+	return ForName(normalizeScheme(scheme))
 }
 
 // ForTarget resolves the engine for a target, cross-checking the
