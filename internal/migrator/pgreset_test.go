@@ -71,3 +71,10 @@ func TestPgResetDriver_DelegatesTheRest(t *testing.T) {
 		t.Errorf("Drop() returned error: %v", err)
 	}
 }
+
+func TestOpenPostgresResetDriver_BadURL(t *testing.T) {
+	_, err := openPostgresResetDriver("postgres://invalid:port:is:bad")
+	if err == nil {
+		t.Fatalf("openPostgresResetDriver() expected error for invalid URL, got nil")
+	}
+}
