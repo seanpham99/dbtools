@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        db: [mssql, postgres, sqlite]
+        db: [mssql, postgres, sqlite, mysql]
     services:
       mssql:
         image: mcr.microsoft.com/mssql/server:2022-latest
@@ -89,6 +89,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: dbtools
+          MYSQL_DATABASE: dbtools_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -proot -h localhost"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
@@ -111,6 +123,7 @@ jobs:
           DBTOOLS_TEST_MSSQL_URL: ${{ matrix.db == 'mssql' && format('mssql://sa:{0}@localhost:1433?database=dbtools&TrustServerCertificate=true&x-migrations-table=schema_migrations', secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD) || '' }}
           DBTOOLS_TEST_POSTGRES_URL: ${{ matrix.db == 'postgres' && 'postgres://dbtools:dbtools@localhost:5432/dbtools_test?sslmode=disable' || '' }}
           DBTOOLS_TEST_SQLITE_URL: ${{ matrix.db == 'sqlite' && 'sqlite:///tmp/dbtools-it.db' || '' }}
+          DBTOOLS_TEST_MYSQL_URL: ${{ matrix.db == 'mysql' && 'mysql://root:dbtools@tcp(localhost:3306)/dbtools_test?parseTime=true&multiStatements=true' || '' }}
         run: |
           case "${{ matrix.db }}" in
             mssql)
@@ -123,5 +136,8 @@ jobs:
               ;;
             sqlite)
               go test -tags=integration ./internal/engine/sqliteengine/... -count=1
+              ;;
+            mysql)
+              go test -tags=integration ./internal/engine/mysqlengine/... -count=1
               ;;
           esac

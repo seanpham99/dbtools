@@ -33,7 +33,7 @@ same core.
 | v0.3 ✅ | **`doctor`** | Read-only health/security check: connectivity, version sync, ledger integrity, drift summary, dirty-ledger, basic security flags. Exit 0 clean / 1 error / 2 issues. |
 | v0.3 ✅ | **Real-data integration suite** | Committed classicmodels fixture corpus across sqlite/postgres/mssql, consolidated runner in `internal/testutil`, edge-case matrix, golden typegen. |
 | v0.3/4 | **Clone prod→dev** | Schema + data clone with config-driven masking. Masking on by default; raw copy requires explicit opt-out. |
-| v0.3/4 | **MySQL engine** | Add MySQL as a supported migration engine (golang-migrate has a mysql driver). classicmodels fixtures are MySQL-native — natural fit. Scheduled after v0.3 core. |
+| v0.3/4 ✅ | **MySQL engine** | Shipped: `internal/engine/mysqlengine`, mirroring the mssql/postgres/sqlite seam. classicmodels fixtures ported to MySQL with real FKs. Scope: TABLE/VIEW DDL detection only (no stored procedures — see the implementation plan for why); `internal/container` local-dev support not included. |
 | v0.4 | **Backup** | Table-stakes backup/restore. |
 | Mongo | **C → B → A** | Starts only after SQL is stable (gate = v0.2 shipped — met). See design below. |
 | launch | — | Public launch (announcements, directories) happens only after the v0.2/v0.3 features above. |

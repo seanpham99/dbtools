@@ -10,7 +10,7 @@
 
 ## Key Features
 
-- **Multi-Engine Support**: Native migration engines for SQL Server (MSSQL), PostgreSQL (with session reset isolation), and SQLite (file-based).
+- **Multi-Engine Support**: Native migration engines for SQL Server (MSSQL), PostgreSQL (with session reset isolation), MySQL, and SQLite (file-based).
 - **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
 - **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
 - **Rollback & Down Migrations**: `dbtools down` applies `.down.sql` files in reverse; `dbtools rollback` is a ledger-only soft-revert — the safe prod verb. Destructive ops on protected targets require `--preview --yes`.
@@ -72,7 +72,7 @@ migrations_dir = "migrations"
 
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"
-engine = "sqlite" # sqlite, postgres, or mssql
+engine = "sqlite" # sqlite, postgres, mssql, or mysql
 
 [targets.prod]
 url_env = "DBTOOLS_PROD_URL"
