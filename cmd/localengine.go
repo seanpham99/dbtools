@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"net/url"
-	"strings"
-
 	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // localEngineName determines which engine the "local" target uses, for
@@ -17,11 +15,8 @@ func localEngineName(cfg *config.Config) string {
 		return name
 	}
 	if rawURL, err := cfg.ResolveURL("local"); err == nil {
-		if idx := strings.Index(rawURL, "://"); idx > 0 {
-			return rawURL[:idx]
-		}
-		if u, err := url.Parse(rawURL); err == nil && u.Scheme != "" {
-			return u.Scheme
+		if scheme := migrator.SchemeOf(rawURL); scheme != "" {
+			return scheme
 		}
 	}
 	return "mssql"

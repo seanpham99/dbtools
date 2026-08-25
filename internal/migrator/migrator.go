@@ -3,9 +3,7 @@ package migrator
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"os"
-	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -28,12 +26,7 @@ type Migrator struct {
 // GO-splitting wrapper via their mssql:// scheme. Everything else uses
 // golang-migrate's scheme lookup.
 func Open(databaseURL, migrationsDir string) (*Migrator, error) {
-	scheme := ""
-	if idx := strings.Index(databaseURL, "://"); idx > 0 {
-		scheme = databaseURL[:idx]
-	} else if u, err := url.Parse(databaseURL); err == nil {
-		scheme = u.Scheme
-	}
+	scheme := SchemeOf(databaseURL)
 	if scheme == "postgres" || scheme == "postgresql" {
 		drv, err := openPostgresResetDriver(databaseURL)
 		if err != nil {
@@ -48,6 +41,9 @@ func Open(databaseURL, migrationsDir string) (*Migrator, error) {
 			return nil, fmt.Errorf("opening migrator: %w", err)
 		}
 		return &Migrator{m: m}, nil
+	}
+	if scheme == "mysql" {
+		databaseURL = ensureMySQLMultiStatements(databaseURL)
 	}
 
 	m, err := migrate.New("file://"+migrationsDir, databaseURL)
