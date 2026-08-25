@@ -88,5 +88,6 @@ GitHub Actions automatically runs integration tests against live MSSQL Server 20
 
 1. **Keep Changes Focused**: Make small, incremental PRs that address a single concern.
 2. **Ensure Clean History**: Write clear, descriptive commit messages following the Conventional Commits format (`feat:`, `fix:`, `docs:`, `ci:`, `test:`, `refactor:`). This matters beyond style: `release-please` reads these prefixes off `main` to compute version bumps and generate `CHANGELOG.md` (`fix:` → patch, `feat:` → minor, `feat!:`/`BREAKING CHANGE:` footer → major).
+   - **This repo merges PRs by squash**, which uses the **PR title** as the commit subject unless it's edited in the merge box — so the PR title itself needs the `type: description` prefix, not just the individual commits inside it. A CI check (`pr-title-lint.yml`) enforces this on every PR; a plain-English title like "Fix the thing" will fail it.
 3. **Verify Locally**: Confirm all tests pass locally before pushing.
 4. **Open PR**: Submit your PR targeting `main`. Describe what changes were made and how they were tested.
