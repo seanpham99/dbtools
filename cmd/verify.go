@@ -14,6 +14,9 @@ var verifyCmd = &cobra.Command{
 	Use:   "verify [target]",
 	Short: "Check for drift between the migration ledger and the live database",
 	Args:  cobra.ExactArgs(1),
+	// Exit 2 (drift) is a documented, expected outcome, not a usage
+	// mistake — see plan's identical rationale.
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runVerify(args[0])
 	},
