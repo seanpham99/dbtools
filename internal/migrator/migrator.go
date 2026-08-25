@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -28,7 +29,9 @@ type Migrator struct {
 // golang-migrate's scheme lookup.
 func Open(databaseURL, migrationsDir string) (*Migrator, error) {
 	scheme := ""
-	if u, err := url.Parse(databaseURL); err == nil {
+	if idx := strings.Index(databaseURL, "://"); idx > 0 {
+		scheme = databaseURL[:idx]
+	} else if u, err := url.Parse(databaseURL); err == nil {
 		scheme = u.Scheme
 	}
 	if scheme == "postgres" || scheme == "postgresql" {

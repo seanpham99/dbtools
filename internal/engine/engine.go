@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 
 	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/generate"
@@ -112,14 +113,20 @@ func ForName(name string) (Engine, error) {
 
 // ForURL resolves the engine for rawURL by its scheme.
 func ForURL(rawURL string) (Engine, error) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return nil, fmt.Errorf("parsing connection URL: %w", err)
+	scheme := ""
+	if idx := strings.Index(rawURL, "://"); idx > 0 {
+		scheme = rawURL[:idx]
+	} else {
+		u, err := url.Parse(rawURL)
+		if err != nil {
+			return nil, fmt.Errorf("parsing connection URL: %w", err)
+		}
+		scheme = u.Scheme
 	}
-	if u.Scheme == "" {
+	if scheme == "" {
 		return nil, fmt.Errorf("connection URL has no scheme (want one of %v, e.g. mssql://...)", Names())
 	}
-	return ForName(u.Scheme)
+	return ForName(scheme)
 }
 
 // ForTarget resolves the engine for a target, cross-checking the
