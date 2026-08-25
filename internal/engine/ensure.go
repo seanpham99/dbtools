@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/microsoft/go-mssqldb"
 )
@@ -32,6 +33,8 @@ func EnsureDatabase(eng Engine, rawURL string) error {
 		return ensurePostgresDatabase(rawURL)
 	case "mssql":
 		return ensureMSSQLDatabase(rawURL)
+	case "mysql":
+		return ensureMySQLDatabase(rawURL)
 	default:
 		return nil
 	}
@@ -143,6 +146,47 @@ func ensureMSSQLDatabase(rawURL string) error {
 	query := fmt.Sprintf("IF DB_ID(N'%s') IS NULL CREATE DATABASE [%s]", safeLiteral, safeName)
 	if _, err := mainDB.Exec(query); err != nil {
 		return fmt.Errorf("creating mssql database %q: %w", dbName, err)
+	}
+	return nil
+}
+
+func ensureMySQLDatabase(rawURL string) error {
+	cfg, err := mysql.ParseDSN(strings.TrimPrefix(rawURL, "mysql://"))
+	if err != nil {
+		return nil
+	}
+	dbName := cfg.DBName
+	if dbName == "" {
+		return nil
+	}
+	cfg.ParseTime = true
+
+	// First test if target DB already exists and is reachable.
+	testDB, err := sql.Open("mysql", cfg.FormatDSN())
+	if err == nil {
+		if pingErr := testDB.Ping(); pingErr == nil {
+			testDB.Close()
+			return nil
+		}
+		testDB.Close()
+	}
+
+	// Connect without a default database to run the administrative CREATE.
+	adminCfg := *cfg
+	adminCfg.DBName = ""
+	mainDB, err := sql.Open("mysql", adminCfg.FormatDSN())
+	if err != nil {
+		return nil
+	}
+	defer mainDB.Close()
+
+	if err := mainDB.Ping(); err != nil {
+		return nil
+	}
+
+	safeName := strings.ReplaceAll(dbName, "`", "``")
+	if _, err := mainDB.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", safeName)); err != nil {
+		return fmt.Errorf("creating mysql database %q: %w", dbName, err)
 	}
 	return nil
 }

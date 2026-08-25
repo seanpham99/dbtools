@@ -6,13 +6,18 @@ import (
 	"net/url"
 	"strings"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/microsoft/go-mssqldb"
 	_ "modernc.org/sqlite"
 )
 
-// Open opens a database connection for tests across MSSQL, Postgres, or SQLite.
+// Open opens a database connection for tests across MSSQL, Postgres, SQLite, or MySQL.
 func Open(rawURL string) (*sql.DB, error) {
+	if strings.HasPrefix(rawURL, "mysql://") {
+		dsn := strings.TrimPrefix(rawURL, "mysql://")
+		return sql.Open("mysql", dsn)
+	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("parsing URL: %w", err)
@@ -31,6 +36,8 @@ func Open(rawURL string) (*sql.DB, error) {
 	case "sqlite", "file":
 		path := strings.TrimPrefix(rawURL, "sqlite://")
 		return sql.Open("sqlite", path)
+	case "mysql":
+		return sql.Open("mysql", strings.TrimPrefix(rawURL, "mysql://"))
 	default:
 		return nil, fmt.Errorf("unsupported testdb scheme: %s", u.Scheme)
 	}

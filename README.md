@@ -10,7 +10,7 @@
 
 ## Key Features
 
-- **Multi-Engine Support**: Native migration engines for SQL Server (MSSQL), PostgreSQL (with session reset isolation), and SQLite (file-based).
+- **Multi-Engine Support**: Native migration engines for SQL Server (MSSQL), PostgreSQL (with session reset isolation), MySQL, and SQLite (file-based).
 - **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
 - **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
 - **Rollback & Down Migrations**: `dbtools down` applies `.down.sql` files in reverse; `dbtools rollback` is a ledger-only soft-revert — the safe prod verb. Destructive ops on protected targets require `--preview --yes`.
@@ -72,7 +72,7 @@ migrations_dir = "migrations"
 
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"
-engine = "sqlite" # sqlite, postgres, or mssql
+engine = "sqlite" # sqlite, postgres, mssql, or mysql
 
 [targets.prod]
 url_env = "DBTOOLS_PROD_URL"
@@ -123,6 +123,7 @@ dbtools status
 | `force` | `dbtools force <version> [--target <target>] [--yes]` | Sets tracking version cursor and clears dirty state without running migration SQL. |
 | `reset` | `dbtools reset [target] [--yes]` | Unprotected targets: drops database, replays all migrations from zero, and executes `seed.sql`. |
 | `generate` | `dbtools generate [target] [--lang python\|ts] [--zod] [--out file]` | Introspects live schema and renders Pydantic v2 models (`python`, default) or Supabase-style TypeScript interfaces (`ts`; `--zod` adds zod schemas). |
+| `clone` | `dbtools clone <source> <dest> [--yes] [--no-mask] [--limit N] [--where "SQL"]` | Copies data from `source` into `dest` (same engine only), masking sensitive columns by default. `dest` must not be protected. |
 | `lint` | `dbtools lint [--dir <path>] [--json]` | Validates filenames, duplicate versions, and empty files without database connection. |
 | `dashboard` | `dbtools dashboard` | Opens terminal UI showing live target status (`r` to refresh, `q` to quit). |
 | `start` / `stop` | `dbtools start [--timeout 30s] [--no-wait]` / `stop` | Starts or stops ephemeral tool-owned local database Docker container with readiness polling. |
@@ -240,6 +241,35 @@ export const UsersSchema = z.object({
 ```
 
 `--check` works the same for TS output (CI drift detection).
+
+---
+
+## Clone (prod → dev)
+
+Refresh a local or dev database from a snapshot of another target's data,
+without hand-rolling a dump/restore/scrub script:
+
+```bash
+dbtools clone prod dev --yes
+```
+
+Masking is on by default: any column literally named `email`, `phone`,
+`ssn`, or `password` is masked automatically (email columns get a
+deterministic synthetic address; the rest are redacted). Add explicit
+overrides in `dbtools.toml`:
+
+```toml
+[clone]
+exclude = ["audit_log"]
+
+[clone.mask]
+customerName = "hash"
+```
+
+Raw, unmasked copies are an explicit opt-out (`--no-mask`) — document why
+before using it; it is a PII risk. `source` and `dest` must use the same
+engine, and `dest` must not be `protected` (clone always clears and
+repopulates every cloned table).
 
 ---
 

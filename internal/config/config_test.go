@@ -128,3 +128,41 @@ url_env = "P_URL"
 		t.Errorf("EngineName(nosuch) = %q, want \"\"", got)
 	}
 }
+
+func TestLoad_ParsesCloneConfig(t *testing.T) {
+	path := writeTemp(t, `
+[targets.local]
+url_env = "L_URL"
+
+[clone]
+exclude = ["audit_log"]
+
+[clone.mask]
+email = "email"
+phone = "redact"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if len(cfg.Clone.Exclude) != 1 || cfg.Clone.Exclude[0] != "audit_log" {
+		t.Errorf("Clone.Exclude = %v, want [audit_log]", cfg.Clone.Exclude)
+	}
+	if cfg.Clone.Mask["email"] != "email" || cfg.Clone.Mask["phone"] != "redact" {
+		t.Errorf("Clone.Mask = %v, want email->email, phone->redact", cfg.Clone.Mask)
+	}
+}
+
+func TestLoad_CloneConfigDefaultsToEmpty(t *testing.T) {
+	path := writeTemp(t, `
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if len(cfg.Clone.Exclude) != 0 || len(cfg.Clone.Mask) != 0 {
+		t.Errorf("Clone = %+v, want zero-value when [clone] is absent", cfg.Clone)
+	}
+}

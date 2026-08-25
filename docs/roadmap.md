@@ -32,8 +32,8 @@ same core.
 | v0.2 ✅ | **npx installer** | `dbtools-cli` npm wrapper — thin downloader of the GoReleaser binary (5 platforms). Published via OIDC trusted publishing (no token). Shipped 0.2.1. |
 | v0.3 ✅ | **`doctor`** | Read-only health/security check: connectivity, version sync, ledger integrity, drift summary, dirty-ledger, basic security flags. Exit 0 clean / 1 error / 2 issues. |
 | v0.3 ✅ | **Real-data integration suite** | Committed classicmodels fixture corpus across sqlite/postgres/mssql, consolidated runner in `internal/testutil`, edge-case matrix, golden typegen. |
-| v0.3/4 | **Clone prod→dev** | Schema + data clone with config-driven masking. Masking on by default; raw copy requires explicit opt-out. |
-| v0.3/4 | **MySQL engine** | Add MySQL as a supported migration engine (golang-migrate has a mysql driver). classicmodels fixtures are MySQL-native — natural fit. Scheduled after v0.3 core. |
+| v0.3/4 ✅ | **Clone prod→dev** | Shipped: `dbtools clone <source> <dest>`, `internal/clone`. Masking on by default (built-in sensitive-column list + `[clone.mask]` overrides); `--no-mask` is the explicit opt-out. Same-engine only; row-count/WHERE subsetting via `--limit`/`--where`. |
+| v0.3/4 ✅ | **MySQL engine** | Shipped: `internal/engine/mysqlengine`, mirroring the mssql/postgres/sqlite seam. classicmodels fixtures ported to MySQL with real FKs. Scope: TABLE/VIEW DDL detection only (no stored procedures — see the implementation plan for why); `internal/container` local-dev support not included. |
 | v0.4 | **Backup** | Table-stakes backup/restore. |
 | Mongo | **C → B → A** | Starts only after SQL is stable (gate = v0.2 shipped — met). See design below. |
 | launch | — | Public launch (announcements, directories) happens only after the v0.2/v0.3 features above. |
@@ -71,10 +71,8 @@ Adopted patterns (each proven by an existing tool):
 
 ## Clone (prod→dev)
 
-- `dbtools clone <source> <dest> [--mask|--no-mask]`
-- Masking is config-driven: column masks (email, phone, names), default-deny on
-  sensitive columns, optional subsetting (row-count / WHERE).
-- Raw copy is explicit (`--no-mask`) and documented as a PII risk. Masking is the default.
+Shipped. See `internal/clone` and the "Clone (prod → dev)" section of
+README.md for usage.
 
 ## License
 

@@ -19,7 +19,7 @@ url_env = "DBTOOLS_LOCAL_URL"
 # engine is optional and defaults to the connection URL's scheme
 # (e.g. mssql:// -> mssql, postgres:// -> postgres, sqlite:// -> sqlite).
 # When set, it must
-# match that scheme. Supported engines: mssql, postgres, sqlite.
+# match that scheme. Supported engines: mssql, postgres, sqlite, mysql.
 # sqlite URLs name a file path (sqlite://relative/or/absolute/path.db);
 # no server is needed — start/stop are no-ops and reset recreates the file.
 engine = "mssql"
