@@ -61,13 +61,31 @@ type CloneConfig struct {
 	Mask map[string]string `toml:"mask"`
 }
 
+// ProjectConfig identifies this project for scoping tool-owned local
+// containers/volumes so two dbtools projects on one machine never collide.
+type ProjectConfig struct {
+	// Name overrides the default path-hash-derived container/volume
+	// naming with a human-readable one (see internal/projectid.Resolve).
+	Name string `toml:"name"`
+}
+
+// ContainerConfig configures the tool-owned local database container.
+type ContainerConfig struct {
+	// Port pins the host port `dbtools start` publishes the container on.
+	// 0 (the default) means: let Docker assign a free port.
+	Port int `toml:"port"`
+}
+
 // Config is the parsed contents of dbtools.toml.
 type Config struct {
 	MigrationsDir string            `toml:"migrations_dir"`
 	Targets       map[string]Target `toml:"targets"`
 	Generate      GenerateConfig    `toml:"generate"`
 	Clone         CloneConfig       `toml:"clone"`
+	Project       ProjectConfig     `toml:"project"`
+	Container     ContainerConfig   `toml:"container"`
 }
+
 
 // Load reads and parses the dbtools.toml file at path.
 func Load(path string) (*Config, error) {
