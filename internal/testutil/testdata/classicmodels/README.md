@@ -18,7 +18,7 @@ This directory contains the canonical `classicmodels` relational sample database
 8. `payments`: Payment transactions (Composite PK: `customerNumber` + `checkNumber`)
 
 ## Dialect Migration Sequence
-Each dialect directory (`sqlite/`, `postgres/`, `mssql/`) provides a 4-step migration sequence with matching `.up.sql` and `.down.sql` scripts:
+Each dialect directory (`sqlite/`, `postgres/`, `mssql/`, `mysql/`) provides a 4-step migration sequence with matching `.up.sql` and `.down.sql` scripts:
 - `20260822000001_offices_employees`: Core organizational hierarchy
 - `20260822000002_products`: Product lines and inventory
 - `20260822000003_customers`: Customers linked to sales representatives
