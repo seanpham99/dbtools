@@ -8,6 +8,7 @@ import (
 
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/seanpham99/dbtools/internal/repair"
 	"github.com/spf13/cobra"
@@ -118,9 +119,9 @@ func runRepair(targetName string, pairs []repair.Pair) error {
 	}
 
 	if !result.HasCursor {
-		fmt.Printf("%s: repaired %d version(s), no applied versions remain (cursor untouched)\n", targetName, len(result.Repaired))
+		logger.Infof("%s: repaired %d version(s), no applied versions remain (cursor untouched)", targetName, len(result.Repaired))
 		return nil
 	}
-	fmt.Printf("%s: repaired %d version(s), cursor now at %d\n", targetName, len(result.Repaired), result.NewCursor)
+	logger.Infof("%s: repaired %d version(s), cursor now at %d", targetName, len(result.Repaired), result.NewCursor)
 	return nil
 }

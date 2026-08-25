@@ -11,6 +11,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
+	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/seanpham99/dbtools/internal/seed"
 	"github.com/spf13/cobra"
 )
@@ -184,7 +185,7 @@ func runReset(targetNames ...string) error {
 		return nil
 	}
 
-	fmt.Printf("%s: replayed to version %d\n", targetName, status.CurrentVersion)
-	fmt.Printf("%s applied (or skipped if absent)\n", seed.Filename)
+	logger.Infof("%s: replayed to version %d", targetName, status.CurrentVersion)
+	logger.Infof("%s applied (or skipped if absent)", seed.Filename)
 	return nil
 }

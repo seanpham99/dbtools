@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -46,7 +47,7 @@ var upCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("%s: now at version %d (%d pending)\n", status.Target, status.CurrentVersion, len(status.Pending))
+		logger.Infof("%s: now at version %d (%d pending)", status.Target, status.CurrentVersion, len(status.Pending))
 		return nil
 	},
 }
