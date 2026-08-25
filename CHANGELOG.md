@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0](https://github.com/seanpham99/dbtools/compare/v0.3.0...v0.4.0) (2026-08-25)
+
+
+### Features
+
+* **docs:** polish landing page with motion system, native db logos, and centered hero ([#46](https://github.com/seanpham99/dbtools/issues/46)) ([0a88d3a](https://github.com/seanpham99/dbtools/commit/0a88d3a576e5d5d22f1b6fb331390e3ca3621a68))
+
 ## [0.3.0] - 2026-08-24
 
 v0.3 — health & security doctor audit, classicmodels real-data integration corpus, dirty recovery, and dev-loop enhancements.
