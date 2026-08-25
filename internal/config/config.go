@@ -47,11 +47,26 @@ type GenerateConfig struct {
 	Out     string   `toml:"out"`
 }
 
+// CloneConfig holds settings for `dbtools clone`.
+type CloneConfig struct {
+	// Exclude lists additional tables never to clone, unioned with
+	// Generate.Exclude (which already protects dbtools's own bookkeeping
+	// tables — see Load's defaulting below).
+	Exclude []string `toml:"exclude"`
+	// Mask maps a column name (case-insensitive) to a masking strategy:
+	// "redact", "email", or "hash". Columns not listed here but matching
+	// a small built-in sensitive-name list (email, phone, ssn, password)
+	// are masked with a default strategy unless --no-mask is passed —
+	// see internal/clone's maskPlanFor.
+	Mask map[string]string `toml:"mask"`
+}
+
 // Config is the parsed contents of dbtools.toml.
 type Config struct {
 	MigrationsDir string            `toml:"migrations_dir"`
 	Targets       map[string]Target `toml:"targets"`
 	Generate      GenerateConfig    `toml:"generate"`
+	Clone         CloneConfig       `toml:"clone"`
 }
 
 // Load reads and parses the dbtools.toml file at path.
