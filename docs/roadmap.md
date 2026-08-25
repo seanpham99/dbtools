@@ -72,8 +72,7 @@ Adopted patterns (each proven by an existing tool):
 ## Clone (prod→dev)
 
 Shipped. See `internal/clone` and the "Clone (prod → dev)" section of
-README.md for usage. Implementation plan (for reference):
-`docs/superpowers/plans/2026-08-25-clone-prod-to-dev.md`.
+README.md for usage.
 
 ## License
 
