@@ -11,6 +11,7 @@ import (
 	_ "github.com/seanpham99/dbtools/internal/engine/postgresengine"
 	_ "github.com/seanpham99/dbtools/internal/engine/sqliteengine"
 	"github.com/seanpham99/dbtools/internal/localenv"
+	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +20,10 @@ var rootCmd = &cobra.Command{
 	Short: "dbtools manages MSSQL/Postgres schema migrations and local dev databases",
 }
 
-var jsonOutput bool
+var (
+	jsonOutput bool
+	logFormat  string
+)
 
 func loadLocalEnv() error {
 	vars, err := localenv.Load()
@@ -36,7 +40,23 @@ func loadLocalEnv() error {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON output")
+	rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "text", "log format (text, json)")
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		fmtVal := logFormat
+		if !cmd.Flags().Changed("log-format") {
+			if env := os.Getenv("DBTOOLS_LOG_FORMAT"); env != "" {
+				fmtVal = env
+			}
+		}
+		switch fmtVal {
+		case "text", "json":
+		default:
+			return fmt.Errorf("invalid --log-format %q (must be 'text' or 'json')", fmtVal)
+		}
+		logger.SetFormat(fmtVal)
+		if jsonOutput {
+			logger.SetOutput(os.Stderr)
+		}
 		return loadLocalEnv()
 	}
 }
