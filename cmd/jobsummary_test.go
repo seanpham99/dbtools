@@ -99,3 +99,33 @@ func TestUpCommand_EmitsJobSummaryOnRefusal(t *testing.T) {
 		t.Fatalf("up --target prod --json output = %q, want ok:false since up refuses non-local targets", out)
 	}
 }
+
+// TestEmitJobSummary_PanicSkipsSummaryAndRepropagates guards against a
+// panic mid-RunE printing a false "ok":true record right before the
+// process actually crashes — err is still nil during panic unwinding,
+// which would otherwise look identical to a real success.
+func TestEmitJobSummary_PanicSkipsSummaryAndRepropagates(t *testing.T) {
+	origJSON := jsonOutput
+	jsonOutput = true
+	t.Cleanup(func() { jsonOutput = origJSON })
+
+	var out string
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		out = captureStdout(t, func() {
+			runWithSummary := func() (err error) {
+				defer emitJobSummary(&err)
+				panic("simulated crash mid-write")
+			}
+			_ = runWithSummary()
+		})
+	}()
+
+	if recovered != "simulated crash mid-write" {
+		t.Fatalf("panic was not repropagated, recovered = %v", recovered)
+	}
+	if strings.Contains(out, "job_complete") {
+		t.Fatalf("emitJobSummary printed a summary during a panic: %q, want nothing", out)
+	}
+}

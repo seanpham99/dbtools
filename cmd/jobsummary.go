@@ -17,9 +17,19 @@ import (
 // Call as `defer emitJobSummary(&err)` from a function with a named
 // `err error` return value, so it fires on every return path: success,
 // a documented non-zero exit (ExitCodeError), or a genuine runtime
-// error alike. Only a hard crash (panic that unwinds past the deferred
-// call, or a killed process) skips it — which is the point.
+// error alike. A killed process skips it entirely, which is the point —
+// but a Go panic does not immediately kill the process, it unwinds
+// through deferred calls first, and `err` is still its nil zero value
+// mid-unwind. Without the recover() below, a panic would print a false
+// "ok":true record moments before the process actually crashes — exactly
+// the signal this function exists to prevent. recover()ing here, then
+// re-panicking, lets the crash still propagate to the caller (so exit
+// status and any top-level panic log are unaffected) while suppressing
+// the misleading summary line.
 func emitJobSummary(err *error) {
+	if r := recover(); r != nil {
+		panic(r)
+	}
 	if !jsonOutput {
 		return
 	}
