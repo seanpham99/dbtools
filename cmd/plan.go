@@ -18,6 +18,10 @@ import (
 var planCmd = &cobra.Command{
 	Use:   "plan",
 	Short: "Preview pending migrations and drift without applying anything (read-only)",
+	// Exit 2 (pending/drift) is a documented, expected outcome of a
+	// correct run, not a usage mistake — cobra's default usage-block dump
+	// on any non-nil error trains agents and CI logs to ignore stderr.
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runPlan()
 	},
@@ -35,7 +39,7 @@ func init() {
 // planJSONEntry is one target's plan row.
 type planJSONEntry struct {
 	Target         string   `json:"target"`
-	CurrentVersion uint64   `json:"current_version,omitempty"`
+	CurrentVersion uint64   `json:"current_version"`
 	HasVersion     bool     `json:"has_version,omitempty"`
 	Dirty          bool     `json:"dirty,omitempty"`
 	Pending        []string `json:"pending,omitempty"`
