@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-24T09:45:00Z",
+  "title": "Design System: dbtools",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Electric Vault Blue",
+        "canonical": "#3b82f6",
+        "tonalRamp": ["#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#dbeafe", "#eff6ff"]
+      },
+      "primary-glow": {
+        "role": "primary",
+        "displayName": "Telemetry Cyan",
+        "canonical": "#06b6d4",
+        "tonalRamp": ["#0e7490", "#0891b2", "#06b6d4", "#22d3ee", "#67e8f9", "#a5f3fc", "#cffafe", "#ecfeff"]
+      },
+      "accent-emerald": {
+        "role": "secondary",
+        "displayName": "Ledger Emerald",
+        "canonical": "#10b981",
+        "tonalRamp": ["#047857", "#059669", "#10b981", "#34d399", "#6ee7b7", "#a7f3d0", "#d1fae5", "#ecfdf5"]
+      },
+      "accent-amber": {
+        "role": "secondary",
+        "displayName": "Safeguard Amber",
+        "canonical": "#f59e0b",
+        "tonalRamp": ["#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fcd34d", "#fde68a", "#fef3c7", "#fffbeb"]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Obsidian Black Canvas",
+        "canonical": "#0b0f19",
+        "tonalRamp": ["#030712", "#0b0f19", "#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af"]
+      },
+      "surface-card": {
+        "role": "neutral",
+        "displayName": "Card Surface Slate",
+        "canonical": "#111827",
+        "tonalRamp": ["#030712", "#0b0f19", "#111827", "#1f2937", "#374151", "#4b5563", "#6b7280", "#9ca3af"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Hero and section titles with high visual punch." },
+      "headline": { "displayName": "Headline", "purpose": "Major section headings." },
+      "body": { "displayName": "Body", "purpose": "Documentation and explanatory copy." },
+      "mono": { "displayName": "Monospace", "purpose": "Commands, SQL, hashes, and schema definitions." }
+    },
+    "shadows": [
+      {
+        "name": "ambient-hero-glow",
+        "value": "radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, rgba(6, 182, 212, 0.08) 40%, transparent 70%)",
+        "purpose": "Atmospheric depth behind hero module."
+      },
+      {
+        "name": "terminal-drop",
+        "value": "0 12px 32px rgba(0, 0, 0, 0.4)",
+        "purpose": "Terminal and observability box elevation."
+      },
+      {
+        "name": "command-bar",
+        "value": "0 8px 24px rgba(0, 0, 0, 0.3)",
+        "purpose": "Install command bar depth."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-quick",
+        "value": "0.2s ease",
+        "purpose": "Hover, border color, and button elevation transitions."
+      }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1140px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Copy Install Bar",
+      "kind": "custom",
+      "refersTo": "button-primary",
+      "description": "Terminal command copy box with inline action trigger.",
+      "html": "<div class=\"ds-install-box\"><span class=\"ds-prompt\">$</span><span class=\"ds-cmd\">npx dbtools-cli status</span><button class=\"ds-copy-btn\">Copy</button></div>",
+      "css": ".ds-install-box { display: inline-flex; align-items: center; background: #030712; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 6px 6px 6px 16px; gap: 14px; font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; } .ds-prompt { color: #06b6d4; } .ds-cmd { color: #93c5fd; } .ds-copy-btn { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.08); color: #f9fafb; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-family: 'Inter', sans-serif; font-weight: 600; transition: all 0.2s; } .ds-copy-btn:hover { background: rgba(255, 255, 255, 0.16); }"
+    },
+    {
+      "name": "Feature Card",
+      "kind": "card",
+      "refersTo": "feature-card",
+      "description": "Glassmorphic dark card with hover border elevation.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-icon\">⚡</div><h3>Native Multi-Engine Dialects</h3><p>Seamless execution across MSSQL, PostgreSQL, and SQLite.</p></div>",
+      "css": ".ds-card { background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 28px; backdrop-filter: blur(10px); transition: transform 0.2s, border-color 0.2s; } .ds-card:hover { transform: translateY(-3px); border-color: rgba(59, 130, 246, 0.4); } .ds-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; font-size: 1.3rem; background: rgba(59, 130, 246, 0.15); color: #60a5fa; } .ds-card h3 { font-size: 1.25rem; font-weight: 600; margin-bottom: 10px; color: #f9fafb; font-family: 'Inter', sans-serif; } .ds-card p { color: #9ca3af; font-size: 0.95rem; line-height: 1.55; font-family: 'Inter', sans-serif; }"
+    },
+    {
+      "name": "Badge Pill",
+      "kind": "chip",
+      "refersTo": "badge-pill",
+      "description": "Telemetry status chip with status indicator.",
+      "html": "<div class=\"ds-badge\"><span>●</span> Open Source Go CLI</div>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #6ee7b7; font-size: 0.85rem; font-weight: 600; border-radius: 9999px; font-family: 'Inter', sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Cryptographic Vault",
+    "overview": "dbtools visual language embodies precision, immutability, and deterministic technical authority. Engineered for developers, platform teams, and autonomous AI agents, the interface draws aesthetic inspiration from mission-critical control panels and cryptographic hardware: deep obsidian surfaces, razor-sharp hairline borders, high-legibility typography, and focused neon telemetry signals.",
+    "keyCharacteristics": [
+      "Obsidian & Telemetry: Deep dark canvas punctuated by electric blue focal points, cyan telemetry accents, and emerald ledger verifications.",
+      "Hairline Precision: 1px subtle boundary strokes (rgba(255, 255, 255, 0.08)) that highlight on active focus or hover (rgba(59, 130, 246, 0.4)).",
+      "Dual-Layer Typography: High-contrast geometric sans (Inter) for crisp structural hierarchy paired with monospaced code blocks (JetBrains Mono) for logs, CLI commands, and cryptographic hashes."
+    ],
+    "rules": [
+      {
+        "name": "The Telemetry Purpose Rule",
+        "body": "Accent colors are strictly semantic and never decorative filler. Blue signals navigation/action, Cyan signals prompt/telemetry, Emerald signals immutable cryptographic truth, and Amber signals protected execution boundaries.",
+        "section": "colors"
+      },
+      {
+        "name": "The Code Is Truth Rule",
+        "body": "Any value representing a command, file name, environment variable, version number, or cryptographic hash must be typeset in monospace font.",
+        "section": "typography"
+      },
+      {
+        "name": "The Ambient Depth Rule",
+        "body": "Depth is created through translucent glassmorphism (backdrop-filter: blur(10px)) and subtle border luminescence rather than aggressive solid shadows.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do format all commands, flags, migration versions, and cryptographic hashes in JetBrains Mono.",
+      "Do preserve the 1px hairline border structure (rgba(255, 255, 255, 0.08)) across all surfaces and cards.",
+      "Do use Emerald (#10b981) exclusively for verified/clean statuses and Amber (#f59e0b) for warnings/protections.",
+      "Do maintain high visual contrast ratios (> 7:1) between text and dark surfaces for maximum technical readability."
+    ],
+    "donts": [
+      "Don't use solid bright white or generic gray backgrounds; keep the canvas grounded in Obsidian Black (#0b0f19).",
+      "Don't apply heavy drop shadows or skeumorphic bevels to buttons or cards.",
+      "Don't mix unstyled serif fonts or decorative display scripts into technical surfaces.",
+      "Don't clutter interfaces with unmetered accent colors; preserve the calm, high-contrast control room aesthetic."
+    ]
+  }
+}
