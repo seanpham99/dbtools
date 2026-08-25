@@ -141,3 +141,29 @@ jobs:
               go test -tags=integration ./internal/engine/mysqlengine/... -count=1
               ;;
           esac
+
+  docker-smoke:
+    name: Docker image smoke build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Install GoReleaser
+        run: go install github.com/goreleaser/goreleaser/v2@latest
+      - name: Build a local snapshot binary
+        run: goreleaser build --single-target --snapshot --clean
+      - name: Stage the binary where the Dockerfile expects it
+        run: |
+          bin=$(find dist -maxdepth 2 -name dbtools -type f | head -1)
+          if [ -z "$bin" ]; then
+            echo "::error::no dbtools binary found under dist/ after goreleaser build"
+            exit 1
+          fi
+          cp "$bin" ./dbtools
+      - name: Build the image
+        run: docker build -t dbtools-smoke .
+      - name: Run it
+        run: docker run --rm dbtools-smoke --help
+

@@ -21,6 +21,7 @@ nuance than a table row can hold, read the matching file before using them:
 | `dbtools generate` — Pydantic/TS codegen, `--check` CI drift gate | `codegen.md` |
 | MySQL `url_env` connection-string format and gotchas | `mysql.md` |
 | Container lifecycle project scoping, ports, volume persistence | `container.md` |
+| Docker image — base, tags, mount vs. build-`FROM` consumption patterns | `docker-image.md` |
 
 ## Terminology & Key Concepts
 
