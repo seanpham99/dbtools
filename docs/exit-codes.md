@@ -63,6 +63,21 @@ else
 fi
 ```
 
+## Container Jobs & Retry Semantics
+
+When running `dbtools` in headless container job orchestrators (Azure Container Apps Jobs, AWS ECS RunTask, Kubernetes Jobs, GCP Cloud Run):
+
+1. **Job Completion Assessment**:
+   - Exit `0`: Platform considers job completed successfully.
+   - Exit `1`: Platform marks job execution failed.
+   - Exit `2`: Inspection detected pending migrations or schema drift (used by audit/gate jobs).
+
+2. **Platform Retry Hazard vs. Dirty Cursor Refusal**:
+   - Cloud platforms often allow automatic task retries (e.g. Azure `replica_retry_limit > 0`, Kubernetes `backoffLimit > 0`).
+   - If a migration fails midway through execution, `dbtools` flags the migration cursor `dirty=true` in the ledger.
+   - On subsequent automatic container retries, `dbtools` inspects the ledger before running any SQL, detects the dirty cursor, and **fails closed immediately with exit code 1**.
+   - This ensures retries will not execute out-of-order DDL or replay partial migrations until an operator explicitly repairs the ledger (`dbtools repair <target> <version>:<status> --yes`).
+
 ---
 
 ## Non-Interactive Mode
