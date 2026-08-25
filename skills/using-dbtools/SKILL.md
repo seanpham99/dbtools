@@ -22,6 +22,7 @@ nuance than a table row can hold, read the matching file before using them:
 | MySQL `url_env` connection-string format and gotchas | `mysql.md` |
 | Container lifecycle project scoping, ports, volume persistence | `container.md` |
 | Docker image — base, tags, mount vs. build-`FROM` consumption patterns | `docker-image.md` |
+| Private-network job execution — read-only observation, container retry policies, structured logging, diagnostics | `private-network-jobs.md` |
 
 ## Terminology & Key Concepts
 
