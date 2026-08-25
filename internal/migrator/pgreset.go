@@ -1,7 +1,10 @@
 package migrator
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -77,11 +80,27 @@ func (d *pgResetDriver) Drop() error                 { return d.inner.Drop() }
 // file. The version-table bookkeeping (SetVersion) runs on the same
 // connection but outside Run, so it still sees the default schema.
 func (d *pgResetDriver) Run(migration io.Reader) error {
+	migrationBytes, err := io.ReadAll(migration)
+	if err != nil {
+		return fmt.Errorf("reading migration: %w", err)
+	}
+
+	prefix := "SET search_path TO public; RESET client_min_messages;\n"
+	prefixRunes := len([]rune(prefix))
+
 	if err := d.inner.Run(io.MultiReader(
-		strings.NewReader("SET search_path TO public; RESET client_min_messages;"),
-		migration,
+		strings.NewReader(prefix),
+		bytes.NewReader(migrationBytes),
 	)); err != nil {
-		return fmt.Errorf("running migration: %w", err)
+		formattedErr := FormatPostgresError(err, string(migrationBytes), prefixRunes)
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr != nil && pqErr.Code == "42501" {
+			diag := RunPermissionDiagnostic(context.Background(), d.db, pqErr)
+			if diag != "" {
+				formattedErr = fmt.Errorf("%w\n\n%s", formattedErr, diag)
+			}
+		}
+		return fmt.Errorf("running migration: %w", formattedErr)
 	}
 	return nil
 }
