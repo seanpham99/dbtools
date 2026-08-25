@@ -64,7 +64,7 @@ func recreateLocalDatabase(eng engine.Engine, localURL string) error {
 		return recreateSQLiteFile(localURL)
 	}
 
-	maintenanceURL, err := container.MaintenanceURLFor(eng.Name())
+	maintenanceURL, err := container.MaintenanceURLFor(eng.Name(), localURL)
 	if err != nil {
 		return err
 	}

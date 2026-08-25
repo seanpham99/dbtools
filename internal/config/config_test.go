@@ -166,3 +166,65 @@ url_env = "L_URL"
 		t.Errorf("Clone = %+v, want zero-value when [clone] is absent", cfg.Clone)
 	}
 }
+
+func TestLoad_ParsesProjectName(t *testing.T) {
+	path := writeTemp(t, `
+[project]
+name = "myapp"
+
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Project.Name != "myapp" {
+		t.Errorf("Project.Name = %q, want %q", cfg.Project.Name, "myapp")
+	}
+}
+
+func TestLoad_ProjectNameDefaultsToEmpty(t *testing.T) {
+	path := writeTemp(t, `
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Project.Name != "" {
+		t.Errorf("Project.Name = %q, want empty", cfg.Project.Name)
+	}
+}
+
+func TestLoad_ParsesContainerPort(t *testing.T) {
+	path := writeTemp(t, `
+[container]
+port = 55432
+
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Container.Port != 55432 {
+		t.Errorf("Container.Port = %d, want 55432", cfg.Container.Port)
+	}
+}
+
+func TestLoad_ContainerPortDefaultsToZero(t *testing.T) {
+	path := writeTemp(t, `
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Container.Port != 0 {
+		t.Errorf("Container.Port = %d, want 0 (meaning: let Docker assign a port)", cfg.Container.Port)
+	}
+}

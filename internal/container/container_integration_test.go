@@ -2,35 +2,40 @@
 
 package container
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
-func TestStartStopIdempotent(t *testing.T) {
-	url, err := Start()
+func TestMSSQLStartStopIdempotent(t *testing.T) {
+	const projectID = "itest-mssql"
+
+	url, err := StartForWithTimeout("mssql", projectID, "", 30*time.Second, true)
 	if err != nil {
-		t.Fatalf("Start() returned error: %v", err)
+		t.Fatalf("StartForWithTimeout(mssql) returned error: %v", err)
 	}
-	if url != mustLocalURL(t) {
-		t.Errorf("Start() = %q, want %q", url, mustLocalURL(t))
+	if url == "" {
+		t.Fatal("StartForWithTimeout(mssql) returned empty URL")
 	}
 
-	// Calling Start() again while already running must be a no-op, not an error.
-	url2, err := Start()
+	// Calling Start again while already running must be a no-op, not an error.
+	url2, err := StartForWithTimeout("mssql", projectID, "", 30*time.Second, true)
 	if err != nil {
-		t.Fatalf("second Start() returned error: %v", err)
+		t.Fatalf("second StartForWithTimeout(mssql) returned error: %v", err)
 	}
 	if url2 != url {
-		t.Errorf("second Start() = %q, want %q", url2, url)
+		t.Errorf("second StartForWithTimeout(mssql) = %q, want %q", url2, url)
 	}
 
-	if err := Stop(); err != nil {
-		t.Fatalf("Stop() returned error: %v", err)
+	if err := StopFor("mssql", projectID, true); err != nil {
+		t.Fatalf("StopFor(mssql, ..., purge=true) returned error: %v", err)
 	}
 
-	exists, _, err := inspect(mssqlSpec.name)
+	exists, _, err := inspect(containerNameFor("mssql", projectID))
 	if err != nil {
-		t.Fatalf("inspect(mssqlSpec.name) after Stop() returned error: %v", err)
+		t.Fatalf("inspect() after StopFor returned error: %v", err)
 	}
 	if exists {
-		t.Error("expected container to be removed after Stop()")
+		t.Error("expected mssql container to be removed after StopFor")
 	}
 }

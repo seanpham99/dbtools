@@ -48,10 +48,15 @@ func runStart() error {
 		return nil
 	}
 
+	projectID, err := loadProjectID(cfg)
+	if err != nil {
+		return err
+	}
+
 	if !startNoWait {
 		fmt.Println("waiting for database engine to accept connections...")
 	}
-	url, err := startContainer(engineName, startTimeout, !startNoWait)
+	url, err := startContainer(engineName, projectID, configuredContainerPort(cfg), startTimeout, !startNoWait)
 	if err != nil {
 		return err
 	}
