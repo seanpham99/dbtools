@@ -4,13 +4,14 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/seanpham99/dbtools.svg)](https://pkg.go.dev/github.com/seanpham99/dbtools)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**dbtools** is a lightweight, reliable database migration authority and local dev-loop tool for **MSSQL**, **PostgreSQL**, and **SQLite**. Built in Go for high performance and zero external runtime dependencies, `dbtools` guarantees version-sync migration execution, immutable ledger tracking (`content_sha256`), read-only schema drift verification, and live schema introspection to typed Pydantic Python or TypeScript models.
+**dbtools** is a lightweight, reliable database migration authority and local dev-loop tool for **MSSQL**, **PostgreSQL**, **MySQL**, and **SQLite**. Built in Go for high performance and zero external runtime dependencies, `dbtools` guarantees version-sync migration execution, immutable ledger tracking (`content_sha256`), read-only schema drift verification, and live schema introspection to typed Pydantic Python or TypeScript models.
 
 ---
 
 ## Key Features
 
 - **Multi-Engine Support**: Native migration engines for SQL Server (MSSQL), PostgreSQL (with session reset isolation), MySQL, and SQLite (file-based).
+- **Project-Scoped Local Dev Containers**: `dbtools start`/`stop`/`restart`/`logs` manage a tool-owned Docker container per project (no cross-repo name/port collisions), with data persisting across `stop`/`start` by default.
 - **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
 - **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
 - **Rollback & Down Migrations**: `dbtools down` applies `.down.sql` files in reverse; `dbtools rollback` is a ledger-only soft-revert — the safe prod verb. Destructive ops on protected targets require `--preview --yes`.
@@ -126,7 +127,9 @@ dbtools status
 | `clone` | `dbtools clone <source> <dest> [--yes] [--no-mask] [--limit N] [--where "SQL"]` | Copies data from `source` into `dest` (same engine only), masking sensitive columns by default. `dest` must not be protected. |
 | `lint` | `dbtools lint [--dir <path>] [--json]` | Validates filenames, duplicate versions, and empty files without database connection. |
 | `dashboard` | `dbtools dashboard` | Opens terminal UI showing live target status (`r` to refresh, `q` to quit). |
-| `start` / `stop` | `dbtools start [--timeout 30s] [--no-wait]` / `stop` | Starts or stops ephemeral tool-owned local database Docker container with readiness polling. |
+| `start` / `stop` | `dbtools start [--timeout 30s] [--no-wait]` / `stop [--no-backup]` | Starts or stops the tool-owned local database Docker container (project-scoped name/volume, readiness polling). `stop` preserves data by default; `--no-backup` also wipes it. |
+| `restart` | `dbtools restart [--timeout 30s] [--no-wait]` | Restarts the local container in place; data survives. |
+| `logs` | `dbtools logs [-f]` | Streams the local container's logs; `-f`/`--follow` keeps streaming new output. |
 
 ---
 
@@ -273,6 +276,36 @@ repopulates every cloned table).
 
 ---
 
+## Local Dev Containers
+
+`dbtools start` runs a tool-owned Docker container scoped to the current
+project — its name and data volume are derived from the absolute path to
+`dbtools.toml` (or an explicit override), so two dbtools checkouts on the
+same machine never collide:
+
+```bash
+dbtools start   # dbtools-<engine>-<project-id>, port auto-assigned by Docker
+dbtools stop    # container removed, data volume kept
+dbtools restart # stop + start, data survives
+dbtools logs -f # stream container logs
+```
+
+Override the generated name or pin the host port in `dbtools.toml`:
+
+```toml
+[project]
+name = "myapp"      # optional; defaults to a hash of dbtools.toml's path
+
+[container]
+port = 55432         # optional; defaults to a Docker-assigned free port
+```
+
+`dbtools stop --no-backup` also deletes the data volume, restoring the old
+full-wipe behavior. `dbtools reset` is unaffected either way — it always
+drops and recreates the database via SQL (mssql/postgres targets only).
+
+---
+
 ## Agent & CI Ergonomics
 
 `dbtools` is designed to be called by AI agents and CI pipelines without interactive prompts:
@@ -310,7 +343,7 @@ Run integration test suite:
 # SQLite integration test (runs locally without server)
 DBTOOLS_TEST_SQLITE_URL="sqlite:///tmp/dbtools-it.db" go test -tags=integration ./internal/engine/sqliteengine/... -count=1
 
-# Full matrix test (MSSQL, PostgreSQL, SQLite)
+# Full matrix test (MSSQL, PostgreSQL, MySQL, SQLite)
 go test -tags=integration ./...
 ```
 
