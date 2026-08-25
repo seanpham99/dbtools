@@ -42,37 +42,48 @@ type spec struct {
 	readyProbe    func(s spec) error
 	createDBArgs  func(s spec) []string // docker exec args creating DatabaseName idempotently; nil when the image does it itself
 	url           func(s spec, database string) string
-	// hostPortFromLocalURL extracts the host port this engine's local
+	// hostPortFromLocalURL extracts the host and port this engine's local
 	// connection URL encodes, so MaintenanceURLFor can reuse whatever port
 	// the container actually ended up on (fixed or Docker-assigned)
-	// without a live docker inspect call.
-	hostPortFromLocalURL func(rawURL string) (string, error)
+	// without a live docker inspect call, and can refuse to build a
+	// maintenance connection for a URL that isn't the tool-owned
+	// loopback container at all.
+	hostPortFromLocalURL func(rawURL string) (host, port string, err error)
 	maintenanceDB        string // database used for administrative connections (drop/recreate); "" means "connect with no database selected"
 }
 
-// standardURLPort extracts the port from an RFC 3986 URL (postgres,
-// mssql — both use a plain host:port authority).
-func standardURLPort(rawURL string) (string, error) {
+// standardURLPort extracts the host and port from an RFC 3986 URL
+// (postgres, mssql — both use a plain host:port authority).
+func standardURLPort(rawURL string) (host, port string, err error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return "", fmt.Errorf("parsing URL: %w", err)
+		return "", "", fmt.Errorf("parsing URL: %w", err)
 	}
 	if u.Port() == "" {
-		return "", fmt.Errorf("URL %q has no port", rawURL)
+		return "", "", fmt.Errorf("URL %q has no port", rawURL)
 	}
-	return u.Port(), nil
+	return u.Hostname(), u.Port(), nil
 }
 
-var mysqlTCPPortRE = regexp.MustCompile(`tcp\([^:]*:(\d+)\)`)
+var mysqlTCPRE = regexp.MustCompile(`tcp\(([^:]*):(\d+)\)`)
 
-// mysqlURLPort extracts the port from MySQL's non-RFC-3986
+// mysqlURLPort extracts the host and port from MySQL's non-RFC-3986
 // tcp(host:port) host syntax, which net/url.Parse cannot handle.
-func mysqlURLPort(rawURL string) (string, error) {
-	m := mysqlTCPPortRE.FindStringSubmatch(rawURL)
+func mysqlURLPort(rawURL string) (host, port string, err error) {
+	m := mysqlTCPRE.FindStringSubmatch(rawURL)
 	if m == nil {
-		return "", fmt.Errorf("mysql URL %q missing tcp(host:port) syntax", rawURL)
+		return "", "", fmt.Errorf("mysql URL %q missing tcp(host:port) syntax", rawURL)
 	}
-	return m[1], nil
+	return m[1], m[2], nil
+}
+
+// isLoopbackHost reports whether host is one of the forms the tool-owned
+// local containers actually bind to. MaintenanceURLFor uses this to
+// refuse building a drop/recreate connection for any URL that isn't
+// genuinely the tool-owned container — see reset.go's recreateLocalDatabase,
+// which deliberately never aims at a real server.
+func isLoopbackHost(host string) bool {
+	return host == "127.0.0.1" || host == "localhost" || host == "::1"
 }
 
 var mssqlSpec = spec{
@@ -238,9 +249,12 @@ func MaintenanceURLFor(engineName, localURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	port, err := s.hostPortFromLocalURL(localURL)
+	host, port, err := s.hostPortFromLocalURL(localURL)
 	if err != nil {
-		return "", fmt.Errorf("reading port from local URL: %w", err)
+		return "", fmt.Errorf("reading host/port from local URL: %w", err)
+	}
+	if !isLoopbackHost(host) {
+		return "", fmt.Errorf("local target %q does not point at the tool-owned container (host %q is not loopback); dbtools reset only ever targets the local container, never a remote server", localURL, host)
 	}
 	s.hostPort = port
 	return s.url(s, s.maintenanceDB), nil

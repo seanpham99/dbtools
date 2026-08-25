@@ -29,7 +29,7 @@ nuance than a table row can hold, read the matching file before using them:
 | **target** | Named DB environment (`local`, `prod`) in `dbtools.toml` mapping to an environment variable (`url_env`). | Hardcoded DB URLs in `dbtools.toml` |
 | **push** | Applies pending migrations to a named target (version-sync). | `deploy`, `schema-sync`, `sync` |
 | **version-sync** | Guarantees applied migration history matches local `.sql` files up to latest. | "Full schema sync" (dbtools does not do DDL diffing) |
-| **reset** | Local-only: drops, recreates DB, replays all migrations, runs `seed.sql`. | `rollback`, `restore` |
+| **reset** | Local-only: drops, recreates DB, replays all migrations, runs `seed.sql`. Supports mssql/postgres only — errors on a MySQL target. | `rollback`, `restore` |
 | **seed.sql** | Single optional root SQL file run automatically after `reset`. | Multiple seed files or fixture scripts |
 | **ledger** | `dbtools_migration_history` table tracking per-migration `applied`/`reverted` state. | Generic "history table" |
 | **repair** | Corrects ledger status for target versions. Replaces deprecated `stamp`. | `stamp` (removed in v1) |

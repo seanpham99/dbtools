@@ -2,7 +2,12 @@
 
 Every `dbtools start`/`stop`/`restart`/`logs` invocation resolves a
 **project identity** so two dbtools checkouts on one machine never collide
-on a container name or port.
+on a container or volume *name*. This does **not** extend to a fixed
+`[container] port` value: if you pin one, it's your responsibility to keep
+it unique per machine — two projects both pinning `port = 55432` will have
+the second `dbtools start` fail with a Docker port-already-bound error.
+Leave `[container] port` unset (the default) to let Docker assign a free
+port and avoid this entirely.
 
 ## Identity
 
@@ -37,7 +42,10 @@ Set: that exact port is published every time.
 next `dbtools start` resumes with the same data. Use `dbtools stop
 --no-backup` to also delete the volume (today's full-wipe behavior).
 `dbtools reset` is unaffected either way — it always drops and recreates
-the database via SQL, regardless of volume state.
+the database via SQL, regardless of volume state, **for the engines it
+supports** (currently mssql and postgres only — `dbtools reset` on a MySQL
+target errors with "reset does not support engine \"mysql\"", a known,
+separate gap from container lifecycle).
 
 ## Commands
 

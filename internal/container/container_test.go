@@ -67,6 +67,28 @@ func TestMaintenanceURLFor_MySQLMissingTCPSyntax(t *testing.T) {
 	}
 }
 
+// TestMaintenanceURLFor_RejectsNonLoopbackHost guards the safety invariant
+// reset.go's recreateLocalDatabase depends on: MaintenanceURLFor must never
+// silently substitute 127.0.0.1 for a local target that actually points at
+// a remote host (e.g. a "local" target pointed at an external database
+// because Docker isn't available) — it must refuse instead.
+func TestMaintenanceURLFor_RejectsNonLoopbackHost(t *testing.T) {
+	if _, err := MaintenanceURLFor("postgres", "postgres://postgres:pw@db.example.com:5432/dbtools_local?sslmode=disable"); err == nil {
+		t.Fatal("MaintenanceURLFor(postgres, ...) with a non-loopback host returned nil error, want error")
+	}
+}
+
+func TestMaintenanceURLFor_AcceptsLocalhostHostname(t *testing.T) {
+	got, err := MaintenanceURLFor("postgres", "postgres://postgres:pw@localhost:54329/dbtools_local?sslmode=disable")
+	if err != nil {
+		t.Fatalf("MaintenanceURLFor(postgres, ...) with host \"localhost\" returned error: %v", err)
+	}
+	want := "postgres://postgres:" + url.QueryEscape(password) + "@127.0.0.1:54329/postgres?sslmode=disable"
+	if got != want {
+		t.Fatalf("MaintenanceURLFor(postgres, ...) = %q, want %q", got, want)
+	}
+}
+
 func TestContainerNameFor(t *testing.T) {
 	got := containerNameFor("postgres", "abcd1234")
 	want := "dbtools-postgres-abcd1234"
