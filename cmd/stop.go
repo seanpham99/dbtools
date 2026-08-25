@@ -12,15 +12,18 @@ var stopContainer = container.StopFor
 
 var removeLocalEnv = localenv.Remove
 
+var stopNoBackup bool
+
 var stopCmd = &cobra.Command{
 	Use:   "stop",
-	Short: "Stop and remove the tool-owned local database container",
+	Short: "Stop the tool-owned local database container",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runStop()
 	},
 }
 
 func init() {
+	stopCmd.Flags().BoolVar(&stopNoBackup, "no-backup", false, "also delete the container's data volume (today's full-wipe behavior); by default the volume survives for the next start")
 	rootCmd.AddCommand(stopCmd)
 }
 
@@ -30,7 +33,8 @@ func runStop() error {
 		fmt.Println("sqlite needs no server — nothing to stop")
 		return nil
 	}
-	if err := stopContainer(engineName); err != nil {
+	projectID := loadProjectIDOrDefault()
+	if err := stopContainer(engineName, projectID, stopNoBackup); err != nil {
 		return err
 	}
 	if err := removeLocalEnv(); err != nil {

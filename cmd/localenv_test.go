@@ -56,7 +56,7 @@ func TestRunStartWritesLocalEnv(t *testing.T) {
 	})
 
 	loadConfig = fakeLocalConfig("DBTOOLS_LOCAL_URL")
-	startContainer = func(string, time.Duration, bool) (string, error) {
+	startContainer = func(string, string, string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 	var wrote map[string]string
@@ -84,7 +84,7 @@ func TestRunStartUsesConfiguredURLEnv(t *testing.T) {
 	})
 
 	loadConfig = fakeLocalConfig("CUSTOM_LOCAL_URL")
-	startContainer = func(string, time.Duration, bool) (string, error) {
+	startContainer = func(string, string, string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 	var wrote map[string]string
@@ -122,7 +122,7 @@ func TestRunStopRemovesLocalEnv(t *testing.T) {
 		removeLocalEnv = origRemoveLocalEnv
 	})
 
-	stopContainer = func(string) error { return nil }
+	stopContainer = func(string, string, bool) error { return nil }
 	removed := false
 	removeLocalEnv = func() error {
 		removed = true
@@ -155,7 +155,7 @@ func TestRunStartWritesFileRelativeToWorkingDirectory(t *testing.T) {
 		startContainer = origStartContainer
 	})
 	loadConfig = fakeLocalConfig("DBTOOLS_LOCAL_URL")
-	startContainer = func(string, time.Duration, bool) (string, error) {
+	startContainer = func(string, string, string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 
@@ -166,3 +166,4 @@ func TestRunStartWritesFileRelativeToWorkingDirectory(t *testing.T) {
 		t.Fatalf("local env file not created: %v", err)
 	}
 }
+
