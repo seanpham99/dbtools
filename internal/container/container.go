@@ -1,5 +1,6 @@
 // Package container manages the tool-owned local database containers
-// (one per supported engine) through the docker CLI.
+// (one per supported engine, scoped to the current project) through the
+// docker CLI.
 package container
 
 import (
@@ -7,10 +8,13 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/microsoft/go-mssqldb"
 )
@@ -23,31 +27,67 @@ const password = "Dbtools@Local123"
 
 var escapedPassword = url.QueryEscape(password)
 
-// spec describes one engine's tool-owned local container.
+// spec describes one engine's tool-owned local container template. name
+// and hostPort are zero-valued here and filled in per-invocation by the
+// exported functions below — two dbtools projects on one machine must
+// never share a container name or a fixed host port.
 type spec struct {
 	engine        string
-	name          string // container name
+	name          string // resolved container name; empty on the package-level templates
 	image         string
-	hostPort      string
-	runArgs       func(s spec) []string // docker run args
-	readyProbe    func(s spec) error    // nil error when the server is ready
+	containerPort string // the engine's fixed in-container port, e.g. "5432"
+	hostPort      string // resolved host port; "0" means "ask Docker to assign one"
+	dataDir       string // in-container path mounted to this project's data volume
+	runArgs       func(s spec) []string
+	readyProbe    func(s spec) error
 	createDBArgs  func(s spec) []string // docker exec args creating DatabaseName idempotently; nil when the image does it itself
 	url           func(s spec, database string) string
-	maintenanceDB string // database used for administrative connections (drop/recreate)
+	// hostPortFromLocalURL extracts the host port this engine's local
+	// connection URL encodes, so MaintenanceURLFor can reuse whatever port
+	// the container actually ended up on (fixed or Docker-assigned)
+	// without a live docker inspect call.
+	hostPortFromLocalURL func(rawURL string) (string, error)
+	maintenanceDB         string // database used for administrative connections (drop/recreate); "" means "connect with no database selected"
+}
+
+// standardURLPort extracts the port from an RFC 3986 URL (postgres,
+// mssql — both use a plain host:port authority).
+func standardURLPort(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parsing URL: %w", err)
+	}
+	if u.Port() == "" {
+		return "", fmt.Errorf("URL %q has no port", rawURL)
+	}
+	return u.Port(), nil
+}
+
+var mysqlTCPPortRE = regexp.MustCompile(`tcp\([^:]*:(\d+)\)`)
+
+// mysqlURLPort extracts the port from MySQL's non-RFC-3986
+// tcp(host:port) host syntax, which net/url.Parse cannot handle.
+func mysqlURLPort(rawURL string) (string, error) {
+	m := mysqlTCPPortRE.FindStringSubmatch(rawURL)
+	if m == nil {
+		return "", fmt.Errorf("mysql URL %q missing tcp(host:port) syntax", rawURL)
+	}
+	return m[1], nil
 }
 
 var mssqlSpec = spec{
-	engine:   "mssql",
-	name:     "dbtools-mssql-local",
-	image:    "mcr.microsoft.com/mssql/server:2025-latest",
-	hostPort: "14330",
+	engine:        "mssql",
+	image:         "mcr.microsoft.com/mssql/server:2025-latest",
+	containerPort: "1433",
+	dataDir:       "/var/opt/mssql",
 	runArgs: func(s spec) []string {
 		return []string{
 			"run", "-d",
 			"--name", s.name,
 			"-e", "ACCEPT_EULA=Y",
 			"-e", "MSSQL_SA_PASSWORD=" + password,
-			"-p", s.hostPort + ":1433",
+			"-p", s.hostPort + ":" + s.containerPort,
+			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
 			s.image,
 		}
 	},
@@ -71,21 +111,23 @@ var mssqlSpec = spec{
 	url: func(s spec, database string) string {
 		return fmt.Sprintf("mssql://sa:%s@127.0.0.1:%s?database=%s&TrustServerCertificate=true", escapedPassword, s.hostPort, database)
 	},
-	maintenanceDB: "master",
+	hostPortFromLocalURL: standardURLPort,
+	maintenanceDB:         "master",
 }
 
 var postgresSpec = spec{
-	engine:   "postgres",
-	name:     "dbtools-postgres-local",
-	image:    "postgres:17-alpine",
-	hostPort: "54320",
+	engine:        "postgres",
+	image:         "postgres:17-alpine",
+	containerPort: "5432",
+	dataDir:       "/var/lib/postgresql/data",
 	runArgs: func(s spec) []string {
 		return []string{
 			"run", "-d",
 			"--name", s.name,
 			"-e", "POSTGRES_PASSWORD=" + password,
 			"-e", "POSTGRES_DB=" + DatabaseName,
-			"-p", s.hostPort + ":5432",
+			"-p", s.hostPort + ":" + s.containerPort,
+			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
 			s.image,
 		}
 	},
@@ -105,47 +147,103 @@ var postgresSpec = spec{
 	url: func(s spec, database string) string {
 		return fmt.Sprintf("postgres://postgres:%s@127.0.0.1:%s/%s?sslmode=disable", escapedPassword, s.hostPort, database)
 	},
-	maintenanceDB: "postgres",
+	hostPortFromLocalURL: standardURLPort,
+	maintenanceDB:         "postgres",
+}
+
+var mysqlSpec = spec{
+	engine:        "mysql",
+	image:         "mysql:8",
+	containerPort: "3306",
+	dataDir:       "/var/lib/mysql",
+	runArgs: func(s spec) []string {
+		return []string{
+			"run", "-d",
+			"--name", s.name,
+			"-e", "MYSQL_ROOT_PASSWORD=" + password,
+			"-e", "MYSQL_DATABASE=" + DatabaseName,
+			"-p", s.hostPort + ":" + s.containerPort,
+			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
+			s.image,
+		}
+	},
+	readyProbe: func(s spec) error {
+		dsn := fmt.Sprintf("root:%s@tcp(127.0.0.1:%s)/%s?parseTime=true", password, s.hostPort, DatabaseName)
+		db, err := sql.Open("mysql", dsn)
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		return db.Ping()
+	},
+	// MYSQL_DATABASE creates DatabaseName on first boot; nothing else needed.
+	createDBArgs: nil,
+	url: func(s spec, database string) string {
+		return fmt.Sprintf("mysql://root:%s@tcp(127.0.0.1:%s)/%s", escapedPassword, s.hostPort, database)
+	},
+	hostPortFromLocalURL: mysqlURLPort,
+	// mysql has no separate admin database; root can DROP/CREATE
+	// DatabaseName while connected with no database selected at all,
+	// unlike postgres/mssql which need a *different* existing database to
+	// connect to before dropping the one they're pointed at.
+	maintenanceDB: "",
 }
 
 var specs = map[string]spec{
 	"mssql":    mssqlSpec,
 	"postgres": postgresSpec,
+	"mysql":    mysqlSpec,
 }
 
 func specFor(engineName string) (spec, error) {
 	s, ok := specs[engineName]
 	if !ok {
-		return spec{}, fmt.Errorf("no local container template for engine %q (supported: mssql, postgres)", engineName)
+		return spec{}, fmt.Errorf("no local container template for engine %q (supported: mssql, postgres, mysql)", engineName)
 	}
 	return s, nil
 }
 
-// LocalDatabaseURLFor returns the connection URL for engineName's
-// tool-owned local database.
-func LocalDatabaseURLFor(engineName string) (string, error) {
+// containerNameFor returns the deterministic, project-scoped container
+// name for engineName under projectID (see internal/projectid.Resolve).
+func containerNameFor(engineName, projectID string) string {
+	return fmt.Sprintf("dbtools-%s-%s", engineName, projectID)
+}
+
+// volumeNameFor returns the data volume name for a container named
+// containerName.
+func volumeNameFor(containerName string) string {
+	return containerName + "-data"
+}
+
+// LocalDatabaseURLFor returns engineName's local database URL for a
+// container already bound to hostPort. Pure — does not touch Docker or
+// require a running container, useful for tests and for any caller that
+// already knows the port (e.g. a pinned [container] port).
+func LocalDatabaseURLFor(engineName, hostPort string) (string, error) {
 	s, err := specFor(engineName)
 	if err != nil {
 		return "", err
 	}
+	s.hostPort = hostPort
 	return s.url(s, DatabaseName), nil
 }
 
-// MaintenanceURLFor returns the connection URL for engineName's
-// administrative database on the tool-owned container (used by reset to
-// drop/recreate the local database from outside it).
-func MaintenanceURLFor(engineName string) (string, error) {
+// MaintenanceURLFor returns the administrative connection URL for
+// engineName's tool-owned container, by swapping localURL's database for
+// the engine's maintenance database and reusing localURL's already-
+// resolved host and port — the container's actual published port, which
+// may have been Docker-assigned rather than fixed.
+func MaintenanceURLFor(engineName, localURL string) (string, error) {
 	s, err := specFor(engineName)
 	if err != nil {
 		return "", err
 	}
+	port, err := s.hostPortFromLocalURL(localURL)
+	if err != nil {
+		return "", fmt.Errorf("reading port from local URL: %w", err)
+	}
+	s.hostPort = port
 	return s.url(s, s.maintenanceDB), nil
-}
-
-// MasterURL returns the MSSQL container's master-database URL. Kept for
-// callers that are inherently MSSQL-scoped.
-func MasterURL() string {
-	return mssqlSpec.url(mssqlSpec, mssqlSpec.maintenanceDB)
 }
 
 // checkDocker verifies the docker CLI is installed and its daemon is
@@ -202,14 +300,32 @@ func inspect(containerName string) (exists bool, running bool, err error) {
 	return parseInspectOutput(out.Bytes(), runErr)
 }
 
-// StartForWithTimeout starts (or reuses) engineName's tool-owned local container,
-// waits up to timeout for readiness if wait is true, and returns the local
-// database's connection URL.
-func StartForWithTimeout(engineName string, timeout time.Duration, wait bool) (string, error) {
+// discoverHostPort returns the host port Docker assigned to name's
+// published containerPort/tcp mapping.
+func discoverHostPort(name, containerPort string) (string, error) {
+	format := fmt.Sprintf(`{{(index (index .NetworkSettings.Ports "%s/tcp") 0).HostPort}}`, containerPort)
+	out, err := exec.Command("docker", "inspect", "-f", format, name).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("docker inspect (port lookup) failed: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	port := strings.TrimSpace(string(out))
+	if port == "" || port == "<no value>" {
+		return "", fmt.Errorf("docker did not report a host port for %s/tcp on %s", containerPort, name)
+	}
+	return port, nil
+}
+
+// StartForWithTimeout starts (or reuses) engineName's tool-owned local
+// container scoped to projectID, waits up to timeout for readiness if
+// wait is true, and returns the local database's connection URL.
+// configuredPort pins the published host port; "" lets Docker assign a
+// free one, discovered afterward via docker inspect.
+func StartForWithTimeout(engineName, projectID, configuredPort string, timeout time.Duration, wait bool) (string, error) {
 	s, err := specFor(engineName)
 	if err != nil {
 		return "", err
 	}
+	s.name = containerNameFor(engineName, projectID)
 	if err := checkDocker(); err != nil {
 		return "", err
 	}
@@ -220,13 +336,34 @@ func StartForWithTimeout(engineName string, timeout time.Duration, wait bool) (s
 
 	switch {
 	case running:
+		port, err := discoverHostPort(s.name, s.containerPort)
+		if err != nil {
+			return "", err
+		}
+		s.hostPort = port
 	case exists:
 		if out, err := exec.Command("docker", "start", s.name).CombinedOutput(); err != nil {
 			return "", fmt.Errorf("docker start failed: %w: %s", err, strings.TrimSpace(string(out)))
 		}
+		port, err := discoverHostPort(s.name, s.containerPort)
+		if err != nil {
+			return "", err
+		}
+		s.hostPort = port
 	default:
+		s.hostPort = configuredPort
+		if s.hostPort == "" {
+			s.hostPort = "0"
+		}
 		if out, err := exec.Command("docker", s.runArgs(s)...).CombinedOutput(); err != nil {
 			return "", fmt.Errorf("docker run failed: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		if s.hostPort == "0" {
+			port, err := discoverHostPort(s.name, s.containerPort)
+			if err != nil {
+				return "", err
+			}
+			s.hostPort = port
 		}
 	}
 
@@ -243,12 +380,6 @@ func StartForWithTimeout(engineName string, timeout time.Duration, wait bool) (s
 	return s.url(s, DatabaseName), nil
 }
 
-// StartFor starts (or reuses) engineName's tool-owned local container and
-// returns the local database's connection URL.
-func StartFor(engineName string) (string, error) {
-	return StartForWithTimeout(engineName, 30*time.Second, true)
-}
-
 func waitReadyWithTimeout(s spec, timeout time.Duration) error {
 	if timeout <= 0 {
 		return nil
@@ -263,12 +394,16 @@ func waitReadyWithTimeout(s spec, timeout time.Duration) error {
 	return fmt.Errorf("%s did not become ready within %v", s.engine, timeout)
 }
 
-// StopFor stops and removes engineName's tool-owned local container.
-func StopFor(engineName string) error {
+// StopFor stops and removes engineName's tool-owned local container
+// scoped to projectID. Its data volume survives unless purgeVolume is
+// true (dbtools stop --no-backup), so a later Start resumes with the
+// same data.
+func StopFor(engineName, projectID string, purgeVolume bool) error {
 	s, err := specFor(engineName)
 	if err != nil {
 		return err
 	}
+	s.name = containerNameFor(engineName, projectID)
 	if err := checkDocker(); err != nil {
 		return err
 	}
@@ -276,18 +411,50 @@ func StopFor(engineName string) error {
 	if err != nil {
 		return err
 	}
-	if !exists {
-		return nil
+	if exists {
+		if out, err := exec.Command("docker", "rm", "-f", s.name).CombinedOutput(); err != nil {
+			return fmt.Errorf("docker rm failed: %w: %s", err, strings.TrimSpace(string(out)))
+		}
 	}
-	if out, err := exec.Command("docker", "rm", "-f", s.name).CombinedOutput(); err != nil {
-		return fmt.Errorf("docker rm failed: %w: %s", err, strings.TrimSpace(string(out)))
+	if purgeVolume {
+		if out, err := exec.Command("docker", "volume", "rm", volumeNameFor(s.name)).CombinedOutput(); err != nil {
+			if !strings.Contains(strings.ToLower(string(out)), "no such volume") {
+				return fmt.Errorf("docker volume rm failed: %w: %s", err, strings.TrimSpace(string(out)))
+			}
+		}
 	}
 	return nil
 }
 
-// Start starts the MSSQL container. Kept as the historical entry point;
-// engine-aware callers use StartFor.
-func Start() (string, error) { return StartFor("mssql") }
+// RestartForWithTimeout stops then starts engineName's tool-owned local
+// container scoped to projectID — its data volume survives the cycle —
+// and returns the (possibly new) connection URL.
+func RestartForWithTimeout(engineName, projectID, configuredPort string, timeout time.Duration, wait bool) (string, error) {
+	if err := StopFor(engineName, projectID, false); err != nil {
+		return "", err
+	}
+	return StartForWithTimeout(engineName, projectID, configuredPort, timeout, wait)
+}
 
-// Stop removes the MSSQL container. Engine-aware callers use StopFor.
-func Stop() error { return StopFor("mssql") }
+// LogsFor streams engineName's tool-owned local container's logs (scoped
+// to projectID) straight through to stdout/stderr, following new output
+// if follow is true.
+func LogsFor(engineName, projectID string, follow bool) error {
+	s, err := specFor(engineName)
+	if err != nil {
+		return err
+	}
+	s.name = containerNameFor(engineName, projectID)
+	if err := checkDocker(); err != nil {
+		return err
+	}
+	args := []string{"logs"}
+	if follow {
+		args = append(args, "-f")
+	}
+	args = append(args, s.name)
+	cmd := exec.Command("docker", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
