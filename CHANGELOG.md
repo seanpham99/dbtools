@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0](https://github.com/seanpham99/dbtools/compare/v0.3.0...v0.4.0) (2026-08-25)
+
+
+### Features
+
+* **docs:** polish landing page with motion system, native db logos, and centered hero ([#46](https://github.com/seanpham99/dbtools/issues/46)) ([0a88d3a](https://github.com/seanpham99/dbtools/commit/0a88d3a576e5d5d22f1b6fb331390e3ca3621a68))
+* **mysql:** add MySQL engine support and `dbtools clone` (prod→dev, masked-by-default) command ([#47](https://github.com/seanpham99/dbtools/pull/47)) ([2ad3e08](https://github.com/seanpham99/dbtools/commit/2ad3e08f7af2d523d47f91eff067e9527c1d121b))
+* **container:** project-scoped local Docker container/volume naming, dynamic or pinned host ports, data persistence across `stop`/`start`, new `restart`/`logs` commands, and the missing MySQL container spec ([#50](https://github.com/seanpham99/dbtools/pull/50)) ([308be64](https://github.com/seanpham99/dbtools/commit/308be64c103ed7339f05a40f5b9b5a498d1f3eee))
+
+### Bug Fixes
+
+* **reset:** resolve the maintenance connection from the local target's actual URL instead of a fixed port, and refuse to build one for a non-loopback host ([#50](https://github.com/seanpham99/dbtools/pull/50)) ([589fd92](https://github.com/seanpham99/dbtools/commit/589fd923d1a1a5a17c49abce0f71ba47c336ccc0))
+
 ## [0.3.0] - 2026-08-24
 
 v0.3 — health & security doctor audit, classicmodels real-data integration corpus, dirty recovery, and dev-loop enhancements.
