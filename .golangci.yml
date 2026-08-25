@@ -18,6 +18,7 @@ linters-settings:
   misspell:
     ignore-words:
       - doub
+      - strat
   errcheck:
     exclude-functions:
       - (*database/sql.Tx).Rollback
