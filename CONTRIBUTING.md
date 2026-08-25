@@ -87,6 +87,6 @@ GitHub Actions automatically runs integration tests against live MSSQL Server 20
 ## Submitting Pull Requests
 
 1. **Keep Changes Focused**: Make small, incremental PRs that address a single concern.
-2. **Ensure Clean History**: Write clear, descriptive commit messages following the Conventional Commits format (`feat:`, `fix:`, `docs:`, `ci:`, `test:`, `refactor:`).
+2. **Ensure Clean History**: Write clear, descriptive commit messages following the Conventional Commits format (`feat:`, `fix:`, `docs:`, `ci:`, `test:`, `refactor:`). This matters beyond style: `release-please` reads these prefixes off `main` to compute version bumps and generate `CHANGELOG.md` (`fix:` → patch, `feat:` → minor, `feat!:`/`BREAKING CHANGE:` footer → major).
 3. **Verify Locally**: Confirm all tests pass locally before pushing.
 4. **Open PR**: Submit your PR targeting `main`. Describe what changes were made and how they were tested.
