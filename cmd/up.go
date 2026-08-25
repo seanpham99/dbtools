@@ -17,7 +17,8 @@ var (
 var upCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Apply pending migrations to the local target",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		defer emitJobSummary(&err)
 		// up is the fast local dev loop. It deliberately refuses any
 		// non-local target: reaching a remote database requires the
 		// explicit `push <target> --yes` path with its preview + guard.

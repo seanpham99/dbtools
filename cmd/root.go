@@ -20,6 +20,16 @@ var rootCmd = &cobra.Command{
 	Short: "dbtools manages MSSQL/Postgres schema migrations and local dev databases",
 }
 
+// jsonOutput and logFormat are intentionally separate, orthogonal flags
+// governing two different streams, not one output-mode concept split in
+// two: jsonOutput controls the shape of a command's data RESULT (the
+// payload written to stdout — a status/plan object, a generated model,
+// etc.), while logFormat controls the shape of the human-readable
+// progress/diagnostic LOG stream (written to stderr via the logger
+// package — see docs/using-dbtools/private-network-jobs.md's log-scraping
+// section). A job can run `--log-format=json` alone to get structured
+// logs without changing what a command's own result payload looks like,
+// or `--json` alone to get a structured result with plain-text logs.
 var (
 	jsonOutput bool
 	logFormat  string
@@ -55,6 +65,11 @@ func init() {
 		}
 		logger.SetFormat(fmtVal)
 		if jsonOutput {
+			// Force logs to stderr regardless of any prior redirection —
+			// --json's contract is that stdout carries only the data
+			// payload; this guarantees that even if something upstream
+			// redirected the logger elsewhere, --json still separates the
+			// two streams (see TestLogFormat_JSONOutputStderr).
 			logger.SetOutput(os.Stderr)
 		}
 		return loadLocalEnv()
