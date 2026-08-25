@@ -41,7 +41,7 @@ type targetFailure struct {
 // statusJSONEntry is the --json shape for one target.
 type statusJSONEntry struct {
 	Target         string   `json:"target"`
-	CurrentVersion uint64   `json:"current_version,omitempty"`
+	CurrentVersion uint64   `json:"current_version"`
 	HasVersion     bool     `json:"has_version,omitempty"`
 	Dirty          bool     `json:"dirty,omitempty"`
 	Pending        []string `json:"pending,omitempty"`
@@ -100,6 +100,14 @@ func runStatus(targetNames ...string) error {
 
 	results := statusinfo.CollectAll(cfg, target, statusURL)
 
+	var connErr error
+	for _, r := range results {
+		if r.Err != nil {
+			connErr = r.Err
+			break
+		}
+	}
+
 	if jsonOutput {
 		entries := make([]statusJSONEntry, 0, len(results))
 		for _, r := range results {
@@ -128,9 +136,15 @@ func runStatus(targetNames ...string) error {
 			return err
 		}
 		fmt.Println(string(b))
+		if connErr != nil {
+			return ExitCode(1, "")
+		}
 		return nil
 	}
 
 	fmt.Print(renderStatusTable(results))
+	if connErr != nil {
+		return ExitCode(1, "")
+	}
 	return nil
 }
