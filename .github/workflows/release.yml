@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  packages: write
 
 jobs:
   goreleaser:
@@ -56,4 +57,16 @@ jobs:
             npm version "$VERSION" --no-git-tag-version
           fi
           npm publish --access public --provenance
+
+      - name: Publish to GitHub Packages
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          rm -rf /tmp/gh-pkg && cp -r npm /tmp/gh-pkg
+          cd /tmp/gh-pkg
+          npm pkg set name="@${GITHUB_REPOSITORY_OWNER,,}/dbtools-cli"
+          npm pkg set version="$VERSION"
+          npm pkg set publishConfig.registry="https://npm.pkg.github.com"
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
