@@ -19,6 +19,7 @@ description: Use when creating database migrations, running migration commands, 
 | **seed.sql** | Single optional root SQL file run automatically after `reset`. | Multiple seed files or fixture scripts |
 | **ledger** | `dbtools_migration_history` table tracking per-migration `applied`/`reverted` state. | Generic "history table" |
 | **repair** | Corrects ledger status for target versions. Replaces deprecated `stamp`. | `stamp` (removed in v1) |
+| **clone** | Copies data from one target into another of the same engine, masking sensitive columns by default (`--no-mask` opts out). Data-only — schema must already match (both targets share one `migrations_dir`). | `sync`, `restore` |
 
 ## Quick Command Reference
 
@@ -74,6 +75,10 @@ dbtools generate [target] [--out db_models.py] [--yes] [--check]
 
 # Generate TypeScript interfaces (+ optional zod schemas) from live DB schema
 dbtools generate [target] --lang ts [--zod] [--out db_models.ts]
+
+# Copy data from one target into another (same engine only), masking
+# sensitive columns by default — refresh dev from a prod snapshot
+dbtools clone <source> <dest> --yes [--no-mask] [--limit N] [--where "SQL"]
 
 # Read-only TUI status dashboard ('r' to refresh, 'q' to quit)
 dbtools dashboard
