@@ -1,0 +1,37 @@
+name: PR title lint
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize]
+
+permissions:
+  pull-requests: read
+  statuses: write
+
+jobs:
+  lint-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            ci
+            test
+            refactor
+            chore
+            style
+            perf
+          requireScope: false
+          # GitHub's squash-merge uses the PR title verbatim as the commit
+          # subject unless someone edits it in the merge box — this check
+          # exists so that default path still parses as a conventional
+          # commit for release-please, instead of silently dropping out of
+          # the next CHANGELOG.md (as happened with #47, #50, #59).
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The PR title's description must not start with an uppercase letter — release-please reads it verbatim as the commit subject.
