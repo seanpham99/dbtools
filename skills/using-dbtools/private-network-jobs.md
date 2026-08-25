@@ -90,6 +90,26 @@ When combining `--json` (machine output) and `--log-format=json` (structured log
 
 This allows CI/CD orchestrators to parse `$STDOUT` with `jq` while log scrapers ingest `$STDERR` into log analytics.
 
+### Job-Completion Summary Record
+
+`dbtools up` and `dbtools push` (the mutating job commands from section 2)
+also print one final JSON-lines record to **stdout** when `--json` is
+set, after their normal result payload:
+
+```json
+{"event":"job_complete","ok":true}
+{"event":"job_complete","ok":false,"error":"connection refused"}
+```
+
+This is emitted via a `defer`, so it fires on every path the command's
+own logic returns through — success, a refused/invalid target, a real
+migration failure — but **not** on a hard crash (OOM-kill, SIGKILL,
+timeout). A log scraper watching for this line can distinguish "the job
+ran to completion and reported its own outcome" from "the job died
+mid-write and never got to say so" — the two failure modes look
+identical from the exit code alone, since an orchestrator killing the
+container also reports a non-zero exit.
+
 ---
 
 ## 5. PostgreSQL Diagnostics in Detached Jobs

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -93,15 +92,8 @@ func (d *pgResetDriver) Run(migration io.Reader) error {
 		strings.NewReader(prefix),
 		bytes.NewReader(migrationBytes),
 	)); err != nil {
-		formattedErr := FormatPostgresError(err, string(migrationBytes), prefixRunes)
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && pqErr != nil && pqErr.Code == "42501" {
-			diag := RunPermissionDiagnostic(context.Background(), d.db, pqErr)
-			if diag != "" {
-				formattedErr = fmt.Errorf("%w\n\n%s", formattedErr, diag)
-			}
-		}
-		return fmt.Errorf("running migration: %w", formattedErr)
+		diagnosed := DiagnosePostgresError(context.Background(), d.db, err, string(migrationBytes), prefixRunes)
+		return fmt.Errorf("running migration: %w", diagnosed)
 	}
 	return nil
 }

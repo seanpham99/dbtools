@@ -1,6 +1,8 @@
 package migrator
 
 import (
+	"context"
+	"database/sql/driver"
 	"errors"
 	"strings"
 	"testing"
@@ -281,6 +283,69 @@ func TestFormatPostgresError(t *testing.T) {
 		}
 		if !strings.Contains(errMsg, `Where: PL/pgSQL function update_bar() line 4 at SQL statement`) {
 			t.Errorf("missing Where in: %s", errMsg)
+		}
+	})
+}
+
+func TestDiagnosePostgresError(t *testing.T) {
+	t.Run("non-42501 error: no diagnostic appended", func(t *testing.T) {
+		pqErr := &pq.Error{Code: "42P01", Message: `relation "x" does not exist`}
+		got := DiagnosePostgresError(context.Background(), nil, pqErr, "SELECT * FROM x;", 0)
+		if got == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if strings.Contains(got.Error(), "permission diagnostic") {
+			t.Errorf("expected no permission diagnostic for a non-42501 error, got: %s", got.Error())
+		}
+	})
+
+	t.Run("42501 error with nil db: formats without a diagnostic instead of panicking", func(t *testing.T) {
+		pqErr := &pq.Error{Code: "42501", Message: "permission denied for schema x"}
+		got := DiagnosePostgresError(context.Background(), nil, pqErr, "CREATE TABLE x (id INT);", 0)
+		if got == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(got.Error(), "permission denied for schema x") {
+			t.Errorf("expected the original message preserved, got: %s", got.Error())
+		}
+		if strings.Contains(got.Error(), "permission diagnostic") {
+			t.Errorf("expected no permission diagnostic with a nil db, got: %s", got.Error())
+		}
+	})
+
+	t.Run("42501 error with a live db: diagnostic appended after the formatted error", func(t *testing.T) {
+		db := getMockDB(t)
+		mockDriverInstance.mu.Lock()
+		mockDriverInstance.handlers = map[string]func(args []driver.Value) (driver.Rows, error){
+			"SELECT current_user": func(args []driver.Value) (driver.Rows, error) {
+				return &mockRows{
+					cols:   []string{"current_user", "session_user", "current_database", "current_schema"},
+					values: [][]driver.Value{{"app_user", "app_user", "testdb", "public"}},
+				}, nil
+			},
+			"nspowner": func(args []driver.Value) (driver.Rows, error) {
+				return &mockRows{cols: []string{"coalesce"}, values: [][]driver.Value{{"postgres"}}}, nil
+			},
+			"has_schema_privilege": func(args []driver.Value) (driver.Rows, error) {
+				return &mockRows{cols: []string{"has_usage", "has_create"}, values: [][]driver.Value{{false, false}}}, nil
+			},
+			"azure_pg_admin": func(args []driver.Value) (driver.Rows, error) {
+				return &mockRows{cols: []string{"exists"}, values: [][]driver.Value{{false}}}, nil
+			},
+		}
+		mockDriverInstance.mu.Unlock()
+
+		pqErr := &pq.Error{Code: "42501", Message: "permission denied for schema public"}
+		got := DiagnosePostgresError(context.Background(), db, pqErr, "CREATE TABLE x (id INT);", 0)
+		if got == nil {
+			t.Fatal("expected error, got nil")
+		}
+		errMsg := got.Error()
+		if !strings.Contains(errMsg, "permission denied for schema public") {
+			t.Errorf("expected the formatted error first, got: %s", errMsg)
+		}
+		if !strings.Contains(errMsg, "[permission diagnostic (SQLSTATE 42501)]") {
+			t.Errorf("expected the permission diagnostic appended, got: %s", errMsg)
 		}
 	})
 }

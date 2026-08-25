@@ -26,7 +26,8 @@ var pushCmd = &cobra.Command{
 	},
 }
 
-func runPush(targetName string) error {
+func runPush(targetName string) (err error) {
+	defer emitJobSummary(&err)
 	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)

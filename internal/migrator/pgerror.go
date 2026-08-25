@@ -1,6 +1,8 @@
 package migrator
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
@@ -98,4 +100,28 @@ func FormatPostgresError(err error, sqlText string, prefixLen int) error {
 	}
 
 	return errors.New(b.String())
+}
+
+// DiagnosePostgresError is the single entry point callers use to turn a
+// raw Postgres error into the fullest diagnostic available: line/column
+// context via FormatPostgresError always, plus — for SQLSTATE 42501
+// (insufficient_privilege), the one error class where a live connection
+// can add actionable context — a permission report from
+// RunPermissionDiagnostic. Callers that just need line/column formatting
+// with no live connection to probe further should call
+// FormatPostgresError directly instead; this exists so a caller like
+// pgResetDriver.Run doesn't need to know pq.Error internals or SQLSTATE
+// codes itself, only that a migration failed.
+func DiagnosePostgresError(ctx context.Context, db *sql.DB, err error, sqlText string, prefixLen int) error {
+	formatted := FormatPostgresError(err, sqlText, prefixLen)
+
+	var pqErr *pq.Error
+	if !errors.As(err, &pqErr) || pqErr == nil || pqErr.Code != "42501" {
+		return formatted
+	}
+	diag := RunPermissionDiagnostic(ctx, db, pqErr)
+	if diag == "" {
+		return formatted
+	}
+	return fmt.Errorf("%w\n\n%s", formatted, diag)
 }
