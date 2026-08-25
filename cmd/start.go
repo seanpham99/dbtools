@@ -66,4 +66,3 @@ func runStart() error {
 	fmt.Printf("local container started; %s is set via %s\n", target.URLEnv, localenv.Path())
 	return nil
 }
-

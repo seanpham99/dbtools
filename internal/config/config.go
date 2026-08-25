@@ -86,7 +86,6 @@ type Config struct {
 	Container     ContainerConfig   `toml:"container"`
 }
 
-
 // Load reads and parses the dbtools.toml file at path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)

@@ -47,7 +47,7 @@ type spec struct {
 	// the container actually ended up on (fixed or Docker-assigned)
 	// without a live docker inspect call.
 	hostPortFromLocalURL func(rawURL string) (string, error)
-	maintenanceDB         string // database used for administrative connections (drop/recreate); "" means "connect with no database selected"
+	maintenanceDB        string // database used for administrative connections (drop/recreate); "" means "connect with no database selected"
 }
 
 // standardURLPort extracts the port from an RFC 3986 URL (postgres,
@@ -112,7 +112,7 @@ var mssqlSpec = spec{
 		return fmt.Sprintf("mssql://sa:%s@127.0.0.1:%s?database=%s&TrustServerCertificate=true", escapedPassword, s.hostPort, database)
 	},
 	hostPortFromLocalURL: standardURLPort,
-	maintenanceDB:         "master",
+	maintenanceDB:        "master",
 }
 
 var postgresSpec = spec{
@@ -148,7 +148,7 @@ var postgresSpec = spec{
 		return fmt.Sprintf("postgres://postgres:%s@127.0.0.1:%s/%s?sslmode=disable", escapedPassword, s.hostPort, database)
 	},
 	hostPortFromLocalURL: standardURLPort,
-	maintenanceDB:         "postgres",
+	maintenanceDB:        "postgres",
 }
 
 var mysqlSpec = spec{

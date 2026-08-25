@@ -228,4 +228,3 @@ url_env = "L_URL"
 		t.Errorf("Container.Port = %d, want 0 (meaning: let Docker assign a port)", cfg.Container.Port)
 	}
 }
-

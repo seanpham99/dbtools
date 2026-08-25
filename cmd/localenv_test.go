@@ -166,4 +166,3 @@ func TestRunStartWritesFileRelativeToWorkingDirectory(t *testing.T) {
 		t.Fatalf("local env file not created: %v", err)
 	}
 }
-
