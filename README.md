@@ -36,6 +36,16 @@ or install globally:
 npm install -g dbtools-cli
 ```
 
+### Via Docker (for private-network / job-container use)
+
+```bash
+docker run --rm -v "$(pwd)":/workspace ghcr.io/seanpham99/dbtools:0.4.0 status
+```
+
+`linux/amd64`/`linux/arm64`, ships on `gcr.io/distroless/static` (CA
+certs included). See [skills/using-dbtools/docker-image.md](skills/using-dbtools/docker-image.md)
+for the build-`FROM` pattern used by private-network job runners.
+
 ### Via Go Install
 
 ```bash
