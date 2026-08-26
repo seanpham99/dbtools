@@ -307,4 +307,3 @@ func TestBuildPlanEntries_NoLedgerSetsLedgerSkippedNotDrift(t *testing.T) {
 		t.Errorf("plan Drift = %v, want empty (no drift detected)", e.Drift)
 	}
 }
-

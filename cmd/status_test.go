@@ -185,4 +185,3 @@ func TestRunStatus_NoLedgerReportsNoLedgerTrue(t *testing.T) {
 		t.Errorf("text output = %q, want it to mention no dbtools ledger", bufText.String())
 	}
 }
-

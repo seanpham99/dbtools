@@ -155,4 +155,3 @@ func planDrift(url string, eng engine.Engine, migrationsDir, upSuffix, table, ta
 	}
 	return drift, ledgerSkipped
 }
-

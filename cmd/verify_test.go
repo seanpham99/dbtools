@@ -82,4 +82,3 @@ engine = "sqlite"
 		t.Fatalf("runVerify() with no ledger = %v, want nil or exit-2 drift, not a hard failure", err)
 	}
 }
-
