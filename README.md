@@ -192,6 +192,8 @@ Running `dbtools verify <target>` inspects whether:
 - Every database object (table, view) created by applied migrations actually exists in the database schema.
 - Drop operations from subsequent migrations correctly excuse dropped tables without falsely flagging drift.
 
+When inspecting targets with no `dbtools_migration_history` ledger (e.g. incumbent databases before running `dbtools adopt`), `verify` operates in **ledger-free mode**: it checks object existence directly for every migration file on disk without hard-failing. Pass `--init-ledger` to initialize and backfill the ledger.
+
 ---
 
 ## Python Pydantic Model Generation

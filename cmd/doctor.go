@@ -159,61 +159,79 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 		Message: fmt.Sprintf("connected to database (%s)", eng.Name()),
 	})
 
-	// 3. Ledger integrity check
-	var ledgerEntries []ledger.Entry
-	ledgerExists := true
-	entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
+	ledgerTableExists, err := engine.TableExists(eng, db, cfg.Ledger.Table)
 	if err != nil {
-		ledgerExists = false
+		report.Healthy = false
+		report.Exit = 1
 		report.Checks = append(report.Checks, CheckResult{
 			Name:    "ledger-integrity",
-			Status:  "warn",
-			Message: "ledger table uninitialized or empty",
+			Status:  "fail",
+			Message: fmt.Sprintf("failed to check ledger table existence: %v", err),
+		})
+		return report
+	}
+
+	// 3. Ledger integrity check
+	var ledgerEntries []ledger.Entry
+	if !ledgerTableExists {
+		report.Checks = append(report.Checks, CheckResult{
+			Name:    "ledger-integrity",
+			Status:  "skipped",
+			Message: "no ledger — run `dbtools adopt` to enable",
 		})
 	} else {
-		ledgerEntries = entries
-		dir, dirErr := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
-		if dirErr != nil {
+		entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
+		if err != nil {
 			report.Checks = append(report.Checks, CheckResult{
 				Name:    "ledger-integrity",
 				Status:  "fail",
-				Message: fmt.Sprintf("reading migrations dir: %v", dirErr),
+				Message: fmt.Sprintf("reading ledger: %v", err),
 			})
 		} else {
-			hashMismatches := 0
-			hashSkipped := 0
-			hashVerified := 0
-			for _, e := range entries {
-				if e.Status != ledger.StatusApplied || e.ContentSHA256 == "" {
-					continue
-				}
-				if e.HashSource == ledger.HashSourceAdopted {
-					hashSkipped++
-					continue
-				}
-				sum, err := dir.ContentHash(e.Version)
-				if err != nil || sum != e.ContentSHA256 {
-					hashMismatches++
-					continue
-				}
-				hashVerified++
-			}
-			if hashMismatches > 0 {
+			ledgerEntries = entries
+			dir, dirErr := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
+			if dirErr != nil {
 				report.Checks = append(report.Checks, CheckResult{
 					Name:    "ledger-integrity",
 					Status:  "fail",
-					Message: fmt.Sprintf("content hash mismatch in %d migration(s)", hashMismatches),
+					Message: fmt.Sprintf("reading migrations dir: %v", dirErr),
 				})
 			} else {
-				msg := fmt.Sprintf("%d ledger entries verified (hashes match)", hashVerified)
-				if hashSkipped > 0 {
-					msg = fmt.Sprintf("%d ledger entries verified (hashes match), %d skipped (imported via adopt, unverified)", hashVerified, hashSkipped)
+				hashMismatches := 0
+				hashSkipped := 0
+				hashVerified := 0
+				for _, e := range entries {
+					if e.Status != ledger.StatusApplied || e.ContentSHA256 == "" {
+						continue
+					}
+					if e.HashSource == ledger.HashSourceAdopted {
+						hashSkipped++
+						continue
+					}
+					sum, err := dir.ContentHash(e.Version)
+					if err != nil || sum != e.ContentSHA256 {
+						hashMismatches++
+						continue
+					}
+					hashVerified++
 				}
-				report.Checks = append(report.Checks, CheckResult{
-					Name:    "ledger-integrity",
-					Status:  "ok",
-					Message: msg,
-				})
+				if hashMismatches > 0 {
+					report.Checks = append(report.Checks, CheckResult{
+						Name:    "ledger-integrity",
+						Status:  "fail",
+						Message: fmt.Sprintf("content hash mismatch in %d migration(s)", hashMismatches),
+					})
+				} else {
+					msg := fmt.Sprintf("%d ledger entries verified (hashes match)", hashVerified)
+					if hashSkipped > 0 {
+						msg = fmt.Sprintf("%d ledger entries verified (hashes match), %d skipped (imported via adopt, unverified)", hashVerified, hashSkipped)
+					}
+					report.Checks = append(report.Checks, CheckResult{
+						Name:    "ledger-integrity",
+						Status:  "ok",
+						Message: msg,
+					})
+				}
 			}
 		}
 	}
@@ -258,10 +276,14 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 						Message: fmt.Sprintf("%d pending migration(s) (current version %d)", len(pending), currentVer),
 					})
 				} else if hasVer {
+					msg := fmt.Sprintf("up to date (version %d)", currentVer)
+					if !ledgerTableExists {
+						msg += " (no dbtools ledger)"
+					}
 					report.Checks = append(report.Checks, CheckResult{
 						Name:    "version-sync",
 						Status:  "ok",
-						Message: fmt.Sprintf("up to date (version %d)", currentVer),
+						Message: msg,
 					})
 				} else {
 					report.Checks = append(report.Checks, CheckResult{
@@ -275,7 +297,36 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 	}
 
 	// 5. Drift summary
-	if ledgerExists && len(ledgerEntries) > 0 {
+	if !ledgerTableExists {
+		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, targetName)
+		if err != nil {
+			report.Checks = append(report.Checks, CheckResult{
+				Name:    "drift-summary",
+				Status:  "fail",
+				Message: fmt.Sprintf("drift check failed: %v", err),
+			})
+		} else {
+			driftCount := 0
+			for _, e := range vReport.Entries {
+				if e.Status == "DRIFT" {
+					driftCount++
+				}
+			}
+			if driftCount > 0 {
+				report.Checks = append(report.Checks, CheckResult{
+					Name:    "drift-summary",
+					Status:  "fail",
+					Message: fmt.Sprintf("drift detected in %d migration(s) (no ledger — object presence only)", driftCount),
+				})
+			} else {
+				report.Checks = append(report.Checks, CheckResult{
+					Name:    "drift-summary",
+					Status:  "ok",
+					Message: "no schema drift detected (no ledger — object presence only)",
+				})
+			}
+		}
+	} else if len(ledgerEntries) > 0 {
 		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, targetName)
 		if err != nil {
 			report.Checks = append(report.Checks, CheckResult{
@@ -308,12 +359,18 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 		report.Checks = append(report.Checks, CheckResult{
 			Name:    "drift-summary",
 			Status:  "warn",
-			Message: "skipped (ledger empty or not initialized)",
+			Message: "skipped (ledger empty)",
 		})
 	}
 
 	// 6. Dirty ledger check
-	if isDirty {
+	if !ledgerTableExists && !hasVer {
+		report.Checks = append(report.Checks, CheckResult{
+			Name:    "dirty-ledger",
+			Status:  "skipped",
+			Message: "no ledger — run `dbtools adopt` to enable",
+		})
+	} else if isDirty {
 		report.Checks = append(report.Checks, CheckResult{
 			Name:    "dirty-ledger",
 			Status:  "fail",
@@ -370,6 +427,8 @@ func renderDoctorHuman(reports []*DoctorReport) string {
 				badge = "[WARN]"
 			case "fail":
 				badge = "[FAIL]"
+			case "skipped":
+				badge = "[SKIP]"
 			}
 			fmt.Fprintf(&b, "  %-6s  %-18s %s\n", badge, c.Name, c.Message)
 		}

@@ -1,8 +1,15 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
 )
 
 // TestVerifyCommand_MissingTargetStillPrintsUsage guards against RunE's
@@ -32,5 +39,147 @@ func TestVerifyCommand_MissingTargetStillPrintsUsage(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Usage:") {
 		t.Fatalf("verify with a missing required argument did not print usage: %s", out.String())
+	}
+}
+
+func TestVerifyCommand_NoLedgerDoesNotError(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"),
+		[]byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dir, "test.db")
+	rawURL := "sqlite://" + dbPath
+	t.Setenv("DBTOOLS_TEST_VERIFY_NOLEDGER_URL", rawURL)
+
+	cfgContent := fmt.Sprintf(`migrations_dir = %q
+[targets.local]
+url_env = "DBTOOLS_TEST_VERIFY_NOLEDGER_URL"
+engine = "sqlite"
+`, dir)
+	configPath := filepath.Join(dir, "dbtools.toml")
+	if err := os.WriteFile(configPath, []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// widgets is never created and dbtools_migration_history never exists.
+	db.Close()
+
+	verifyInitLedger = false
+	err = runVerify("local")
+	var exitErr *ExitCodeError
+	if err != nil && !(errors.As(err, &exitErr) && exitErr.Code == 2) {
+		t.Fatalf("runVerify() with no ledger = %v, want nil or exit-2 drift, not a hard failure", err)
+	}
+}
+
+func TestVerifyCommand_DirtyCursorWithoutLedgerExitsOne(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"),
+		[]byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dir, "test.db")
+	rawURL := "sqlite://" + dbPath
+	t.Setenv("DBTOOLS_TEST_VERIFY_DIRTY_URL", rawURL)
+
+	cfgContent := fmt.Sprintf(`migrations_dir = %q
+[targets.local]
+url_env = "DBTOOLS_TEST_VERIFY_DIRTY_URL"
+engine = "sqlite"
+`, dir)
+	if err := os.WriteFile(filepath.Join(dir, "dbtools.toml"), []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, dirty BOOLEAN NOT NULL)`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO schema_migrations (version, dirty) VALUES (1, 1)`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	repoRoot, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(t.TempDir(), "dbtools")
+	build := exec.Command("go", "build", "-o", binary, ".")
+	build.Dir = repoRoot
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building dbtools: %v\n%s", err, output)
+	}
+
+	verify := exec.Command(binary, "verify", "local")
+	verify.Dir = dir
+	verify.Env = os.Environ()
+	output, err := verify.CombinedOutput()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("dbtools verify error = %v, want process exit error; output:\n%s", err, output)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Fatalf("dbtools verify exit code = %d, want 1; output:\n%s", exitErr.ExitCode(), output)
+	}
+	if !strings.Contains(string(output), "migration cursor is dirty at version 1") {
+		t.Fatalf("dbtools verify output = %q, want dirty-cursor diagnostic", output)
+	}
+}
+
+func TestVerifyCommand_InitLedgerRefusesProtectedTarget(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"),
+		[]byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbPath := filepath.Join(dir, "test.db")
+	rawURL := "sqlite://" + dbPath
+	t.Setenv("DBTOOLS_TEST_VERIFY_PROT_URL", rawURL)
+
+	cfgContent := fmt.Sprintf(`migrations_dir = %q
+[targets.prod]
+url_env = "DBTOOLS_TEST_VERIFY_PROT_URL"
+engine = "sqlite"
+protected = true
+`, dir)
+	configPath := filepath.Join(dir, "dbtools.toml")
+	if err := os.WriteFile(configPath, []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	verifyInitLedger = true
+	t.Cleanup(func() { verifyInitLedger = false })
+
+	err := runVerify("prod")
+	if err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Fatalf("runVerify(prod, --init-ledger) = %v, want protected target error", err)
 	}
 }

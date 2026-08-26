@@ -389,3 +389,25 @@ CREATE VIEW v AS SELECT * FROM users;
 		t.Errorf("unmapped = %v, want exactly the GEOMETRY column", unmapped)
 	}
 }
+
+func TestTableExists(t *testing.T) {
+	db := openTemp(t)
+	exists, err := engine.TableExists(SQLite{}, db, "not_there")
+	if err != nil {
+		t.Fatalf("TableExists() returned error: %v", err)
+	}
+	if exists {
+		t.Error("TableExists() = true for a table that was never created")
+	}
+
+	if _, err := db.Exec(`CREATE TABLE present (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	exists, err = engine.TableExists(SQLite{}, db, "present")
+	if err != nil {
+		t.Fatalf("TableExists() returned error: %v", err)
+	}
+	if !exists {
+		t.Error("TableExists() = false for a table that was just created")
+	}
+}

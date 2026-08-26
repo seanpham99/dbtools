@@ -12,7 +12,7 @@ It never modifies the database, creates tables, writes to the ledger, or mutates
 
 | Exit Code | Meaning | Details |
 |---|---|---|
-| **`0`** | **HEALTHY** | All checks passed (`[OK]` or `[WARN]`). Database is up to date, ledger is intact, hashes match, and credentials are safe. |
+| **`0`** | **HEALTHY** | All checks passed (`[OK]`, `[WARN]`, or `[SKIP]`). Database is up to date, ledger is intact (or gracefully skipped), and credentials are safe. |
 | **`1`** | **ERROR** | Unreachable target, database connection failure, invalid configuration, or unreadable migrations directory. |
 | **`2`** | **ISSUES DETECTED** | Health/integrity violations found: schema drift detected, content-hash mismatch, pending migrations, or dirty ledger state. |
 
@@ -24,31 +24,33 @@ It never modifies the database, creates tables, writes to the ledger, or mutates
 
 ### 1. `connectivity`
 - Resolves the target's connection string from its configured `url_env` environment variable.
-- Confirms the database engine is registered (`sqlite`, `postgres`, `mssql`).
+- Confirms the database engine is registered (`sqlite`, `postgres`, `mssql`, `mysql`).
 - Establishes a connection and pings the database server.
 - **Fail (`exit 1`)**: Connection refused, bad credentials, timeout, or unknown target.
 
 ### 2. `ledger-integrity`
 - Inspects the `dbtools_migration_history` ledger table.
 - For each applied migration with a recorded SHA-256 hash, verifies the migration file on disk matches the hash recorded when applied.
-- **Warn**: Ledger uninitialized (no ledger table yet).
+- **Skipped (`[SKIP]`)**: No ledger table exists (ledger-free mode — run `dbtools adopt` to enable).
+- **OK**: Ledger table exists but is empty.
 - **Fail (`exit 2`)**: Content hash mismatch (migration file edited post-apply) or corrupted history.
 
 ### 3. `version-sync`
 - Compares the live database migration version against `.up.sql` files in `migrations_dir`.
 - Detects pending migrations that need to be applied.
 - **Fail (`exit 2`)**: One or more pending migrations detected.
-- **OK**: Database is fully up to date or cleanly unmigrated.
+- **OK**: Database is fully up to date (appends `(no dbtools ledger)` when ledger table is absent) or cleanly unmigrated.
 
 ### 4. `drift-summary`
 - Inspects live database schema objects (tables, functions) created by applied migrations.
-- Flags any objects dropped or altered out-of-band outside of dbtools migrations.
-- **Warn**: Skipped if ledger is empty or uninitialized.
+- In ledger-free mode: walks migration files directly to verify object presence without requiring a recorded hash.
+- **Warn**: Skipped if ledger exists but is empty.
 - **Fail (`exit 2`)**: Schema drift detected (applied objects missing or dropped).
 
 ### 5. `dirty-ledger`
 - Reads the `dirty` flag from migration version tracking.
 - Surfaces partial migration failures where a previous migration failed partway through execution.
+- **Skipped (`[SKIP]`)**: No ledger table and no migration cursor recorded.
 - **Fail (`exit 2`)**: Target is marked `dirty=true`.
 
 ### 6. `security-flags`

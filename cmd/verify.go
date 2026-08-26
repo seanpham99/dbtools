@@ -63,26 +63,43 @@ func runVerify(targetName string) error {
 	}
 	defer m.Close()
 
-	entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
+	ledgerExists, err := engine.TableExists(eng, db, cfg.Ledger.Table)
 	if err != nil {
-		// No ledger table at all: with --init-ledger, create it (and
-		// backfill); without it, refuse — verify must not perform DDL/DML
-		// on a target it was asked to inspect read-only.
-		if verifyInitLedger {
+		return err
+	}
+	if !ledgerExists {
+		version, dirty, _, err := m.Version()
+		if err != nil {
+			return err
+		}
+		if dirty {
+			return fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, version, targetName)
+		}
+	}
+	if !ledgerExists && verifyInitLedger {
+		if err := requireUnprotected(cfg, targetName); err != nil {
+			return err
+		}
+		if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
+			return err
+		}
+		ledgerExists = true
+	}
+	if ledgerExists {
+		entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 && !verifyInitLedger {
+			return fmt.Errorf("ledger for %q is empty — refusing to create it on a read-only check; pass --init-ledger to create and backfill it", targetName)
+		}
+		if len(entries) == 0 {
+			if err := requireUnprotected(cfg, targetName); err != nil {
+				return err
+			}
 			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
 				return err
 			}
-			entries, err = eng.Ledger().List(db, cfg.Ledger.Table)
-			if err != nil {
-				return err
-			}
-		} else {
-			return fmt.Errorf("ledger for %q is not initialised — refusing to create it on a read-only check; pass --init-ledger to create and backfill it", targetName)
-		}
-	}
-	if len(entries) == 0 {
-		if !verifyInitLedger {
-			return fmt.Errorf("ledger for %q is empty — refusing to create it on a read-only check; pass --init-ledger to create and backfill it", targetName)
 		}
 	}
 

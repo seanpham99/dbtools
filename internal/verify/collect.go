@@ -27,12 +27,17 @@ type Report struct {
 	Entries []Entry
 }
 
-// Collect checks every ledger row in db against migrationsDir's files:
-// versions marked "applied" must have every object their migration creates
-// actually present AND the migration file's content must still match the
-// hash recorded when it was applied; versions marked "reverted" must not.
 func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targetName string) (*Report, error) {
 	migrationsDir, upSuffix, table = config.ResolveDefaults(migrationsDir, upSuffix, table)
+
+	exists, err := engine.TableExists(eng, db, table)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return collectNoLedger(db, eng, migrationsDir, upSuffix, targetName)
+	}
+
 	entries, err := eng.Ledger().List(db, table)
 	if err != nil {
 		return nil, err
@@ -131,4 +136,58 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		report.Entries = append(report.Entries, Entry{Version: e.Version, File: file.Filename, Status: status, Detail: strings.Join(details, "; ")})
 	}
 	return report, nil
+}
+
+// collectNoLedger walks every migration file directly and checks whether
+// the objects it creates exist live — the same per-file shape
+// internal/repair uses to validate a repair target, applied to every file
+// on disk instead of specific requested versions. No content-hash
+// comparison is possible without a recorded hash to compare against.
+func collectNoLedger(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, targetName string) (*Report, error) {
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
+	if err != nil {
+		return nil, err
+	}
+
+	droppedBefore := make(map[ddlcheck.ObjectRef]uint64)
+	for _, f := range dir.List() {
+		raw, err := os.ReadFile(f.Path)
+		if err != nil {
+			return nil, err
+		}
+		for _, obj := range eng.DDL().ExtractDroppedObjects(string(raw)) {
+			droppedBefore[obj] = f.Version
+		}
+		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
+			delete(droppedBefore, obj)
+		}
+	}
+
+	var entries []Entry
+	for _, f := range dir.List() {
+		raw, err := os.ReadFile(f.Path)
+		if err != nil {
+			return nil, err
+		}
+		missing := ""
+		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
+			exists, err := eng.DDL().Exists(db, obj)
+			if err != nil {
+				return nil, err
+			}
+			droppedAt, wasDropped := droppedBefore[obj]
+			excused := wasDropped && droppedAt > f.Version
+			if !exists && !excused {
+				missing = fmt.Sprintf("%s.%s missing", obj.Schema, obj.Name)
+				break
+			}
+		}
+		if missing != "" {
+			entries = append(entries, Entry{Version: f.Version, File: f.Filename, Status: "DRIFT", Detail: missing})
+			continue
+		}
+		entries = append(entries, Entry{Version: f.Version, File: f.Filename, Status: "OK", Detail: "no ledger — object presence only, no content-hash check possible"})
+	}
+
+	return &Report{Target: targetName, Entries: entries}, nil
 }

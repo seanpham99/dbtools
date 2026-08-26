@@ -1,13 +1,11 @@
 package cmd
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/adopt"
 	"github.com/seanpham99/dbtools/internal/config"
-	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/logger"
@@ -42,21 +40,6 @@ func init() {
 	adoptCmd.Flags().StringVar(&adoptVersionColumn, "version-column", "", "column in --from-table holding the migration version")
 	adoptCmd.Flags().StringVar(&adoptAppliedAtColumn, "applied-at-column", "", "optional column in --from-table holding the applied timestamp")
 	rootCmd.AddCommand(adoptCmd)
-}
-
-func tableExists(eng engine.Engine, db *sql.DB, tableName string) (bool, error) {
-	schema := ""
-	switch eng.Name() {
-	case "postgres":
-		schema = "public"
-	case "sqlite":
-		schema = "main"
-	case "mssql":
-		schema = "dbo"
-	case "mysql":
-		schema = ""
-	}
-	return eng.DDL().Exists(db, ddlcheck.ObjectRef{Schema: schema, Name: tableName, Kind: "table"})
 }
 
 func runAdopt(targetName string) error {
@@ -94,7 +77,7 @@ func runAdopt(targetName string) error {
 
 	if table == "" {
 		existsFunc := func(_ ledger.DBTX, name string) (bool, error) {
-			return tableExists(eng, db, name)
+			return engine.TableExists(eng, db, name)
 		}
 		table, err = adopt.DetectSourceTable(db, existsFunc, adopt.KnownTableNames())
 		if err != nil {

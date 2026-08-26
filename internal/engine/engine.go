@@ -165,3 +165,24 @@ func ForTarget(engineName, rawURL string) (Engine, error) {
 	}
 	return fromURL, nil
 }
+
+// TableExists reports whether name exists as a table in db, using e's
+// per-engine default schema (Postgres "public", SQLite "main", MSSQL
+// "dbo", MySQL "" — the current database). Read-only commands use this to
+// distinguish "no ledger table at all" from "ledger table exists but is
+// empty" — the two require different behavior (see internal/verify's
+// no-ledger mode).
+func TableExists(e Engine, db *sql.DB, name string) (bool, error) {
+	schema := ""
+	switch e.Name() {
+	case "postgres":
+		schema = "public"
+	case "sqlite":
+		schema = "main"
+	case "mssql":
+		schema = "dbo"
+	case "mysql":
+		schema = ""
+	}
+	return e.DDL().Exists(db, ddlcheck.ObjectRef{Schema: schema, Name: name, Kind: "table"})
+}
