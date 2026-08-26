@@ -14,6 +14,7 @@
 - **Project-Scoped Local Dev Containers**: `dbtools start`/`stop`/`restart`/`logs` manage a tool-owned Docker container per project (no cross-repo name/port collisions), with data persisting across `stop`/`start` by default.
 - **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
 - **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
+- **Full Structural Replay & Diff**: `dbtools diff` replays migrations into an ephemeral scratch database and compares its structural schema catalog against live targets to detect unrecorded 2am manual hotfixes that bypass the ledger.
 - **Rollback & Down Migrations**: `dbtools down` applies `.down.sql` files in reverse; `dbtools rollback` is a ledger-only soft-revert — the safe prod verb. Destructive ops on protected targets require `--preview --yes`.
 - **Agent-First Ergonomics**: Terraform-style exit-code contract (`0` clean / `1` error / `2` pending changes or drift), `--dry-run` previews, universal `--json`, and `DBTOOLS_NO_PROMPT=1` fail-closed mode for CI and AI agents. See [docs/exit-codes.md](docs/exit-codes.md).
 - **Environment & Target Protection**: Targets are defined in `dbtools.toml` by environment variable names (`url_env`), ensuring secrets never leak into version control. Protected targets reject destructive operations (`up`, `reset`, and `down` without `--preview --yes`).
@@ -131,6 +132,7 @@ dbtools status
 | `doctor` | `dbtools doctor [target] [--json]` | Strictly read-only health, integrity, drift, and security audit. Exit 0 healthy / 1 error / 2 issues. |
 | `plan` | `dbtools plan [--target X] [--json]` | Read-only preview of pending migrations + ledger drift, without applying anything. Agent/CI-friendly: exit 0 = safe to apply. |
 | `verify` | `dbtools verify <target> [--json]` | Non-destructive verification of ledger history and live database objects. Exit 0 clean / 1 error / 2 drift (content-hash mismatch or missing object). |
+| `diff` | `dbtools diff <target> [--against <url>] [--json]` | Replays migrations into a scratch DB and compares structural schema against the live target. Exit 0 clean / 1 error / 2 drift. |
 | `down` | `dbtools down <target> [N] [--preview] [--yes]` | Applies `.down.sql` migrations in reverse order, recorded in the ledger. Protected targets require `--preview --yes`. |
 | `rollback` | `dbtools rollback <target> [--yes]` | Ledger-only soft-revert (marks `reverted`, never data-destroying). The safe prod verb. |
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |

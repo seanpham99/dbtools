@@ -16,6 +16,7 @@ nuance than a table row can hold, read the matching file before using them:
 | Topic | File |
 |---|---|
 | `dbtools adopt` — importing incumbent migration ledgers (Flyway/EF/Knex/Alembic) | `adopt.md` |
+| `dbtools diff` — replaying migrations into scratch DB and checking live structural drift | `diff.md` |
 | `dbtools clone` masking rules, `[clone.mask]` config, `--where`/`--limit` | `clone.md` |
 | `dbtools doctor` — all 6 checks, exit-code meaning per check | `doctor.md` |
 | Exit-code contract (`plan`/`verify`/`up`/`down`) and CI/agent loop pattern | `ci-gate.md` |
@@ -31,7 +32,7 @@ nuance than a table row can hold, read the matching file before using them:
 |---|---|---|
 | **target** | Named DB environment (`local`, `prod`) in `dbtools.toml` mapping to an environment variable (`url_env`). | Hardcoded DB URLs in `dbtools.toml` |
 | **push** | Applies pending migrations to a named target (version-sync). | `deploy`, `schema-sync`, `sync` |
-| **version-sync** | Guarantees applied migration history matches local `.sql` files up to latest. | "Full schema sync" (dbtools does not do DDL diffing) |
+| **version-sync** | Guarantees applied migration history matches local `.sql` files up to latest. | "Full schema sync" (use `dbtools diff` for structural schema comparison) |
 | **reset** | Local-only: drops, recreates DB, replays all migrations, runs `seed.sql`. Supports mssql/postgres only — errors on a MySQL target. | `rollback`, `restore` |
 | **seed.sql** | Single optional root SQL file run automatically after `reset`. | Multiple seed files or fixture scripts |
 | **ledger** | `dbtools_migration_history` table tracking per-migration `applied`/`reverted` state. | Generic "history table" |
@@ -81,6 +82,9 @@ dbtools plan [--target X] [--json]
 
 # Verify migration ledger objects exist in target DB (drift check)
 dbtools verify <target_name> [--json]
+
+# Replay migrations into scratch DB and check live target structural drift (read-only against target)
+dbtools diff <target_name> [--against <url>] [--json]
 # Exit codes: 0 clean, 1 error, 2 drift/pending — see docs/exit-codes.md
 
 # Apply .down.sql migrations in reverse (destructive; protected targets need --preview --yes)

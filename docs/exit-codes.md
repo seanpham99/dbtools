@@ -24,6 +24,11 @@
 - **Exit 1**: Failed to query database, ledger missing without `--init-ledger`, or database error.
 - **Exit 2**: Drift detected (objects created by an applied migration are missing or content hash mismatch).
 
+### `dbtools diff <target>`
+- **Exit 0**: Live target schema matches scratch replay from migrations perfectly (no structural differences).
+- **Exit 1**: Failed to provision scratch database, replay failed, target unreachable, or invalid configuration.
+- **Exit 2**: Structural differences found (`MISSING`, `EXTRA`, or `CHANGED` objects).
+
 ### `dbtools up` & `dbtools push <target>`
 - **Exit 0**: Migrations applied successfully (or dry-run printed).
 - **Exit 1**: Apply failed partway (cursor marked dirty), connection error, or missing `--yes` on protected targets.
