@@ -9,6 +9,8 @@ import (
 
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // TestPlanJSONPreview exercises `plan` against a real temp-file SQLite DB:
@@ -239,3 +241,70 @@ func TestPlanCommand_UnknownFlagStillPrintsUsage(t *testing.T) {
 		t.Fatalf("plan with an invalid flag did not print usage: %s", out.String())
 	}
 }
+
+func TestBuildPlanEntries_NoLedgerSetsLedgerSkippedNotDrift(t *testing.T) {
+	dir := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll("migrations", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("migrations", "20260817000001_users.up.sql"), []byte(`CREATE TABLE users (id INTEGER PRIMARY KEY);`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbURL := "sqlite://" + filepath.Join(dir, "local.db")
+	t.Setenv("DBTOOLS_LOCAL_URL", dbURL)
+	cfg := &config.Config{
+		MigrationsDir: "migrations",
+		Targets:       map[string]config.Target{"local": {URLEnv: "DBTOOLS_LOCAL_URL"}},
+	}
+	loadConfig = func(string) (*config.Config, error) { return cfg, nil }
+	t.Cleanup(func() { loadConfig = config.Load })
+
+	// Set up the sqlite DB: create the users table and stamp the migrate cursor,
+	// but never create dbtools_migration_history.
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(dbURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE users (id INTEGER PRIMARY KEY);`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+
+	m, err := migrator.Open(dbURL, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Stamp(20260817000001); err != nil {
+		m.Close()
+		t.Fatal(err)
+	}
+	m.Close()
+
+	planTarget = "local"
+	defer func() { planTarget = "" }()
+
+	entries := buildPlanEntries(cfg)
+	if len(entries) != 1 {
+		t.Fatalf("plan entries = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if !e.LedgerSkipped {
+		t.Errorf("plan LedgerSkipped = false, want true")
+	}
+	if len(e.Drift) != 0 {
+		t.Errorf("plan Drift = %v, want empty (no drift detected)", e.Drift)
+	}
+}
+

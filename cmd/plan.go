@@ -55,6 +55,7 @@ type planJSONEntry struct {
 	Dirty          bool     `json:"dirty,omitempty"`
 	Pending        []string `json:"pending,omitempty"`
 	Drift          []string `json:"drift,omitempty"`
+	LedgerSkipped  bool     `json:"ledger_skipped,omitempty"`
 	Error          string   `json:"error,omitempty"`
 }
 
@@ -117,7 +118,7 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 			url, _ := cfg.ResolveURLOrFlag(r.Target, override)
 			eng, err := engine.ForTarget(cfg.EngineName(r.Target), url)
 			if err == nil {
-				e.Drift = planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, r.Target)
+				e.Drift, e.LedgerSkipped = planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, r.Target)
 			}
 		}
 		entries = append(entries, e)
@@ -126,17 +127,25 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 }
 
 // planDrift runs a read-only verify pass against url and returns the
-// drift details for applied/reverted versions.
-func planDrift(url string, eng engine.Engine, migrationsDir, upSuffix, table, targetName string) []string {
+// drift details for applied/reverted versions, plus whether the ledger
+// table doesn't exist (in which case Collect walked files directly and
+// its OK-status entries are not genuine drift).
+func planDrift(url string, eng engine.Engine, migrationsDir, upSuffix, table, targetName string) ([]string, bool) {
 	db, err := eng.Open(url)
 	if err != nil {
-		return []string{"verify: " + err.Error()}
+		return []string{"verify: " + err.Error()}, false
 	}
 	defer db.Close()
 
+	ledgerSkipped, err := engine.TableExists(eng, db, table)
+	if err != nil {
+		return []string{"verify: " + err.Error()}, false
+	}
+	ledgerSkipped = !ledgerSkipped
+
 	report, err := verify.Collect(db, eng, migrationsDir, upSuffix, table, targetName)
 	if err != nil {
-		return []string{"verify: " + err.Error()}
+		return []string{"verify: " + err.Error()}, ledgerSkipped
 	}
 	var drift []string
 	for _, e := range report.Entries {
@@ -144,5 +153,6 @@ func planDrift(url string, eng engine.Engine, migrationsDir, upSuffix, table, ta
 			drift = append(drift, fmt.Sprintf("v%d: %s", e.Version, e.Detail))
 		}
 	}
-	return drift
+	return drift, ledgerSkipped
 }
+
