@@ -22,7 +22,7 @@ func TestBuildRows_MixedSuccessAndErrors(t *testing.T) {
 	}
 	t.Setenv("DASHBOARD_TEST_PROD_URL_UNUSED", "mssql://sa:pw@localhost:1433?database=y")
 
-	fakeCollect := func(databaseURL, migrationsDir, targetName string) (*statusinfo.Status, error) {
+	fakeCollect := func(databaseURL, migrationsDir, upSuffix, targetName string) (*statusinfo.Status, error) {
 		if targetName == "prod" {
 			return nil, errors.New("connection refused")
 		}
@@ -57,7 +57,7 @@ func TestBuildRows_MixedSuccessAndErrors(t *testing.T) {
 
 func TestBuildRows_EmptyConfig(t *testing.T) {
 	cfg := &config.Config{MigrationsDir: "migrations", Targets: map[string]config.Target{}}
-	rows := BuildRows(cfg, func(string, string, string) (*statusinfo.Status, error) {
+	rows := BuildRows(cfg, func(string, string, string, string) (*statusinfo.Status, error) {
 		t.Fatal("collect should not be called when there are no targets")
 		return nil, nil
 	})

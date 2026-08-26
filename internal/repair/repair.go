@@ -27,12 +27,12 @@ type Result struct {
 // applied when its migration's objects don't exist unless force is set),
 // applies all pairs, and recomputes db's cursor as the highest remaining
 // applied version.
-func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir string, pairs []Pair, force bool) (*Result, error) {
-	if err := eng.Ledger().Sync(db, m, migrationsDir); err != nil {
+func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir, upSuffix string, pairs []Pair, force bool) (*Result, error) {
+	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix); err != nil {
 		return nil, err
 	}
 
-	dir, err := migrator.ReadDir(migrationsDir)
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, err
 	}

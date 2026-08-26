@@ -30,13 +30,13 @@ type Report struct {
 // versions marked "applied" must have every object their migration creates
 // actually present AND the migration file's content must still match the
 // hash recorded when it was applied; versions marked "reverted" must not.
-func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*Report, error) {
+func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, targetName string) (*Report, error) {
 	entries, err := eng.Ledger().List(db)
 	if err != nil {
 		return nil, err
 	}
 
-	dir, err := migrator.ReadDir(migrationsDir)
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, err
 	}

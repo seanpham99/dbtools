@@ -116,7 +116,7 @@ func RunAssets(t *testing.T, dialect, rawURL string) {
 	}
 
 	// --- E2: Verify clean ledger state ---
-	report, err := verify.Collect(db, eng, migrationsDir, "test-target")
+	report, err := verify.Collect(db, eng, migrationsDir, cfg.Migrations.UpSuffix, "test-target")
 	if err != nil {
 		t.Fatalf("verify.Collect failed: %v", err)
 	}
@@ -257,7 +257,7 @@ func RunAssets(t *testing.T, dialect, rawURL string) {
 	if err := os.WriteFile(mig1Path, append(origMig1, []byte("\n-- edited after apply")...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	driftReport, err := verify.Collect(db, eng, migrationsDir, "test-target")
+	driftReport, err := verify.Collect(db, eng, migrationsDir, cfg.Migrations.UpSuffix, "test-target")
 	if err != nil {
 		t.Fatalf("verify after edit returned err: %v", err)
 	}
@@ -283,7 +283,7 @@ func RunAssets(t *testing.T, dialect, rawURL string) {
 	} else {
 		_, _ = db.Exec("DROP TABLE payments")
 	}
-	dropReport, err := verify.Collect(db, eng, migrationsDir, "test-target")
+	dropReport, err := verify.Collect(db, eng, migrationsDir, cfg.Migrations.UpSuffix, "test-target")
 	if err != nil {
 		t.Fatalf("verify after drop returned err: %v", err)
 	}
@@ -314,7 +314,7 @@ func RunAssets(t *testing.T, dialect, rawURL string) {
 	}
 
 	// Verify ledger marks v4 reverted, not drift
-	downVerify, err := verify.Collect(db, eng, migrationsDir, "test-target")
+	downVerify, err := verify.Collect(db, eng, migrationsDir, cfg.Migrations.UpSuffix, "test-target")
 	if err != nil {
 		t.Fatalf("verify after down failed: %v", err)
 	}
@@ -333,7 +333,7 @@ func RunAssets(t *testing.T, dialect, rawURL string) {
 		t.Fatalf("reapplyStatus.CurrentVersion = %d, want 20260822000004", reapplyStatus.CurrentVersion)
 	}
 
-	finalVerify, err := verify.Collect(db, eng, migrationsDir, "test-target")
+	finalVerify, err := verify.Collect(db, eng, migrationsDir, cfg.Migrations.UpSuffix, "test-target")
 	if err != nil {
 		t.Fatalf("final verify failed: %v", err)
 	}

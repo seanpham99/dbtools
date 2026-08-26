@@ -51,7 +51,7 @@ func TestCollect_DropThenRecreateIsNotPermanentDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, eng, dir, "test-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestCollect_DropThenRecreateIsNotPermanentDrift(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE dbtools_test_recreate_widgets`); err != nil {
 		t.Fatal(err)
 	}
-	report, err = Collect(db, eng, dir, "test-target")
+	report, err = Collect(db, eng, dir, ".up.sql", "test-target")
 	if err != nil {
 		t.Fatalf("second Collect() returned error: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestCollect_SQLite_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, eng, dir, "test-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}

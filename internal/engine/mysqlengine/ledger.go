@@ -158,7 +158,7 @@ func (s mysqlLedgerStore) AppliedVersions(db ledger.DBTX) ([]uint64, error) {
 
 // Sync ensures MySQL db's ledger table exists and is backfilled. Refuses
 // to backfill when the cursor is dirty (a previous apply failed partway).
-func (s mysqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error {
+func (s mysqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) error {
 	if err := s.ensureSchema(db); err != nil {
 		return err
 	}
@@ -169,9 +169,10 @@ func (s mysqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir s
 	if dirty {
 		return fmt.Errorf("migration cursor is dirty (a previous apply failed partway through version %d); run `dbtools repair <target>` to resolve it before syncing the ledger", version)
 	}
-	allVersions, err := migrator.ListVersions(migrationsDir)
+	allVersions, err := migrator.ListVersions(migrationsDir, upSuffix)
 	if err != nil {
 		return err
 	}
 	return s.backfill(db, version, hasVersion, allVersions)
 }
+

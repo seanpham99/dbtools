@@ -55,7 +55,7 @@ func TestSync_RefusesDirtyCursor(t *testing.T) {
 	defer db.Close()
 
 	ls := sqliteengine.SQLite{}.Ledger()
-	err = ls.Sync(db, m, dir)
+	err = ls.Sync(db, m, dir, ".up.sql")
 	if err == nil {
 		t.Fatal("Sync() over a dirty cursor should refuse")
 	}
@@ -90,7 +90,7 @@ func TestSync_BackfillSkipsDirty(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err := (sqliteengine.SQLite{}).Ledger().Sync(db, m, dir); err != nil {
+	if err := (sqliteengine.SQLite{}).Ledger().Sync(db, m, dir, ".up.sql"); err != nil {
 		t.Fatalf("Sync() clean: %v", err)
 	}
 	entries, err := (sqliteengine.SQLite{}).Ledger().List(db)

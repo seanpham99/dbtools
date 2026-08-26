@@ -6,7 +6,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
-type CollectFunc func(databaseURL, migrationsDir, targetName string) (*statusinfo.Status, error)
+type CollectFunc func(databaseURL, migrationsDir, upSuffix, targetName string) (*statusinfo.Status, error)
 
 type Row struct {
 	Target string
@@ -31,7 +31,7 @@ func BuildRows(cfg *config.Config, collect CollectFunc) []Row {
 			continue
 		}
 
-		status, err := collect(url, cfg.MigrationsDir, name)
+		status, err := collect(url, cfg.MigrationsDir, cfg.Migrations.UpSuffix, name)
 		if err != nil {
 			rows = append(rows, Row{Target: name, Err: err})
 			continue
@@ -41,3 +41,4 @@ func BuildRows(cfg *config.Config, collect CollectFunc) []Row {
 	}
 	return rows
 }
+

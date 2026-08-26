@@ -35,7 +35,7 @@ func runNew(now time.Time, name string) (string, error) {
 		return "", fmt.Errorf("loading dbtools.toml (run 'dbtools init' first?): %w", err)
 	}
 
-	filename, err := scaffold.NextUpFilename(now, cfg.MigrationsDir, name)
+	filename, err := scaffold.NextUpFilename(now, cfg.MigrationsDir, cfg.Migrations.UpSuffix, name)
 	if err != nil {
 		return "", fmt.Errorf("determining next migration filename: %w", err)
 	}

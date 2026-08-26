@@ -21,7 +21,7 @@ func TestBuildRows_RejectsEngineSchemeMismatchWithoutDialing(t *testing.T) {
 	}
 
 	called := false
-	rows := BuildRows(cfg, func(url, dir, name string) (*statusinfo.Status, error) {
+	rows := BuildRows(cfg, func(url, dir, upSuffix, name string) (*statusinfo.Status, error) {
 		called = true
 		return nil, nil
 	})

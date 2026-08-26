@@ -61,7 +61,7 @@ func TestCollect_DetectsEditedMigrationAfterApply(t *testing.T) {
 	defer db.Exec(`DROP TABLE dbtools_test_hash_drift`)
 
 	// Verify clean before any edit.
-	report, err := Collect(db, eng, dir, "test-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestCollect_DetectsEditedMigrationAfterApply(t *testing.T) {
 	if err := os.WriteFile(file, []byte("CREATE TABLE dbtools_test_hash_drift (id INTEGER PRIMARY KEY);\nALTER TABLE dbtools_test_hash_drift ADD COLUMN extra TEXT;"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	report, err = Collect(db, eng, dir, "test-target")
+	report, err = Collect(db, eng, dir, ".up.sql", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() after edit returned error: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestCollect_BackfilledRowsWithoutHashAreNotDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, eng, dir, "test-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}

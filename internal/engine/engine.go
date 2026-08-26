@@ -65,7 +65,7 @@ type LedgerStore interface {
 	// Sync ensures the ledger table exists and backfills a row for every
 	// version the migrate cursor already considers applied. Refuses to
 	// backfill when the cursor is dirty.
-	Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error
+	Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) error
 	// SetStatus upserts version's ledger row, preserving content_sha256
 	// when the row already exists.
 	SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note string) error

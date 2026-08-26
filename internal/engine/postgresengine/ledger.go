@@ -155,7 +155,7 @@ func (s ledgerStore) AppliedVersions(db ledger.DBTX) ([]uint64, error) {
 // backfill a row for every version m's cursor already considers applied.
 // Refuses to backfill when the cursor is dirty (a previous apply failed
 // partway) — see ledger.Sync.
-func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error {
+func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) error {
 	if err := s.ensureSchema(db); err != nil {
 		return err
 	}
@@ -166,9 +166,10 @@ func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string
 	if dirty {
 		return fmt.Errorf("migration cursor is dirty (a previous apply failed partway through version %d); run `dbtools repair <target>` to resolve it before syncing the ledger", version)
 	}
-	allVersions, err := migrator.ListVersions(migrationsDir)
+	allVersions, err := migrator.ListVersions(migrationsDir, upSuffix)
 	if err != nil {
 		return err
 	}
 	return s.backfill(db, version, hasVersion, allVersions)
 }
+

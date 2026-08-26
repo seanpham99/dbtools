@@ -45,11 +45,11 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
+	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	dir, err := migrator.ReadDir(cfg.MigrationsDir)
+	dir, err := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
@@ -89,7 +89,7 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		}
 	}
 
-	status, err := statusinfo.Collect(url, cfg.MigrationsDir, targetName)
+	status, err := statusinfo.Collect(url, cfg.MigrationsDir, cfg.Migrations.UpSuffix, targetName)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}

@@ -172,7 +172,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 		})
 	} else {
 		ledgerEntries = entries
-		dir, dirErr := migrator.ReadDir(cfg.MigrationsDir)
+		dir, dirErr := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
 		if dirErr != nil {
 			report.Checks = append(report.Checks, CheckResult{
 				Name:    "ledger-integrity",
@@ -229,7 +229,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 			currentVer = v
 			isDirty = dirty
 			hasVer = hv
-			dir, dirErr := migrator.ReadDir(cfg.MigrationsDir)
+			dir, dirErr := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
 			if dirErr != nil {
 				report.Checks = append(report.Checks, CheckResult{
 					Name:    "version-sync",
@@ -263,7 +263,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 
 	// 5. Drift summary
 	if ledgerExists && len(ledgerEntries) > 0 {
-		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, targetName)
+		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, targetName)
 		if err != nil {
 			report.Checks = append(report.Checks, CheckResult{
 				Name:    "drift-summary",

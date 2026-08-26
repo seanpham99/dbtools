@@ -25,7 +25,7 @@ type TargetResult struct {
 
 // Collect opens databaseURL, reads its current migration version, and
 // diffs it against every migration file in migrationsDir.
-func Collect(databaseURL, migrationsDir, targetName string) (*Status, error) {
+func Collect(databaseURL, migrationsDir, upSuffix, targetName string) (*Status, error) {
 	m, err := migrator.Open(databaseURL, migrationsDir)
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func Collect(databaseURL, migrationsDir, targetName string) (*Status, error) {
 		return nil, err
 	}
 
-	d, err := migrator.ReadDir(migrationsDir)
+	d, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func CollectAll(cfg *config.Config, targetFilter, urlOverride string) []TargetRe
 			results = append(results, TargetResult{Target: name, Err: err})
 			continue
 		}
-		s, err := Collect(url, cfg.MigrationsDir, name)
+		s, err := Collect(url, cfg.MigrationsDir, cfg.Migrations.UpSuffix, name)
 		if err != nil {
 			results = append(results, TargetResult{Target: name, Err: err})
 			continue

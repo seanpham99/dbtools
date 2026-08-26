@@ -69,7 +69,7 @@ func runVerify(targetName string) error {
 		// backfill); without it, refuse — verify must not perform DDL/DML
 		// on a target it was asked to inspect read-only.
 		if verifyInitLedger {
-			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
+			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix); err != nil {
 				return err
 			}
 			entries, err = eng.Ledger().List(db)
@@ -86,7 +86,7 @@ func runVerify(targetName string) error {
 		}
 	}
 
-	report, err := verify.Collect(db, eng, cfg.MigrationsDir, targetName)
+	report, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, targetName)
 	if err != nil {
 		return err
 	}

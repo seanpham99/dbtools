@@ -14,7 +14,7 @@ func TestReadDir(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "20260102000000_add_orders.up.sql"), []byte("CREATE TABLE orders (id INT);"), 0o644)
 	os.WriteFile(filepath.Join(dir, "README.md"), []byte("not a migration"), 0o644)
 
-	d, err := ReadDir(dir)
+	d, err := ReadDir(dir, ".up.sql")
 	if err != nil {
 		t.Fatalf("ReadDir() returned error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestDir_DownPlan(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "20260102000000_add_orders.up.sql"), []byte("CREATE TABLE orders (id INT);"), 0o644)
 	os.WriteFile(filepath.Join(dir, "20260102000000_add_orders.down.sql"), []byte("DROP TABLE orders;"), 0o644)
 
-	d, err := ReadDir(dir)
+	d, err := ReadDir(dir, ".up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestDir_DownPlan(t *testing.T) {
 
 	// Missing down file error
 	os.Remove(filepath.Join(dir, "20260102000000_add_orders.down.sql"))
-	d2, _ := ReadDir(dir)
+	d2, _ := ReadDir(dir, ".up.sql")
 	_, err = d2.DownPlan(applied, 1)
 	if err == nil {
 		t.Fatal("expected error when down file missing, got nil")
@@ -127,7 +127,7 @@ func TestDir_NextVersion(t *testing.T) {
 	now := time.Date(2026, 1, 15, 10, 0, 0, 0, time.UTC)
 	clockVer := uint64(20260115100000)
 
-	d, err := ReadDir(dir)
+	d, err := ReadDir(dir, ".up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestDir_NextVersion(t *testing.T) {
 
 	// Future-dated migration present
 	os.WriteFile(filepath.Join(dir, "20260120000000_future.up.sql"), []byte("SELECT 1;"), 0o644)
-	d, err = ReadDir(dir)
+	d, err = ReadDir(dir, ".up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,3 +153,24 @@ func TestDir_NextVersion(t *testing.T) {
 		t.Errorf("NextVersion() with future = %d, want 20260120000001", ver)
 	}
 }
+
+func TestReadDir_CustomUpSuffix(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.sql"), []byte("-- sql"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A real .up.sql file must NOT also match when a custom suffix is set.
+	if err := os.WriteFile(filepath.Join(dir, "2_create_gadgets.up.sql"), []byte("-- sql"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := ReadDir(dir, ".sql")
+	if err != nil {
+		t.Fatalf("ReadDir() returned error: %v", err)
+	}
+	versions := d.ListVersions()
+	if len(versions) != 1 || versions[0] != 1 {
+		t.Errorf("ListVersions() = %v, want [1]", versions)
+	}
+}
+

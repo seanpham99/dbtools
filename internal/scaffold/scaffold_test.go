@@ -9,7 +9,7 @@ import (
 
 func TestUpFilename(t *testing.T) {
 	now := time.Date(2026, 7, 1, 4, 11, 34, 0, time.UTC)
-	got := UpFilename(now, "add widget table")
+	got := UpFilename(now, "add widget table", ".up.sql")
 	want := "20260701041134_add_widget_table.up.sql"
 	if got != want {
 		t.Errorf("UpFilename() = %q, want %q", got, want)
@@ -18,7 +18,7 @@ func TestUpFilename(t *testing.T) {
 
 func TestUpFilename_AlreadySlug(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	got := UpFilename(now, "add_widget_table")
+	got := UpFilename(now, "add_widget_table", ".up.sql")
 	want := "20260102030405_add_widget_table.up.sql"
 	if got != want {
 		t.Errorf("UpFilename() = %q, want %q", got, want)
@@ -29,7 +29,7 @@ func TestNextVersion_EmptyOrNonExistentDir(t *testing.T) {
 	now := time.Date(2026, 8, 19, 17, 3, 57, 0, time.UTC)
 
 	// Non-existent directory returns clock version
-	ver, err := NextVersion(now, "/non/existent/dir/path")
+	ver, err := NextVersion(now, "/non/existent/dir/path", ".up.sql")
 	if err != nil {
 		t.Fatalf("NextVersion() error: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestNextVersion_EmptyOrNonExistentDir(t *testing.T) {
 
 	// Empty directory returns clock version
 	tmp := t.TempDir()
-	ver, err = NextVersion(now, tmp)
+	ver, err = NextVersion(now, tmp, ".up.sql")
 	if err != nil {
 		t.Fatalf("NextVersion() error: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestNextVersion_ExistingBehindClock(t *testing.T) {
 	}
 
 	now := time.Date(2026, 8, 19, 17, 3, 57, 0, time.UTC)
-	ver, err := NextVersion(now, tmp)
+	ver, err := NextVersion(now, tmp, ".up.sql")
 	if err != nil {
 		t.Fatalf("NextVersion() error: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestNextVersion_ExistingAheadOfClock(t *testing.T) {
 	}
 
 	now := time.Date(2026, 8, 19, 17, 3, 57, 0, time.UTC)
-	ver, err := NextVersion(now, tmp)
+	ver, err := NextVersion(now, tmp, ".up.sql")
 	if err != nil {
 		t.Fatalf("NextVersion() error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestNextVersion_ExistingAheadOfClock(t *testing.T) {
 		t.Errorf("NextVersion() = %d, want max+1 (20260820100002)", ver)
 	}
 
-	fn, err := NextUpFilename(now, tmp, "null unbacked source file names")
+	fn, err := NextUpFilename(now, tmp, ".up.sql", "null unbacked source file names")
 	if err != nil {
 		t.Fatalf("NextUpFilename() error: %v", err)
 	}
@@ -99,3 +99,4 @@ func TestNextVersion_ExistingAheadOfClock(t *testing.T) {
 		t.Errorf("NextUpFilename() = %q, want %q", fn, wantFn)
 	}
 }
+

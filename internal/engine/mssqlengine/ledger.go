@@ -150,7 +150,7 @@ func AppliedVersions(db ledger.DBTX) ([]uint64, error) {
 }
 
 // Sync ensures MSSQL db's ledger table exists and is backfilled.
-func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error {
+func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) error {
 	if err := EnsureSchema(db); err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error {
 	if dirty {
 		return fmt.Errorf("migration cursor is dirty (a previous apply failed partway through version %d); run `dbtools repair %s` to resolve it before syncing the ledger", version, "target")
 	}
-	allVersions, err := migrator.ListVersions(migrationsDir)
+	allVersions, err := migrator.ListVersions(migrationsDir, upSuffix)
 	if err != nil {
 		return err
 	}
@@ -170,8 +170,8 @@ func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error {
 
 type mssqlLedgerStore struct{}
 
-func (mssqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error {
-	return Sync(db, m, migrationsDir)
+func (mssqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) error {
+	return Sync(db, m, migrationsDir, upSuffix)
 }
 
 func (mssqlLedgerStore) SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note string) error {
