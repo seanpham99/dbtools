@@ -178,8 +178,7 @@ func TestDiffCommand_FindingsReportExitTwo(t *testing.T) {
 
 	diffAgainst = ""
 	jsonOutput = false
-	var out string
-	out = captureStdout(t, func() { err = runDiff("testdb") })
+	out := captureStdout(t, func() { err = runDiff("testdb") })
 	if err == nil {
 		t.Fatal("runDiff with structural differences returned nil, want ExitCode(2)")
 	}
