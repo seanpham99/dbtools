@@ -32,19 +32,19 @@ func TestLiveLedgerDDLAndIntrospection(t *testing.T) {
 	// Ledger round trip.
 	t.Cleanup(func() { db.Exec(`DROP TABLE IF EXISTS dbtools_migration_history`) })
 	store := ledgerStore{}
-	if err := store.ensureSchema(db); err != nil {
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("ensureSchema() returned error: %v", err)
 	}
-	if err := store.ensureSchema(db); err != nil {
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("second ensureSchema() should be idempotent: %v", err)
 	}
-	if err := store.SetStatus(db, 42, ledger.StatusApplied, "first"); err != nil {
+	if err := store.SetStatus(db, 42, ledger.StatusApplied, "first", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus(insert) returned error: %v", err)
 	}
-	if err := store.SetStatus(db, 42, ledger.StatusReverted, "second"); err != nil {
+	if err := store.SetStatus(db, 42, ledger.StatusReverted, "second", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus(upsert) returned error: %v", err)
 	}
-	entries, err := store.List(db)
+	entries, err := store.List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("List() returned error: %v", err)
 	}
@@ -54,10 +54,10 @@ func TestLiveLedgerDDLAndIntrospection(t *testing.T) {
 	if entries[0].RecordedAt == nil {
 		t.Fatal("List() row RecordedAt = nil, want a timestamp")
 	}
-	if err := store.backfill(db, 100, true, []uint64{42, 99, 150}); err != nil {
+	if err := store.backfill(db, 100, true, []uint64{42, 99, 150}, "dbtools_migration_history"); err != nil {
 		t.Fatalf("backfill() returned error: %v", err)
 	}
-	applied, err := store.AppliedVersions(db)
+	applied, err := store.AppliedVersions(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("AppliedVersions() returned error: %v", err)
 	}

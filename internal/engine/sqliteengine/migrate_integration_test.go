@@ -63,13 +63,13 @@ func TestLiveMigrateUpAndLedger(t *testing.T) {
 
 	// Ledger round trip through the engine seam.
 	store := ledgerStore{}
-	if err := store.Sync(db, m, dir); err != nil {
+	if err := store.Sync(db, m, dir, ".up.sql", "dbtools_migration_history"); err != nil {
 		t.Fatalf("Sync() returned error: %v", err)
 	}
-	if err := store.SetStatus(db, 20260817000001, "applied", "applied via integration test"); err != nil {
+	if err := store.SetStatus(db, 20260817000001, "applied", "applied via integration test", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus() returned error: %v", err)
 	}
-	entries, err := store.List(db)
+	entries, err := store.List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("List() returned error: %v", err)
 	}
