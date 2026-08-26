@@ -104,12 +104,16 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 				unmapped = append(unmapped, fmt.Sprintf("%s.%s.%s: %s", DefaultSchema, name, colName, declaredType))
 			}
 
+			integerPrimaryKey := pk > 0 && strings.EqualFold(strings.TrimSpace(declaredType), "INTEGER")
 			tbl.Columns = append(tbl.Columns, generate.ColumnSchema{
-				Name:       colName,
-				PyName:     generate.SanitizeFieldName(colName),
-				DataType:   declaredType,
-				PythonType: pythonType,
-				IsNullable: notNull == 0 && pk == 0, // INTEGER PRIMARY KEY is implicitly NOT NULL
+				Name:            colName,
+				PyName:          generate.SanitizeFieldName(colName),
+				DataType:        declaredType,
+				PythonType:      pythonType,
+				IsNullable:      notNull == 0 && !integerPrimaryKey,
+				OrdinalPosition: cid + 1,
+				DefaultValue:    dflt,
+				IsPrimaryKey:    pk > 0,
 			})
 		}
 		if err := colRows.Err(); err != nil {
@@ -117,6 +121,91 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 			return nil, nil, fmt.Errorf("iterating columns of %s: %w", name, err)
 		}
 		colRows.Close()
+
+		fkRows, err := db.Query(fmt.Sprintf(`PRAGMA foreign_key_list("%s")`, strings.ReplaceAll(name, `"`, `""`)))
+		if err != nil {
+			return nil, nil, fmt.Errorf("reading foreign keys of %s: %w", name, err)
+		}
+		fkMap := make(map[int]*generate.ForeignKeySchema)
+		var fkOrder []int
+		for fkRows.Next() {
+			var id, seq int
+			var refTable, fromCol string
+			var toCol sql.NullString
+			var onUpdate, onDelete, match string
+			if err := fkRows.Scan(&id, &seq, &refTable, &fromCol, &toCol, &onUpdate, &onDelete, &match); err != nil {
+				fkRows.Close()
+				return nil, nil, fmt.Errorf("scanning foreign key of %s: %w", name, err)
+			}
+			fk, exists := fkMap[id]
+			if !exists {
+				fk = &generate.ForeignKeySchema{Name: fmt.Sprintf("fk_%d", id), RefSchema: DefaultSchema, RefTable: refTable}
+				fkMap[id] = fk
+				fkOrder = append(fkOrder, id)
+			}
+			fk.Columns = append(fk.Columns, fromCol)
+			fk.RefColumns = append(fk.RefColumns, toCol.String)
+		}
+		fkRows.Close()
+		if err := fkRows.Err(); err != nil {
+			return nil, nil, fmt.Errorf("iterating foreign keys of %s: %w", name, err)
+		}
+		for _, id := range fkOrder {
+			tbl.ForeignKeys = append(tbl.ForeignKeys, *fkMap[id])
+		}
+
+		ixListRows, err := db.Query(fmt.Sprintf(`PRAGMA index_list("%s")`, strings.ReplaceAll(name, `"`, `""`)))
+		if err != nil {
+			return nil, nil, fmt.Errorf("reading indexes of %s: %w", name, err)
+		}
+		type ixRow struct {
+			name   string
+			unique bool
+			origin string
+		}
+		var ixRows []ixRow
+		for ixListRows.Next() {
+			var seq int
+			var idxName sql.NullString
+			var origin string
+			var unique, partial int
+			if err := ixListRows.Scan(&seq, &idxName, &unique, &origin, &partial); err != nil {
+				ixListRows.Close()
+				return nil, nil, fmt.Errorf("scanning index list of %s: %w", name, err)
+			}
+			// origin 'pk' is the implicit PK-backing index — already
+			// represented via ColumnSchema.IsPrimaryKey, excluded here.
+			if origin == "pk" {
+				continue
+			}
+			ixRows = append(ixRows, ixRow{name: idxName.String, unique: unique == 1, origin: origin})
+		}
+		ixListRows.Close()
+		if err := ixListRows.Err(); err != nil {
+			return nil, nil, fmt.Errorf("iterating index list of %s: %w", name, err)
+		}
+		for _, ix := range ixRows {
+			infoRows, err := db.Query(fmt.Sprintf(`PRAGMA index_info("%s")`, strings.ReplaceAll(ix.name, `"`, `""`)))
+			if err != nil {
+				return nil, nil, fmt.Errorf("reading index info of %s: %w", ix.name, err)
+			}
+			idx := generate.IndexSchema{Name: ix.name, Unique: ix.unique}
+			for infoRows.Next() {
+				var seqno, cid int
+				var colName string
+				if err := infoRows.Scan(&seqno, &cid, &colName); err != nil {
+					infoRows.Close()
+					return nil, nil, fmt.Errorf("scanning index info of %s: %w", ix.name, err)
+				}
+				idx.Columns = append(idx.Columns, colName)
+			}
+			infoRows.Close()
+			if err := infoRows.Err(); err != nil {
+				return nil, nil, fmt.Errorf("iterating index info of %s: %w", ix.name, err)
+			}
+			tbl.Indexes = append(tbl.Indexes, idx)
+		}
+
 		result = append(result, tbl)
 	}
 	return result, unmapped, nil
