@@ -29,7 +29,7 @@ type Plan struct {
 // structure via a second scratch database and diff.Compare, and returns
 // the result. Never writes to migrationsDir or to any named target —
 // every database it touches is scratch/throwaway.
-func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix string, uptoVersion uint64) (*Plan, error) {
+func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix string, uptoVersion uint64) (plan *Plan, err error) {
 	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,11 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("provisioning replay scratch database: %w", err)
 	}
 	if cleanup1 != nil {
-		defer cleanup1()
+		defer func() {
+			if cerr := cleanup1(); cerr != nil && err == nil {
+				err = fmt.Errorf("scratch database cleanup failed: %w", cerr)
+			}
+		}()
 	}
 
 	replayMigrationsDir := migrationsDir
@@ -97,7 +101,11 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("provisioning verification scratch database: %w", err)
 	}
 	if cleanup2 != nil {
-		defer cleanup2()
+		defer func() {
+			if cerr := cleanup2(); cerr != nil && err == nil {
+				err = fmt.Errorf("verification database cleanup failed: %w", cerr)
+			}
+		}()
 	}
 	verifyDB, err := eng.Open(url2)
 	if err != nil {
