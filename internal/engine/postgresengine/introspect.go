@@ -218,7 +218,8 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 		JOIN information_schema.check_constraints cc
 			ON tc.constraint_schema = cc.constraint_schema AND tc.constraint_name = cc.constraint_name
 		WHERE tc.constraint_type = 'CHECK'
-			AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')`)
+			AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+			AND cc.check_clause NOT LIKE '%IS NOT NULL'`)
 	if err != nil {
 		return nil, nil, fmt.Errorf("introspecting check constraints: %w", err)
 	}

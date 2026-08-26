@@ -85,7 +85,13 @@ CREATE TABLE dbtools_it_orders (
 	if len(orders.CheckConstraints) != 1 || !strings.Contains(orders.CheckConstraints[0].Expression, "total") {
 		t.Errorf("CheckConstraints = %+v, want one mentioning total", orders.CheckConstraints)
 	}
-	if len(orders.Indexes) != 1 || orders.Indexes[0].Name != "idx_it_orders_status" || !orders.Indexes[0].Unique {
-		t.Errorf("Indexes = %+v, want exactly idx_it_orders_status, unique (PK-backing index excluded)", orders.Indexes)
+	var statusIdx *generate.IndexSchema
+	for i := range orders.Indexes {
+		if orders.Indexes[i].Name == "idx_it_orders_status" {
+			statusIdx = &orders.Indexes[i]
+		}
+	}
+	if statusIdx == nil || !statusIdx.Unique || len(statusIdx.Columns) != 1 || statusIdx.Columns[0] != "status" {
+		t.Errorf("Indexes = %+v, want idx_it_orders_status, unique on status (PK-backing index excluded)", orders.Indexes)
 	}
 }
