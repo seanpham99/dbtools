@@ -142,3 +142,48 @@ func TestCollect_BackfilledRowsWithoutHashAreNotDrift(t *testing.T) {
 		t.Fatalf("Collect() = %+v, want one OK entry (no hash baseline)", report.Entries)
 	}
 }
+
+func TestCollect_AdoptedRowsAreNotDrift(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "20260101000000_create_widgets.up.sql")
+	if err := os.WriteFile(file, []byte("CREATE TABLE dbtools_test_hash_adopted (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rawURL := "sqlite://" + filepath.Join(dir, "verify.db")
+	eng, err := engine.ForTarget("", rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS dbtools_migration_history (
+		version INTEGER NOT NULL PRIMARY KEY,
+		status TEXT NOT NULL CHECK (status IN ('applied', 'reverted')),
+		recorded_at TIMESTAMP NULL,
+		note TEXT NULL,
+		content_sha256 TEXT NULL,
+		hash_source TEXT NULL)`); err != nil {
+		t.Fatalf("creating ledger: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE dbtools_test_hash_adopted (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	defer db.Exec(`DROP TABLE dbtools_test_hash_adopted`)
+
+	if err := eng.Ledger().SetStatusAdopted(db, 20260101000000, "adopted from schema_migrations", "deliberatelywronghash", "dbtools_migration_history"); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "test-target")
+	if err != nil {
+		t.Fatalf("Collect() returned error: %v", err)
+	}
+	if len(report.Entries) != 1 || report.Entries[0].Status != "OK" {
+		t.Fatalf("Collect() = %+v, want one OK entry (adopted row skips hash check)", report.Entries)
+	}
+}

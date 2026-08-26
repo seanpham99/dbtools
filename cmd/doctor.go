@@ -181,12 +181,18 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 			})
 		} else {
 			hashMismatches := 0
+			hashSkipped := 0
 			for _, e := range entries {
-				if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" {
-					sum, err := dir.ContentHash(e.Version)
-					if err != nil || sum != e.ContentSHA256 {
-						hashMismatches++
-					}
+				if e.Status != ledger.StatusApplied || e.ContentSHA256 == "" {
+					continue
+				}
+				if e.HashSource == "adopted" {
+					hashSkipped++
+					continue
+				}
+				sum, err := dir.ContentHash(e.Version)
+				if err != nil || sum != e.ContentSHA256 {
+					hashMismatches++
 				}
 			}
 			if hashMismatches > 0 {
@@ -196,10 +202,14 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 					Message: fmt.Sprintf("content hash mismatch in %d migration(s)", hashMismatches),
 				})
 			} else {
+				msg := fmt.Sprintf("%d ledger entries verified (hashes match)", len(entries))
+				if hashSkipped > 0 {
+					msg = fmt.Sprintf("%d ledger entries verified (hashes match), %d skipped (imported via adopt, unverified)", len(entries)-hashSkipped, hashSkipped)
+				}
 				report.Checks = append(report.Checks, CheckResult{
 					Name:    "ledger-integrity",
 					Status:  "ok",
-					Message: fmt.Sprintf("%d ledger entries verified (hashes match)", len(entries)),
+					Message: msg,
 				})
 			}
 		}

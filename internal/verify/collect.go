@@ -102,8 +102,9 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		// Content-hash check: an applied migration whose file was edited
 		// after apply is drift even when every object still exists — the
 		// DB no longer matches what the file says. Backfilled rows have no
-		// hash (recorded before hashing existed) and are skipped.
-		if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" {
+		// hash (recorded before hashing existed) and adopted rows (inferred
+		// at adopt time, not observed at apply time) are skipped.
+		if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" && e.HashSource != "adopted" {
 			sum, err := dir.ContentHash(e.Version)
 			if err != nil {
 				return nil, err
