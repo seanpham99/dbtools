@@ -47,7 +47,9 @@ func Run(cfg *config.Config, targetName, againstURL string) ([]Finding, []string
 		}
 	}
 	if cleanup != nil {
-		defer cleanup()
+		defer func() {
+			_ = cleanup()
+		}()
 	}
 
 	if _, err := apply.Run(cfg, "diff-scratch", scratchURL); err != nil {

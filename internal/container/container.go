@@ -486,18 +486,18 @@ func StartScratch(engineName string) (rawURL string, cleanup func() error, err e
 
 	port, err := discoverHostPort(s.name, s.containerPort)
 	if err != nil {
-		cleanup()
+		_ = cleanup()
 		return "", nil, err
 	}
 	s.hostPort = port
 
 	if err := waitReadyWithTimeout(s, 60*time.Second); err != nil {
-		cleanup()
+		_ = cleanup()
 		return "", nil, err
 	}
 	if s.createDBArgs != nil {
 		if out, err := exec.Command("docker", s.createDBArgs(s)...).CombinedOutput(); err != nil {
-			cleanup()
+			_ = cleanup()
 			return "", nil, fmt.Errorf("creating %s: %w: %s", DatabaseName, err, strings.TrimSpace(string(out)))
 		}
 	}
