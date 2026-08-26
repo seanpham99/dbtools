@@ -36,6 +36,15 @@ func runDiff(targetName string) error {
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}
+	if diffAgainst != "" {
+		targetURL, err := cfg.ResolveURLOrFlag(targetName, "")
+		if err != nil {
+			return err
+		}
+		if diffAgainst == targetURL {
+			return errors.New("--against must not match the target database URL")
+		}
+	}
 
 	findings, notes, err := diff.Run(cfg, targetName, diffAgainst)
 	if err != nil {
@@ -63,7 +72,11 @@ func runDiff(targetName string) error {
 			fmt.Printf("%s: no structural differences\n", targetName)
 		}
 		for _, f := range findings {
-			fmt.Printf("%-8s %-14s %-30s %s\n", f.Kind, f.Object, f.Table+"."+f.Name, f.Detail)
+			object := f.Table
+			if f.Name != "" {
+				object += "." + f.Name
+			}
+			fmt.Printf("%-8s %-14s %-30s %s\n", f.Kind, f.Object, object, f.Detail)
 		}
 		for _, n := range notes {
 			fmt.Printf("note: %s\n", n)

@@ -453,13 +453,19 @@ func waitReadyWithTimeout(s spec, timeout time.Duration) error {
 	return fmt.Errorf("%s did not become ready within %v", s.engine, timeout)
 }
 
-// StartScratch starts a throwaway, --rm container for engineName, waits
-// up to 60s for readiness, and returns its connection URL plus a cleanup
-// function that stops (and thereby removes) it. Unlike StartForWithTimeout,
+// StartScratch starts a throwaway, --rm container for engineName and waits
+// up to 60s for readiness.
+func StartScratch(engineName string) (rawURL string, cleanup func() error, err error) {
+	return StartScratchWithTimeout(engineName, 60*time.Second)
+}
+
+// StartScratchWithTimeout starts a throwaway, --rm container for engineName,
+// waits up to timeout for readiness, and returns its connection URL plus a
+// cleanup function that stops (and thereby removes) it. Unlike StartForWithTimeout,
 // there is no reuse-if-running path — every call creates a fresh
 // container, since a scratch database must start empty. Returns an error
 // for engines with no scratchRunArgs (sqlite — callers use a tempfile).
-func StartScratch(engineName string) (rawURL string, cleanup func() error, err error) {
+func StartScratchWithTimeout(engineName string, timeout time.Duration) (rawURL string, cleanup func() error, err error) {
 	s, err := specFor(engineName)
 	if err != nil {
 		return "", nil, err
@@ -501,7 +507,7 @@ func StartScratch(engineName string) (rawURL string, cleanup func() error, err e
 	}
 	s.hostPort = port
 
-	if err := waitReadyWithTimeout(s, 60*time.Second); err != nil {
+	if err := waitReadyWithTimeout(s, timeout); err != nil {
 		return "", nil, abortWith(err)
 	}
 	if s.createDBArgs != nil {
