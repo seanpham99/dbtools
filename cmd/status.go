@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/statusinfo"
 	"github.com/spf13/cobra"
 )
@@ -55,6 +56,7 @@ type statusJSONEntry struct {
 	HasVersion     bool     `json:"has_version,omitempty"`
 	Dirty          bool     `json:"dirty,omitempty"`
 	Pending        []string `json:"pending,omitempty"`
+	NoLedger       bool     `json:"no_ledger,omitempty"`
 	Unconfigured   bool     `json:"unconfigured,omitempty"`
 	Error          string   `json:"error,omitempty"`
 }
@@ -73,7 +75,11 @@ func collectStatuses(cfg *config.Config) ([]statusinfo.Status, []targetFailure) 
 	return statuses, failures
 }
 
-func renderStatusTable(results []statusinfo.TargetResult) string {
+func renderStatusTable(results []statusinfo.TargetResult, noLedgerMap ...map[string]bool) string {
+	var noLedgers map[string]bool
+	if len(noLedgerMap) > 0 {
+		noLedgers = noLedgerMap[0]
+	}
 	var b strings.Builder
 	for _, r := range results {
 		if r.Unconfigured {
@@ -94,6 +100,9 @@ func renderStatusTable(results []statusinfo.TargetResult) string {
 			dirtyMark = " [DIRTY]"
 		}
 		fmt.Fprintf(&b, "%-10s  %s%s\n", s.Target, state, dirtyMark)
+		if noLedgers != nil && noLedgers[r.Target] {
+			fmt.Fprintf(&b, "%-10s  no dbtools ledger — run `dbtools adopt` to enable drift tracking\n", "")
+		}
 	}
 	return b.String()
 }
@@ -118,6 +127,27 @@ func runStatus(targetNames ...string) error {
 		}
 	}
 
+	noLedgers := make(map[string]bool)
+	for _, r := range results {
+		if r.Status != nil && r.Status.HasVersion {
+			override := ""
+			if target != "" {
+				override = statusURL
+			}
+			if url, uerr := cfg.ResolveURLOrFlag(r.Target, override); uerr == nil {
+				if eng, eerr := engine.ForTarget(cfg.EngineName(r.Target), url); eerr == nil {
+					if db, derr := eng.Open(url); derr == nil {
+						exists, _ := engine.TableExists(eng, db, cfg.Ledger.Table)
+						if !exists {
+							noLedgers[r.Target] = true
+						}
+						db.Close()
+					}
+				}
+			}
+		}
+	}
+
 	if jsonOutput {
 		entries := make([]statusJSONEntry, 0, len(results))
 		for _, r := range results {
@@ -138,6 +168,7 @@ func runStatus(targetNames ...string) error {
 					HasVersion:     r.Status.HasVersion,
 					Dirty:          r.Status.Dirty,
 					Pending:        r.Status.Pending,
+					NoLedger:       noLedgers[r.Target],
 				})
 			}
 		}
@@ -152,9 +183,10 @@ func runStatus(targetNames ...string) error {
 		return nil
 	}
 
-	fmt.Print(renderStatusTable(results))
+	fmt.Print(renderStatusTable(results, noLedgers))
 	if connErr != nil {
 		return ExitCode(1, "")
 	}
 	return nil
 }
+
