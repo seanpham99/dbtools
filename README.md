@@ -134,6 +134,7 @@ dbtools status
 | `down` | `dbtools down <target> [N] [--preview] [--yes]` | Applies `.down.sql` migrations in reverse order, recorded in the ledger. Protected targets require `--preview --yes`. |
 | `rollback` | `dbtools rollback <target> [--yes]` | Ledger-only soft-revert (marks `reverted`, never data-destroying). The safe prod verb. |
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
+| `adopt` | `dbtools adopt <target> [--yes] [--force]` | Imports existing migration history from another tool (Flyway, Knex, EF, Alembic, golang-migrate). |
 | `force` | `dbtools force <version> [--target <target>] [--yes]` | Sets tracking version cursor and clears dirty state without running migration SQL. |
 | `reset` | `dbtools reset [target] [--yes]` | Unprotected targets: drops database, replays all migrations from zero, and executes `seed.sql`. |
 | `generate` | `dbtools generate [target] [--lang python\|ts] [--zod] [--out file]` | Introspects live schema and renders Pydantic v2 models (`python`, default) or Supabase-style TypeScript interfaces (`ts`; `--zod` adds zod schemas). |

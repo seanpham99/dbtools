@@ -15,6 +15,7 @@ nuance than a table row can hold, read the matching file before using them:
 
 | Topic | File |
 |---|---|
+| `dbtools adopt` — importing incumbent migration ledgers (Flyway/EF/Knex/Alembic) | `adopt.md` |
 | `dbtools clone` masking rules, `[clone.mask]` config, `--where`/`--limit` | `clone.md` |
 | `dbtools doctor` — all 6 checks, exit-code meaning per check | `doctor.md` |
 | Exit-code contract (`plan`/`verify`/`up`/`down`) and CI/agent loop pattern | `ci-gate.md` |
@@ -34,6 +35,7 @@ nuance than a table row can hold, read the matching file before using them:
 | **reset** | Local-only: drops, recreates DB, replays all migrations, runs `seed.sql`. Supports mssql/postgres only — errors on a MySQL target. | `rollback`, `restore` |
 | **seed.sql** | Single optional root SQL file run automatically after `reset`. | Multiple seed files or fixture scripts |
 | **ledger** | `dbtools_migration_history` table tracking per-migration `applied`/`reverted` state. | Generic "history table" |
+| **adopt** | Imports existing migration history from another tool (Flyway, Knex, EF, Alembic, golang-migrate). | `import`, `migrate-from` |
 | **repair** | Corrects ledger status for target versions. Replaces deprecated `stamp`. | `stamp` (removed in v1) |
 | **clone** | Copies data from one target into another of the same engine, masking sensitive columns by default (`--no-mask` opts out). Data-only — schema must already match (both targets share one `migrations_dir`). | `sync`, `restore` |
 
@@ -45,6 +47,9 @@ dbtools init
 
 # Create new migration file ({timestamp}_{name}.up.sql)
 dbtools new <migration_name>
+
+# Import existing migration history from another runner
+dbtools adopt <target_name> [--yes] [--force] [--from-table X --version-column Y]
 
 # Apply pending migrations to target (default: local)
 dbtools up [--target local]
@@ -112,6 +117,12 @@ dbtools dashboard
 
 ```toml
 migrations_dir = "migrations"
+
+[ledger]
+table = "dbtools_migration_history" # optional; custom ledger table name
+
+[migrations]
+up_suffix = ".up.sql"               # optional; override to ".sql" for flat layouts
 
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"
