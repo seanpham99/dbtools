@@ -39,6 +39,12 @@ type spec struct {
 	hostPort      string // resolved host port; "0" means "ask Docker to assign one"
 	dataDir       string // in-container path mounted to this project's data volume
 	runArgs       func(s spec) []string
+	// scratchRunArgs builds docker run args for an ephemeral, throwaway
+	// instance used by `dbtools diff` — no volume mount (nothing to
+	// persist), --rm (auto-removed on stop), never the deterministic
+	// project-scoped name containerNameFor produces. nil for engines with
+	// no container template (sqlite).
+	scratchRunArgs func(s spec) []string
 	readyProbe    func(s spec) error
 	createDBArgs  func(s spec) []string // docker exec args creating DatabaseName idempotently; nil when the image does it itself
 	url           func(s spec, database string) string
@@ -102,6 +108,16 @@ var mssqlSpec = spec{
 			s.image,
 		}
 	},
+	scratchRunArgs: func(s spec) []string {
+		return []string{
+			"run", "-d", "--rm",
+			"--name", s.name,
+			"-e", "ACCEPT_EULA=Y",
+			"-e", "MSSQL_SA_PASSWORD=" + password,
+			"-p", s.hostPort + ":" + s.containerPort,
+			s.image,
+		}
+	},
 	readyProbe: func(s spec) error {
 		u, err := url.Parse(s.url(s, "master"))
 		if err == nil {
@@ -142,6 +158,16 @@ var postgresSpec = spec{
 			s.image,
 		}
 	},
+	scratchRunArgs: func(s spec) []string {
+		return []string{
+			"run", "-d", "--rm",
+			"--name", s.name,
+			"-e", "POSTGRES_PASSWORD=" + password,
+			"-e", "POSTGRES_DB=" + DatabaseName,
+			"-p", s.hostPort + ":" + s.containerPort,
+			s.image,
+		}
+	},
 	// Probed from the host through the published port (not docker exec,
 	// which is unreliable on some container hosts): a successful Ping
 	// also proves the port mapping works, which is what callers use.
@@ -175,6 +201,16 @@ var mysqlSpec = spec{
 			"-e", "MYSQL_DATABASE=" + DatabaseName,
 			"-p", s.hostPort + ":" + s.containerPort,
 			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
+			s.image,
+		}
+	},
+	scratchRunArgs: func(s spec) []string {
+		return []string{
+			"run", "-d", "--rm",
+			"--name", s.name,
+			"-e", "MYSQL_ROOT_PASSWORD=" + password,
+			"-e", "MYSQL_DATABASE=" + DatabaseName,
+			"-p", s.hostPort + ":" + s.containerPort,
 			s.image,
 		}
 	},
@@ -218,6 +254,15 @@ func specFor(engineName string) (spec, error) {
 // name for engineName under projectID (see internal/projectid.Resolve).
 func containerNameFor(engineName, projectID string) string {
 	return fmt.Sprintf("dbtools-%s-%s", engineName, projectID)
+}
+
+// scratchNameFor returns a unique, non-deterministic name for an
+// ephemeral diff-scratch container — deliberately never matching
+// containerNameFor's project-scoped naming scheme, so a diff run can
+// never collide with, reuse, or be confused with dbtools start's
+// persistent dev container.
+func scratchNameFor(engineName string) string {
+	return fmt.Sprintf("dbtools-diff-scratch-%s-%d", engineName, time.Now().UnixNano())
 }
 
 // volumeNameFor returns the data volume name for a container named
@@ -406,6 +451,57 @@ func waitReadyWithTimeout(s spec, timeout time.Duration) error {
 		time.Sleep(1 * time.Second)
 	}
 	return fmt.Errorf("%s did not become ready within %v", s.engine, timeout)
+}
+
+// StartScratch starts a throwaway, --rm container for engineName, waits
+// up to 60s for readiness, and returns its connection URL plus a cleanup
+// function that stops (and thereby removes) it. Unlike StartForWithTimeout,
+// there is no reuse-if-running path — every call creates a fresh
+// container, since a scratch database must start empty. Returns an error
+// for engines with no scratchRunArgs (sqlite — callers use a tempfile).
+func StartScratch(engineName string) (rawURL string, cleanup func() error, err error) {
+	s, err := specFor(engineName)
+	if err != nil {
+		return "", nil, err
+	}
+	if s.scratchRunArgs == nil {
+		return "", nil, fmt.Errorf("no scratch container template for engine %q", engineName)
+	}
+	if err := checkDocker(); err != nil {
+		return "", nil, err
+	}
+	s.name = scratchNameFor(engineName)
+	s.hostPort = "0"
+
+	if out, err := exec.Command("docker", s.scratchRunArgs(s)...).CombinedOutput(); err != nil {
+		return "", nil, fmt.Errorf("docker run failed: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	cleanup = func() error {
+		out, err := exec.Command("docker", "stop", s.name).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("docker stop failed: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+
+	port, err := discoverHostPort(s.name, s.containerPort)
+	if err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	s.hostPort = port
+
+	if err := waitReadyWithTimeout(s, 60*time.Second); err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	if s.createDBArgs != nil {
+		if out, err := exec.Command("docker", s.createDBArgs(s)...).CombinedOutput(); err != nil {
+			cleanup()
+			return "", nil, fmt.Errorf("creating %s: %w: %s", DatabaseName, err, strings.TrimSpace(string(out)))
+		}
+	}
+	return s.url(s, DatabaseName), cleanup, nil
 }
 
 // StopFor stops and removes engineName's tool-owned local container
