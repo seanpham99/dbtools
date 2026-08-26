@@ -122,7 +122,7 @@ func parseVersionString(s string) (uint64, error) {
 			return u, nil
 		}
 	}
-	return 0, fmt.Errorf("cannot parse version number from %q", s)
+	return 0, fmt.Errorf("cannot parse version number from %q: dbtools requires a numeric version per row (e.g. Alembic's default non-numeric revision hashes aren't supported — see skills/using-dbtools/adopt.md)", s)
 }
 
 // ReadSourceRows reads rows from table using the specified version and applied-at columns.

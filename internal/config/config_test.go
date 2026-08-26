@@ -30,6 +30,18 @@ url_env = "DBTOOLS_LOCAL_URL"
 	}
 }
 
+func TestResolveDefaults_FillsOnlyEmptyValues(t *testing.T) {
+	dir, suffix, table := ResolveDefaults("", "", "")
+	if dir != DefaultMigrationsDir || suffix != DefaultUpSuffix || table != DefaultLedgerTable {
+		t.Errorf("ResolveDefaults(\"\", \"\", \"\") = (%q, %q, %q), want the three defaults", dir, suffix, table)
+	}
+
+	dir, suffix, table = ResolveDefaults("db/migrations", ".sql", "schema_migrations")
+	if dir != "db/migrations" || suffix != ".sql" || table != "schema_migrations" {
+		t.Errorf("ResolveDefaults with all set = (%q, %q, %q), want inputs unchanged", dir, suffix, table)
+	}
+}
+
 func TestLoad_ExplicitMigrationsDir(t *testing.T) {
 	path := writeTemp(t, `
 migrations_dir = "db/migrations"

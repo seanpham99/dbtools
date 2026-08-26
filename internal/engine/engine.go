@@ -66,6 +66,12 @@ type LedgerStore interface {
 	// version the migrate cursor already considers applied. Refuses to
 	// backfill when the cursor is dirty.
 	Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error
+	// EnsureSchema creates table if it doesn't already exist (idempotent),
+	// without touching any row. Callers that must not backfill —
+	// `dbtools adopt`, so a pre-existing migrate cursor never gets
+	// silently recorded with an unverified hash — call this instead of
+	// Sync.
+	EnsureSchema(db ledger.DBTX, table string) error
 	// SetStatus upserts version's ledger row, preserving content_sha256
 	// when the row already exists.
 	SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note, table string) error

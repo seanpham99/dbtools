@@ -89,6 +89,58 @@ func TestSetStatusWithHashPreservesHashOnPlainUpdate(t *testing.T) {
 	}
 }
 
+func TestSetStatusAdopted(t *testing.T) {
+	db := openTestDB(t)
+	store := mysqlLedgerStore{}
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SetStatusAdopted(db, 1, "adopted from schema_migrations", "abc123", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatusAdopted() returned error: %v", err)
+	}
+	entries, err := store.List(db, "dbtools_migration_history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.Status != ledger.StatusApplied {
+		t.Errorf("Status = %q, want applied", e.Status)
+	}
+	if e.HashSource != ledger.HashSourceAdopted {
+		t.Errorf("HashSource = %q, want %q", e.HashSource, ledger.HashSourceAdopted)
+	}
+	if e.ContentSHA256 != "abc123" {
+		t.Errorf("ContentSHA256 = %q, want abc123", e.ContentSHA256)
+	}
+}
+
+func TestEnsureSchema_AddsHashSourceToPreexistingTable(t *testing.T) {
+	db := openTestDB(t)
+	// Simulate a table created before hash_source existed.
+	if _, err := db.Exec(`
+CREATE TABLE dbtools_migration_history (
+    version     BIGINT       NOT NULL PRIMARY KEY,
+    status      VARCHAR(10)  NOT NULL,
+    recorded_at DATETIME     NULL,
+    note        VARCHAR(400) NULL,
+    CHECK (status IN ('applied', 'reverted'))
+) ENGINE=InnoDB`); err != nil {
+		t.Fatal(err)
+	}
+
+	store := mysqlLedgerStore{}
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
+		t.Fatalf("ensureSchema() on preexisting table returned error: %v", err)
+	}
+	if err := store.SetStatusAdopted(db, 1, "adopted", "abc123", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatusAdopted() after ensureSchema migration returned error: %v", err)
+	}
+}
+
 func TestAppliedVersions(t *testing.T) {
 	db := openTestDB(t)
 	store := mysqlLedgerStore{}

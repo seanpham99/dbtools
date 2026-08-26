@@ -33,18 +33,7 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		}
 	}
 
-	migrationsDir := cfg.MigrationsDir
-	if migrationsDir == "" {
-		migrationsDir = "migrations"
-	}
-	upSuffix := cfg.Migrations.UpSuffix
-	if upSuffix == "" {
-		upSuffix = ".up.sql"
-	}
-	ledgerTable := cfg.Ledger.Table
-	if ledgerTable == "" {
-		ledgerTable = "dbtools_migration_history"
-	}
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
 
 	m, err := migrator.Open(url, migrationsDir)
 	if err != nil {

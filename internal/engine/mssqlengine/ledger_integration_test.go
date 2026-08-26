@@ -192,6 +192,69 @@ func TestSync(t *testing.T) {
 	}
 }
 
+func TestSetStatusAdopted(t *testing.T) {
+	db := openTestDB(t)
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SetStatusAdopted(db, 20260101000000, "adopted from schema_migrations", "abc123", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatusAdopted() returned error: %v", err)
+	}
+
+	entries, err := List(db, "dbtools_migration_history")
+	if err != nil {
+		t.Fatalf("List() returned error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.Status != ledger.StatusApplied {
+		t.Errorf("Status = %q, want applied", e.Status)
+	}
+	if e.HashSource != ledger.HashSourceAdopted {
+		t.Errorf("HashSource = %q, want %q", e.HashSource, ledger.HashSourceAdopted)
+	}
+	if e.ContentSHA256 != "abc123" {
+		t.Errorf("ContentSHA256 = %q, want abc123", e.ContentSHA256)
+	}
+}
+
+func TestEnsureSchema_AddsHashSourceToPreexistingTable(t *testing.T) {
+	url := os.Getenv("DBTOOLS_TEST_MSSQL_URL")
+	if url == "" {
+		t.Skip("DBTOOLS_TEST_MSSQL_URL not set, skipping integration test")
+	}
+	if err := testdb.ResetTracking(url); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(url)
+	if err != nil {
+		t.Fatalf("Open() returned error: %v", err)
+	}
+	defer db.Close()
+
+	// Simulate a table created before hash_source existed: the original
+	// schema, minus both content_sha256 and hash_source.
+	if _, err := db.Exec(`
+CREATE TABLE dbtools_migration_history (
+    version     BIGINT       NOT NULL PRIMARY KEY,
+    status      VARCHAR(10)  NOT NULL CHECK (status IN ('applied', 'reverted')),
+    recorded_at DATETIME2(0) NULL,
+    note        NVARCHAR(400) NULL
+)`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
+		t.Fatalf("EnsureSchema() on preexisting table returned error: %v", err)
+	}
+	if err := SetStatusAdopted(db, 20260101000000, "adopted", "abc123", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatusAdopted() after EnsureSchema migration returned error: %v", err)
+	}
+}
+
 func TestSetStatus_WithinTransaction(t *testing.T) {
 	db := openTestDB(t)
 	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {

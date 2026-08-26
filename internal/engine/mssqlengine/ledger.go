@@ -116,11 +116,11 @@ func SetStatusAdopted(db ledger.DBTX, version uint64, note, contentHash, table s
 	_, err := db.Exec(fmt.Sprintf(`
 IF EXISTS (SELECT 1 FROM %s WITH (HOLDLOCK) WHERE version = @p1)
     UPDATE %s
-    SET status = 'applied', recorded_at = SYSUTCDATETIME(), note = @p2, content_sha256 = @p3, hash_source = 'adopted'
+    SET status = 'applied', recorded_at = SYSUTCDATETIME(), note = @p2, content_sha256 = @p3, hash_source = @p4
     WHERE version = @p1
 ELSE
     INSERT INTO %s (version, status, recorded_at, note, content_sha256, hash_source)
-    VALUES (@p1, 'applied', SYSUTCDATETIME(), @p2, @p3, 'adopted');`, table, table, table), int64(version), note, contentHash)
+    VALUES (@p1, 'applied', SYSUTCDATETIME(), @p2, @p3, @p4);`, table, table, table), int64(version), note, contentHash, ledger.HashSourceAdopted)
 	if err != nil {
 		return fmt.Errorf("setting adopted status for version %d: %w", version, err)
 	}
@@ -197,6 +197,10 @@ func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table strin
 }
 
 type mssqlLedgerStore struct{}
+
+func (mssqlLedgerStore) EnsureSchema(db ledger.DBTX, table string) error {
+	return EnsureSchema(db, table)
+}
 
 func (mssqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
 	return Sync(db, m, migrationsDir, upSuffix, table)

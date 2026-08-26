@@ -121,17 +121,18 @@ SET status = excluded.status, recorded_at = excluded.recorded_at, note = exclude
 	return nil
 }
 
-// SetStatusAdopted records version as applied with hash_source "adopted".
+// SetStatusAdopted records version as applied with hash_source
+// ledger.HashSourceAdopted.
 func (ledgerStore) SetStatusAdopted(db ledger.DBTX, version uint64, note, contentHash, table string) error {
 	if err := checkVersionRange(version); err != nil {
 		return err
 	}
 	_, err := db.Exec(fmt.Sprintf(`
 INSERT INTO %s (version, status, recorded_at, note, content_sha256, hash_source)
-VALUES (?, 'applied', ?, ?, ?, 'adopted')
+VALUES (?, 'applied', ?, ?, ?, ?)
 ON CONFLICT (version) DO UPDATE
 SET status = excluded.status, recorded_at = excluded.recorded_at, note = excluded.note, content_sha256 = excluded.content_sha256, hash_source = excluded.hash_source`, table),
-		int64(version), time.Now().UTC(), note, contentHash)
+		int64(version), time.Now().UTC(), note, contentHash, ledger.HashSourceAdopted)
 	if err != nil {
 		return fmt.Errorf("setting adopted status for version %d: %w", version, err)
 	}
@@ -192,6 +193,10 @@ func (s ledgerStore) AppliedVersions(db ledger.DBTX, table string) ([]uint64, er
 // backfill a row for every version m's cursor already considers applied.
 // Refuses to backfill when the cursor is dirty (a previous apply failed
 // partway) — see ledger.Sync.
+func (s ledgerStore) EnsureSchema(db ledger.DBTX, table string) error {
+	return s.ensureSchema(db, table)
+}
+
 func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
 	if err := s.ensureSchema(db, table); err != nil {
 		return err

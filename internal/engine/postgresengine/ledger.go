@@ -115,10 +115,10 @@ func (ledgerStore) SetStatusAdopted(db ledger.DBTX, version uint64, note, conten
 	}
 	_, err := db.Exec(fmt.Sprintf(`
 INSERT INTO %s (version, status, recorded_at, note, content_sha256, hash_source)
-VALUES ($1, 'applied', now(), $2, $3, 'adopted')
+VALUES ($1, 'applied', now(), $2, $3, $4)
 ON CONFLICT (version) DO UPDATE
 SET status = EXCLUDED.status, recorded_at = EXCLUDED.recorded_at, note = EXCLUDED.note, content_sha256 = EXCLUDED.content_sha256, hash_source = EXCLUDED.hash_source`, table),
-		int64(version), note, contentHash)
+		int64(version), note, contentHash, ledger.HashSourceAdopted)
 	if err != nil {
 		return fmt.Errorf("setting adopted status for version %d: %w", version, err)
 	}
@@ -179,6 +179,10 @@ func (s ledgerStore) AppliedVersions(db ledger.DBTX, table string) ([]uint64, er
 // backfill a row for every version m's cursor already considers applied.
 // Refuses to backfill when the cursor is dirty (a previous apply failed
 // partway) — see ledger.Sync.
+func (s ledgerStore) EnsureSchema(db ledger.DBTX, table string) error {
+	return s.ensureSchema(db, table)
+}
+
 func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
 	if err := s.ensureSchema(db, table); err != nil {
 		return err

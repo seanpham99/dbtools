@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
@@ -31,12 +32,7 @@ type Report struct {
 // actually present AND the migration file's content must still match the
 // hash recorded when it was applied; versions marked "reverted" must not.
 func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targetName string) (*Report, error) {
-	if upSuffix == "" {
-		upSuffix = ".up.sql"
-	}
-	if table == "" {
-		table = "dbtools_migration_history"
-	}
+	migrationsDir, upSuffix, table = config.ResolveDefaults(migrationsDir, upSuffix, table)
 	entries, err := eng.Ledger().List(db, table)
 	if err != nil {
 		return nil, err
@@ -104,7 +100,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		// DB no longer matches what the file says. Backfilled rows have no
 		// hash (recorded before hashing existed) and adopted rows (inferred
 		// at adopt time, not observed at apply time) are skipped.
-		if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" && e.HashSource != "adopted" {
+		if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" && e.HashSource != ledger.HashSourceAdopted {
 			sum, err := dir.ContentHash(e.Version)
 			if err != nil {
 				return nil, err

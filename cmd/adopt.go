@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/adopt"
+	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
@@ -80,18 +81,7 @@ func runAdopt(targetName string) error {
 	}
 	defer db.Close()
 
-	migrationsDir := cfg.MigrationsDir
-	if migrationsDir == "" {
-		migrationsDir = "migrations"
-	}
-	upSuffix := cfg.Migrations.UpSuffix
-	if upSuffix == "" {
-		upSuffix = ".up.sql"
-	}
-	ledgerTable := cfg.Ledger.Table
-	if ledgerTable == "" {
-		ledgerTable = "dbtools_migration_history"
-	}
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
 
 	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
@@ -149,7 +139,12 @@ func runAdopt(targetName string) error {
 	}
 	defer m.Close()
 
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
+	// EnsureSchema only, never Sync: Sync also backfills a row for every
+	// version the golang-migrate cursor already considers applied, tagged
+	// with the normal (non-adopted) hash source — exactly the "hash now,
+	// treat as verified" outcome adopt's hash_source design exists to
+	// avoid. adopt writes only the matched set below, all tagged adopted.
+	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 		return err
 	}
 

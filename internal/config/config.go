@@ -92,6 +92,33 @@ type MigrationsConfig struct {
 	UpSuffix string `toml:"up_suffix"`
 }
 
+// Defaults for the three migration-location values below, shared with
+// ResolveDefaults so every caller (Load included) derives them once.
+const (
+	DefaultMigrationsDir = "migrations"
+	DefaultUpSuffix      = ".up.sql"
+	DefaultLedgerTable   = "dbtools_migration_history"
+)
+
+// ResolveDefaults fills in the standard default for any of migrationsDir,
+// upSuffix, or table that is empty. Load applies these to a *Config
+// directly; this exists for the internal packages (repair, verify, down,
+// apply, rollback, adopt) that take the three as plain parameters rather
+// than a *Config, so each one defaults identically instead of every
+// caller re-deriving its own copy of the same three checks.
+func ResolveDefaults(migrationsDir, upSuffix, table string) (resolvedDir, resolvedSuffix, resolvedTable string) {
+	if migrationsDir == "" {
+		migrationsDir = DefaultMigrationsDir
+	}
+	if upSuffix == "" {
+		upSuffix = DefaultUpSuffix
+	}
+	if table == "" {
+		table = DefaultLedgerTable
+	}
+	return migrationsDir, upSuffix, table
+}
+
 // Config is the parsed contents of dbtools.toml.
 type Config struct {
 	MigrationsDir string            `toml:"migrations_dir"`
@@ -114,17 +141,9 @@ func Load(path string) (*Config, error) {
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
 	}
-	if cfg.MigrationsDir == "" {
-		cfg.MigrationsDir = "migrations"
-	}
-	if cfg.Ledger.Table == "" {
-		cfg.Ledger.Table = "dbtools_migration_history"
-	}
+	cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table = ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
 	if err := ledger.ValidateTableName(cfg.Ledger.Table); err != nil {
 		return nil, fmt.Errorf("dbtools.toml: %w", err)
-	}
-	if cfg.Migrations.UpSuffix == "" {
-		cfg.Migrations.UpSuffix = ".up.sql"
 	}
 	// Default exclude list to internal tool tables unless the key was set at all
 	// (including explicitly to an empty list, which means "exclude nothing").

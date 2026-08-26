@@ -186,7 +186,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 				if e.Status != ledger.StatusApplied || e.ContentSHA256 == "" {
 					continue
 				}
-				if e.HashSource == "adopted" {
+				if e.HashSource == ledger.HashSourceAdopted {
 					hashSkipped++
 					continue
 				}

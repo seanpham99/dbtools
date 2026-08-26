@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
@@ -28,15 +29,7 @@ type Result struct {
 // applies all pairs, and recomputes db's cursor as the highest remaining
 // applied version.
 func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir, upSuffix, table string, pairs []Pair, force bool) (*Result, error) {
-	if migrationsDir == "" {
-		migrationsDir = "migrations"
-	}
-	if upSuffix == "" {
-		upSuffix = ".up.sql"
-	}
-	if table == "" {
-		table = "dbtools_migration_history"
-	}
+	migrationsDir, upSuffix, table = config.ResolveDefaults(migrationsDir, upSuffix, table)
 	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, table); err != nil {
 		return nil, err
 	}

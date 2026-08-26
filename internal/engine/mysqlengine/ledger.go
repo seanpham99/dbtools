@@ -128,9 +128,9 @@ func (mysqlLedgerStore) SetStatusAdopted(db ledger.DBTX, version uint64, note, c
 	}
 	_, err := db.Exec(fmt.Sprintf(`
 INSERT INTO %s (version, status, recorded_at, note, content_sha256, hash_source)
-VALUES (?, 'applied', NOW(), ?, ?, 'adopted')
+VALUES (?, 'applied', NOW(), ?, ?, ?)
 ON DUPLICATE KEY UPDATE status = VALUES(status), recorded_at = VALUES(recorded_at), note = VALUES(note), content_sha256 = VALUES(content_sha256), hash_source = VALUES(hash_source)`, table),
-		int64(version), note, contentHash)
+		int64(version), note, contentHash, ledger.HashSourceAdopted)
 	if err != nil {
 		return fmt.Errorf("setting adopted status for version %d: %w", version, err)
 	}
@@ -189,6 +189,10 @@ func (s mysqlLedgerStore) AppliedVersions(db ledger.DBTX, table string) ([]uint6
 
 // Sync ensures MySQL db's ledger table exists and is backfilled. Refuses
 // to backfill when the cursor is dirty (a previous apply failed partway).
+func (s mysqlLedgerStore) EnsureSchema(db ledger.DBTX, table string) error {
+	return s.ensureSchema(db, table)
+}
+
 func (s mysqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
 	if err := s.ensureSchema(db, table); err != nil {
 		return err

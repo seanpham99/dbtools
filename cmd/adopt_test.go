@@ -199,6 +199,85 @@ func TestAdoptCommand_WritesMatchedWithYes(t *testing.T) {
 	}
 }
 
+// TestAdoptCommand_DoesNotBackfillVersionsOutsideSourceTable is a
+// regression test for a review finding: adopt used to call
+// eng.Ledger().Sync before writing, which also backfills a row (tagged
+// with a normal, non-"adopted" hash source) for every version the
+// golang-migrate cursor already considers applied — even one the
+// incumbent's source table never recorded. That silently produced a
+// "verified" ledger row whose hash was never actually checked, which is
+// exactly what hash_source="adopted" exists to prevent. adopt must use
+// EnsureSchema (create the table only) instead of Sync (create + backfill).
+func TestAdoptCommand_DoesNotBackfillVersionsOutsideSourceTable(t *testing.T) {
+	dir, rawURL, cfg := setupAdoptTestEnv(t)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// A second migration file dbtools' own cursor will be stamped to,
+	// simulating a version applied by dbtools after the incumbent tool's
+	// ledger was last updated. The source table below never mentions it.
+	m2Up := `CREATE TABLE widgets (id INTEGER PRIMARY KEY);`
+	if err := os.WriteFile(filepath.Join(dir, "migrations", "20260822000002_widgets.up.sql"), []byte(m2Up), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// A distinct name from golang-migrate's own "schema_migrations" cursor
+	// table (which m.Stamp below writes to) so stamping the migrate
+	// cursor doesn't also mutate the simulated incumbent's ledger.
+	if _, err := db.Exec(`CREATE TABLE legacy_migrations (version INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO legacy_migrations (version) VALUES (20260822000001)`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Stamp the migrate cursor past version 2, which the source table
+	// above never recorded — this is what Sync's backfill would have
+	// picked up.
+	m, err := migrator.Open(rawURL, cfg.MigrationsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Stamp(20260822000002); err != nil {
+		t.Fatal(err)
+	}
+	m.Close()
+
+	adoptYes = true
+	adoptForce = false
+	adoptFromTable = "legacy_migrations"
+	adoptVersionColumn = "version"
+	adoptAppliedAtColumn = ""
+
+	if err := runAdopt("testdb"); err != nil {
+		t.Fatalf("runAdopt() returned unexpected error: %v", err)
+	}
+
+	entries, err := eng.Ledger().List(db, "dbtools_migration_history")
+	if err != nil {
+		t.Fatalf("List() returned error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1 (version 2 must not be backfilled): %+v", len(entries), entries)
+	}
+	if entries[0].Version != 20260822000001 || entries[0].HashSource != ledger.HashSourceAdopted {
+		t.Errorf("entries[0] = %+v, want version 20260822000001 with hash_source=adopted", entries[0])
+	}
+}
+
 func TestAdoptCommand_FromTableOverride(t *testing.T) {
 	dir, rawURL, _ := setupAdoptTestEnv(t)
 	wd, err := os.Getwd()

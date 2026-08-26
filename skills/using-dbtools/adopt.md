@@ -41,6 +41,17 @@ dbtools adopt <target> --from-table custom_history --version-column version_num 
 4. **Hash Source (`adopted`)**:
    Imported records are stored in the ledger with `hash_source = 'adopted'`. `dbtools doctor` and `dbtools verify` recognize these rows and skip content hash comparison (since historical file content was never directly observed at original execution time).
 
+### Alembic
+
+`alembic_version` is auto-detected, but `dbtools adopt` requires a numeric
+version per row (matching the `<version>_<name>` filename convention every
+other supported tool uses). Alembic's default `version_num` column stores a
+non-numeric revision hash (e.g. `ae1027a6acf1`), which does not parse as a
+version and adopt will fail with an explicit error rather than adopting a
+partial or incorrect ledger. If your Alembic setup already uses purely
+numeric revision IDs, adoption works normally; otherwise, use
+`dbtools repair` to construct the ledger by hand.
+
 ## Configuration
 
 If your project uses custom table names or flat migration suffixes, configure them in `dbtools.toml`:

@@ -19,6 +19,10 @@ const (
 	StatusReverted Status = "reverted"
 )
 
+// HashSourceAdopted marks an Entry's ContentSHA256 as recorded by `dbtools
+// adopt` rather than observed at apply time — see Entry.HashSource.
+const HashSourceAdopted = "adopted"
+
 // Entry is one row of dbtools_migration_history.
 type Entry struct {
 	Version    uint64
