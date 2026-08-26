@@ -70,3 +70,37 @@ func TestCollect_NoLedgerReportsDriftForMissingObject(t *testing.T) {
 		t.Fatalf("Entries = %+v, want one DRIFT entry", report.Entries)
 	}
 }
+
+func TestCollect_NoLedgerExcusesDroppedObjects(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"),
+		[]byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "2_drop_widgets.up.sql"),
+		[]byte("DROP TABLE IF EXISTS widgets;"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := sqliteengine.SQLite{}
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := eng.Open("sqlite://" + dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// widgets is not in the database (dropped by migration 2).
+
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "local")
+	if err != nil {
+		t.Fatalf("Collect() returned error: %v", err)
+	}
+	if len(report.Entries) != 2 {
+		t.Fatalf("len(Entries) = %d, want 2", len(report.Entries))
+	}
+	for _, e := range report.Entries {
+		if e.Status != "OK" {
+			t.Errorf("Entry v%d Status = %q, want OK (dropped object excused)", e.Version, e.Status)
+		}
+	}
+}

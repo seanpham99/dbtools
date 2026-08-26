@@ -149,6 +149,20 @@ func collectNoLedger(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, tar
 		return nil, err
 	}
 
+	droppedBefore := make(map[ddlcheck.ObjectRef]uint64)
+	for _, f := range dir.List() {
+		raw, err := os.ReadFile(f.Path)
+		if err != nil {
+			return nil, err
+		}
+		for _, obj := range eng.DDL().ExtractDroppedObjects(string(raw)) {
+			droppedBefore[obj] = f.Version
+		}
+		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
+			delete(droppedBefore, obj)
+		}
+	}
+
 	var entries []Entry
 	for _, f := range dir.List() {
 		raw, err := os.ReadFile(f.Path)
@@ -161,7 +175,9 @@ func collectNoLedger(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, tar
 			if err != nil {
 				return nil, err
 			}
-			if !exists {
+			droppedAt, wasDropped := droppedBefore[obj]
+			excused := wasDropped && droppedAt > f.Version
+			if !exists && !excused {
 				missing = fmt.Sprintf("%s.%s missing", obj.Schema, obj.Name)
 				break
 			}

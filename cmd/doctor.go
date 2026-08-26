@@ -161,7 +161,14 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 
 	ledgerTableExists, err := engine.TableExists(eng, db, cfg.Ledger.Table)
 	if err != nil {
-		ledgerTableExists = false
+		report.Healthy = false
+		report.Exit = 1
+		report.Checks = append(report.Checks, CheckResult{
+			Name:    "ledger-integrity",
+			Status:  "fail",
+			Message: fmt.Sprintf("failed to check ledger table existence: %v", err),
+		})
+		return report
 	}
 
 	// 3. Ledger integrity check

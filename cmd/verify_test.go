@@ -82,3 +82,40 @@ engine = "sqlite"
 		t.Fatalf("runVerify() with no ledger = %v, want nil or exit-2 drift, not a hard failure", err)
 	}
 }
+
+func TestVerifyCommand_InitLedgerRefusesProtectedTarget(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"),
+		[]byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbPath := filepath.Join(dir, "test.db")
+	rawURL := "sqlite://" + dbPath
+	t.Setenv("DBTOOLS_TEST_VERIFY_PROT_URL", rawURL)
+
+	cfgContent := fmt.Sprintf(`migrations_dir = %q
+[targets.prod]
+url_env = "DBTOOLS_TEST_VERIFY_PROT_URL"
+engine = "sqlite"
+protected = true
+`, dir)
+	configPath := filepath.Join(dir, "dbtools.toml")
+	if err := os.WriteFile(configPath, []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	verifyInitLedger = true
+	t.Cleanup(func() { verifyInitLedger = false })
+
+	err := runVerify("prod")
+	if err == nil || !strings.Contains(err.Error(), "protected") {
+		t.Fatalf("runVerify(prod, --init-ledger) = %v, want protected target error", err)
+	}
+}

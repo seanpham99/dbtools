@@ -68,6 +68,9 @@ func runVerify(targetName string) error {
 		return err
 	}
 	if !ledgerExists && verifyInitLedger {
+		if err := requireUnprotected(cfg, targetName); err != nil {
+			return err
+		}
 		if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
 			return err
 		}
@@ -82,6 +85,9 @@ func runVerify(targetName string) error {
 			return fmt.Errorf("ledger for %q is empty — refusing to create it on a read-only check; pass --init-ledger to create and backfill it", targetName)
 		}
 		if len(entries) == 0 {
+			if err := requireUnprotected(cfg, targetName); err != nil {
+				return err
+			}
 			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
 				return err
 			}
