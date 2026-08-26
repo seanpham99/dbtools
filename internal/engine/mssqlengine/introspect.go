@@ -52,7 +52,9 @@ func Introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 			c.IS_NULLABLE,
 			c.CHARACTER_MAXIMUM_LENGTH,
 			c.NUMERIC_PRECISION,
-			c.NUMERIC_SCALE
+			c.NUMERIC_SCALE,
+			c.ORDINAL_POSITION,
+			c.COLUMN_DEFAULT
 		FROM INFORMATION_SCHEMA.TABLES t
 		JOIN INFORMATION_SCHEMA.COLUMNS c 
 			ON t.TABLE_SCHEMA = c.TABLE_SCHEMA 
@@ -75,6 +77,8 @@ func Introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 	for rows.Next() {
 		var schemaName, tableName, colName, dataType, isNullableStr string
 		var maxLen, precision, scale sql.NullInt64
+		var ordinalPos int
+		var columnDefault sql.NullString
 
 		if err := rows.Scan(
 			&schemaName,
@@ -85,6 +89,8 @@ func Introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 			&maxLen,
 			&precision,
 			&scale,
+			&ordinalPos,
+			&columnDefault,
 		); err != nil {
 			return nil, nil, fmt.Errorf("scanning column info: %w", err)
 		}
@@ -115,14 +121,16 @@ func Introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 		}
 
 		col := generate.ColumnSchema{
-			Name:       colName,
-			PyName:     generate.SanitizeFieldName(colName),
-			DataType:   dataType,
-			PythonType: pythonType,
-			IsNullable: strings.ToUpper(isNullableStr) == "YES",
-			MaxLength:  maxLen,
-			Precision:  precision,
-			Scale:      scale,
+			Name:            colName,
+			PyName:          generate.SanitizeFieldName(colName),
+			DataType:        dataType,
+			PythonType:      pythonType,
+			IsNullable:      strings.ToUpper(isNullableStr) == "YES",
+			MaxLength:       maxLen,
+			Precision:       precision,
+			Scale:           scale,
+			OrdinalPosition: ordinalPos,
+			DefaultValue:    columnDefault,
 		}
 
 		tbl.Columns = append(tbl.Columns, col)
@@ -130,6 +138,169 @@ func Introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("iterating schema rows: %w", err)
+	}
+
+	// Primary keys, via sys.indexes/sys.index_columns (is_primary_key=1).
+	pkRows, err := db.Query(`
+		SELECT s.name, t.name, c.name
+		FROM sys.indexes i
+		JOIN sys.tables t ON t.object_id = i.object_id
+		JOIN sys.schemas s ON s.schema_id = t.schema_id
+		JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+		JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+		WHERE i.is_primary_key = 1`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("introspecting primary keys: %w", err)
+	}
+	pkColumns := make(map[string]map[string]bool)
+	for pkRows.Next() {
+		var schemaName, tableName, colName string
+		if err := pkRows.Scan(&schemaName, &tableName, &colName); err != nil {
+			pkRows.Close()
+			return nil, nil, fmt.Errorf("scanning primary key: %w", err)
+		}
+		fullKey := fmt.Sprintf("%s.%s", schemaName, tableName)
+		if pkColumns[fullKey] == nil {
+			pkColumns[fullKey] = make(map[string]bool)
+		}
+		pkColumns[fullKey][colName] = true
+	}
+	pkRows.Close()
+	if err := pkRows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterating primary keys: %w", err)
+	}
+	for fullKey, tbl := range tableMap {
+		for i, col := range tbl.Columns {
+			if pkColumns[fullKey][col.Name] {
+				tbl.Columns[i].IsPrimaryKey = true
+			}
+		}
+	}
+
+	// Foreign keys.
+	fkRows, err := db.Query(`
+		SELECT s.name, t.name, fk.name, c.name, fkc.constraint_column_id,
+			rs.name, rt.name, rc.name
+		FROM sys.foreign_keys fk
+		JOIN sys.tables t ON t.object_id = fk.parent_object_id
+		JOIN sys.schemas s ON s.schema_id = t.schema_id
+		JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+		JOIN sys.columns c ON c.object_id = fkc.parent_object_id AND c.column_id = fkc.parent_column_id
+		JOIN sys.tables rt ON rt.object_id = fk.referenced_object_id
+		JOIN sys.schemas rs ON rs.schema_id = rt.schema_id
+		JOIN sys.columns rc ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+		ORDER BY s.name, t.name, fk.name, fkc.constraint_column_id`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("introspecting foreign keys: %w", err)
+	}
+	fkMap := make(map[string]map[string]*generate.ForeignKeySchema)
+	fkOrder := make(map[string][]string)
+	for fkRows.Next() {
+		var schemaName, tableName, fkName, colName, refSchema, refTable, refColumn string
+		var colID int
+		if err := fkRows.Scan(&schemaName, &tableName, &fkName, &colName, &colID, &refSchema, &refTable, &refColumn); err != nil {
+			fkRows.Close()
+			return nil, nil, fmt.Errorf("scanning foreign key: %w", err)
+		}
+		fullKey := fmt.Sprintf("%s.%s", schemaName, tableName)
+		if fkMap[fullKey] == nil {
+			fkMap[fullKey] = make(map[string]*generate.ForeignKeySchema)
+		}
+		fk, exists := fkMap[fullKey][fkName]
+		if !exists {
+			fk = &generate.ForeignKeySchema{Name: fkName, RefSchema: refSchema, RefTable: refTable}
+			fkMap[fullKey][fkName] = fk
+			fkOrder[fullKey] = append(fkOrder[fullKey], fkName)
+		}
+		fk.Columns = append(fk.Columns, colName)
+		fk.RefColumns = append(fk.RefColumns, refColumn)
+	}
+	fkRows.Close()
+	if err := fkRows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterating foreign keys: %w", err)
+	}
+	for fullKey, names := range fkOrder {
+		tbl, ok := tableMap[fullKey]
+		if !ok {
+			continue
+		}
+		for _, name := range names {
+			tbl.ForeignKeys = append(tbl.ForeignKeys, *fkMap[fullKey][name])
+		}
+	}
+
+	// CHECK constraints.
+	ckRows, err := db.Query(`
+		SELECT s.name, t.name, cc.name, cc.definition
+		FROM sys.check_constraints cc
+		JOIN sys.tables t ON t.object_id = cc.parent_object_id
+		JOIN sys.schemas s ON s.schema_id = t.schema_id`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("introspecting check constraints: %w", err)
+	}
+	for ckRows.Next() {
+		var schemaName, tableName, constraintName, expr string
+		if err := ckRows.Scan(&schemaName, &tableName, &constraintName, &expr); err != nil {
+			ckRows.Close()
+			return nil, nil, fmt.Errorf("scanning check constraint: %w", err)
+		}
+		fullKey := fmt.Sprintf("%s.%s", schemaName, tableName)
+		if tbl, ok := tableMap[fullKey]; ok {
+			tbl.CheckConstraints = append(tbl.CheckConstraints, generate.CheckConstraintSchema{Name: constraintName, Expression: expr})
+		}
+	}
+	ckRows.Close()
+	if err := ckRows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterating check constraints: %w", err)
+	}
+
+	// Indexes — excludes the PK-backing index (is_primary_key = 0).
+	ixRows, err := db.Query(`
+		SELECT s.name, t.name, i.name, c.name, i.is_unique, ic.key_ordinal
+		FROM sys.indexes i
+		JOIN sys.tables t ON t.object_id = i.object_id
+		JOIN sys.schemas s ON s.schema_id = t.schema_id
+		JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+		JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+		WHERE i.name IS NOT NULL AND i.is_primary_key = 0
+		ORDER BY s.name, t.name, i.name, ic.key_ordinal`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("introspecting indexes: %w", err)
+	}
+	ixMap := make(map[string]map[string]*generate.IndexSchema)
+	ixOrder := make(map[string][]string)
+	for ixRows.Next() {
+		var schemaName, tableName, indexName, colName string
+		var unique bool
+		var ordinal int
+		if err := ixRows.Scan(&schemaName, &tableName, &indexName, &colName, &unique, &ordinal); err != nil {
+			ixRows.Close()
+			return nil, nil, fmt.Errorf("scanning index: %w", err)
+		}
+		fullKey := fmt.Sprintf("%s.%s", schemaName, tableName)
+		if ixMap[fullKey] == nil {
+			ixMap[fullKey] = make(map[string]*generate.IndexSchema)
+		}
+		idx, exists := ixMap[fullKey][indexName]
+		if !exists {
+			idx = &generate.IndexSchema{Name: indexName, Unique: unique}
+			ixMap[fullKey][indexName] = idx
+			ixOrder[fullKey] = append(ixOrder[fullKey], indexName)
+		}
+		idx.Columns = append(idx.Columns, colName)
+	}
+	ixRows.Close()
+	if err := ixRows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("iterating indexes: %w", err)
+	}
+	for fullKey, names := range ixOrder {
+		tbl, ok := tableMap[fullKey]
+		if !ok {
+			continue
+		}
+		for _, name := range names {
+			tbl.Indexes = append(tbl.Indexes, *ixMap[fullKey][name])
+		}
 	}
 
 	result := make([]generate.TableSchema, 0, len(tableOrder))
