@@ -20,13 +20,16 @@ func TestIntrospect_FullStructuralCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	t.Cleanup(func() {
-		db.Exec(`DROP TABLE IF EXISTS orders`)
-		db.Exec(`DROP TABLE IF EXISTS customers`)
-	})
+
+	cleanup := func() {
+		db.Exec(`DROP TABLE IF EXISTS dbtools_it_orders`)
+		db.Exec(`DROP TABLE IF EXISTS dbtools_it_customers`)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
 
 	if _, err := db.Exec(`
-CREATE TABLE customers (
+CREATE TABLE dbtools_it_customers (
     id INT NOT NULL,
     email TEXT NOT NULL,
     PRIMARY KEY (id)
@@ -34,18 +37,18 @@ CREATE TABLE customers (
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
-CREATE TABLE orders (
+CREATE TABLE dbtools_it_orders (
     id INT NOT NULL,
     customer_id INT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     total NUMERIC(10,2) NOT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_customer FOREIGN KEY (customer_id) REFERENCES customers(id),
-    CONSTRAINT chk_total CHECK (total >= 0)
+    CONSTRAINT fk_it_customer FOREIGN KEY (customer_id) REFERENCES dbtools_it_customers(id),
+    CONSTRAINT chk_it_total CHECK (total >= 0)
 )`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX idx_orders_status ON orders (status)`); err != nil {
+	if _, err := db.Exec(`CREATE UNIQUE INDEX idx_it_orders_status ON dbtools_it_orders (status)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,12 +59,12 @@ CREATE TABLE orders (
 
 	var orders *generate.TableSchema
 	for i := range tables {
-		if tables[i].Name == "orders" {
+		if tables[i].Name == "dbtools_it_orders" {
 			orders = &tables[i]
 		}
 	}
 	if orders == nil {
-		t.Fatal("orders table not found")
+		t.Fatal("dbtools_it_orders table not found")
 	}
 
 	for _, c := range orders.Columns {
@@ -76,13 +79,13 @@ CREATE TABLE orders (
 		}
 	}
 
-	if len(orders.ForeignKeys) != 1 || orders.ForeignKeys[0].RefTable != "customers" {
-		t.Errorf("ForeignKeys = %+v, want one FK to customers", orders.ForeignKeys)
+	if len(orders.ForeignKeys) != 1 || orders.ForeignKeys[0].RefTable != "dbtools_it_customers" {
+		t.Errorf("ForeignKeys = %+v, want one FK to dbtools_it_customers", orders.ForeignKeys)
 	}
 	if len(orders.CheckConstraints) != 1 || !strings.Contains(orders.CheckConstraints[0].Expression, "total") {
 		t.Errorf("CheckConstraints = %+v, want one mentioning total", orders.CheckConstraints)
 	}
-	if len(orders.Indexes) != 1 || orders.Indexes[0].Name != "idx_orders_status" || !orders.Indexes[0].Unique {
-		t.Errorf("Indexes = %+v, want exactly idx_orders_status, unique (PK-backing index excluded)", orders.Indexes)
+	if len(orders.Indexes) != 1 || orders.Indexes[0].Name != "idx_it_orders_status" || !orders.Indexes[0].Unique {
+		t.Errorf("Indexes = %+v, want exactly idx_it_orders_status, unique (PK-backing index excluded)", orders.Indexes)
 	}
 }

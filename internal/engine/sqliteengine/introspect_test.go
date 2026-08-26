@@ -15,19 +15,19 @@ func TestIntrospect_FullStructuralCatalog(t *testing.T) {
 	}
 	defer db.Close()
 
-	if _, err := db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT NOT NULL)`); err != nil {
+	if _, err := db.Exec(`CREATE TABLE dbtools_it_customers (id INTEGER PRIMARY KEY, email TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`
-CREATE TABLE orders (
+CREATE TABLE dbtools_it_orders (
     id INTEGER PRIMARY KEY,
     customer_id INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    FOREIGN KEY (customer_id) REFERENCES customers(id)
+    FOREIGN KEY (customer_id) REFERENCES dbtools_it_customers(id)
 )`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX idx_orders_status ON orders (status)`); err != nil {
+	if _, err := db.Exec(`CREATE UNIQUE INDEX idx_it_orders_status ON dbtools_it_orders (status)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -38,12 +38,12 @@ CREATE TABLE orders (
 
 	var orders *generate.TableSchema
 	for i := range tables {
-		if tables[i].Name == "orders" {
+		if tables[i].Name == "dbtools_it_orders" {
 			orders = &tables[i]
 		}
 	}
 	if orders == nil {
-		t.Fatal("orders table not found")
+		t.Fatal("dbtools_it_orders table not found")
 	}
 
 	for _, c := range orders.Columns {
@@ -58,11 +58,11 @@ CREATE TABLE orders (
 		}
 	}
 
-	if len(orders.ForeignKeys) != 1 || orders.ForeignKeys[0].RefTable != "customers" {
-		t.Errorf("ForeignKeys = %+v, want one FK to customers", orders.ForeignKeys)
+	if len(orders.ForeignKeys) != 1 || orders.ForeignKeys[0].RefTable != "dbtools_it_customers" {
+		t.Errorf("ForeignKeys = %+v, want one FK to dbtools_it_customers", orders.ForeignKeys)
 	}
-	if len(orders.Indexes) != 1 || orders.Indexes[0].Name != "idx_orders_status" || !orders.Indexes[0].Unique {
-		t.Errorf("Indexes = %+v, want exactly idx_orders_status, unique", orders.Indexes)
+	if len(orders.Indexes) != 1 || orders.Indexes[0].Name != "idx_it_orders_status" || !orders.Indexes[0].Unique {
+		t.Errorf("Indexes = %+v, want exactly idx_it_orders_status, unique", orders.Indexes)
 	}
 	if len(orders.CheckConstraints) != 0 {
 		t.Errorf("CheckConstraints = %+v, want always empty for SQLite", orders.CheckConstraints)
