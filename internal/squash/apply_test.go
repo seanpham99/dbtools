@@ -27,6 +27,32 @@ func TestApplyPlan_RefusesUnverifiedPlan(t *testing.T) {
 	}
 }
 
+func TestApplyPlan_RejectsInvalidBaselineFilename(t *testing.T) {
+	plan := &squash.Plan{Verified: true}
+	cfg := &config.Config{}
+	// Not matching <version>_<name>.up.sql pattern
+	if _, err := squash.ApplyPlan(cfg, "local", nil, nil, "", "", "invalid_filename.sql", plan); err == nil {
+		t.Fatal("ApplyPlan() with invalid filename: want error, got nil")
+	}
+	// Non-zero version
+	if _, err := squash.ApplyPlan(cfg, "local", nil, nil, "", "", "001_baseline.up.sql", plan); err == nil {
+		t.Fatal("ApplyPlan() with non-zero version: want error, got nil")
+	}
+}
+
+func TestApplyPlan_RejectsExistingBaselineFile(t *testing.T) {
+	dir := t.TempDir()
+	baselineName := "0000000000000_squashed_baseline.up.sql"
+	if err := os.WriteFile(filepath.Join(dir, baselineName), []byte("-- existing"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan := &squash.Plan{Verified: true}
+	cfg := &config.Config{MigrationsDir: dir}
+	if _, err := squash.ApplyPlan(cfg, "local", nil, nil, dir, filepath.Join(dir, "_archived"), baselineName, plan); err == nil {
+		t.Fatal("ApplyPlan() with existing baseline file: want error, got nil")
+	}
+}
+
 func TestApplyPlan_FreshTargetWritesFilesOnly(t *testing.T) {
 	dir := t.TempDir()
 	archiveDir := filepath.Join(dir, "_archived")

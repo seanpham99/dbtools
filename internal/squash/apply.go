@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
@@ -41,7 +43,22 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 		return nil, fmt.Errorf("refusing to write: baseline did not verify (%d structural difference(s) found)", len(plan.Findings))
 	}
 
-	_, _, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	_, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+
+	upPat := regexp.MustCompile(`^(\d+)_.+` + regexp.QuoteMeta(upSuffix) + `$`)
+	mMatches := upPat.FindStringSubmatch(baselineFilename)
+	if mMatches == nil {
+		return nil, fmt.Errorf("invalid baseline filename %q: must match migration filename pattern <version>_<name>%s", baselineFilename, upSuffix)
+	}
+	ver, parseErr := strconv.ParseUint(mMatches[1], 10, 64)
+	if parseErr != nil || ver != 0 {
+		return nil, fmt.Errorf("invalid baseline filename %q: baseline version must be 0", baselineFilename)
+	}
+
+	baselinePath := filepath.Join(migrationsDir, baselineFilename)
+	if _, statErr := os.Stat(baselinePath); statErr == nil {
+		return nil, fmt.Errorf("baseline file %s already exists in %s", baselineFilename, migrationsDir)
+	}
 
 	url, err := cfg.ResolveURLOrFlag(targetName, "")
 	if err != nil {
@@ -74,7 +91,6 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating archive directory: %w", err)
 	}
-	baselinePath := filepath.Join(migrationsDir, baselineFilename)
 	if err := os.WriteFile(baselinePath, []byte(plan.BaselineSQL), 0o644); err != nil {
 		return nil, fmt.Errorf("writing baseline file: %w", err)
 	}

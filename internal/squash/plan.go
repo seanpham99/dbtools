@@ -1,9 +1,12 @@
 package squash
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/config"
@@ -107,12 +110,16 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 			}
 		}()
 	}
-	verifyDB, err := eng.Open(url2)
+	verifyURL := url2
+	if eng.Name() == "mysql" {
+		verifyURL = ensureMultiStatements(verifyURL)
+	}
+	verifyDB, err := eng.Open(verifyURL)
 	if err != nil {
 		return nil, err
 	}
 	defer verifyDB.Close()
-	if _, err := verifyDB.Exec(baselineSQL); err != nil {
+	if err := execBaseline(verifyDB, baselineSQL); err != nil {
 		return nil, fmt.Errorf("applying baseline to verification database: %w", err)
 	}
 
@@ -138,4 +145,30 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		Findings:          findings,
 		CollapsedVersions: collapsed,
 	}, nil
+}
+
+var goSeparator = regexp.MustCompile(`(?im)^\s*GO\s*$`)
+
+func ensureMultiStatements(rawURL string) string {
+	if strings.Contains(rawURL, "multiStatements=") {
+		return rawURL
+	}
+	sep := "?"
+	if strings.Contains(rawURL, "?") {
+		sep = "&"
+	}
+	return rawURL + sep + "multiStatements=true"
+}
+
+func execBaseline(db *sql.DB, baselineSQL string) error {
+	for _, batch := range goSeparator.Split(baselineSQL, -1) {
+		batch = strings.TrimSpace(batch)
+		if batch == "" {
+			continue
+		}
+		if _, err := db.Exec(batch); err != nil {
+			return err
+		}
+	}
+	return nil
 }
