@@ -97,7 +97,7 @@ func SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, not
 	_, err := db.Exec(fmt.Sprintf(`
 IF EXISTS (SELECT 1 FROM %s WITH (HOLDLOCK) WHERE version = @p1)
     UPDATE %s
-    SET status = @p2, recorded_at = SYSUTCDATETIME(), note = @p3
+    SET status = @p2, recorded_at = SYSUTCDATETIME(), note = @p3, content_sha256 = @p4, hash_source = ''
     WHERE version = @p1
 ELSE
     INSERT INTO %s (version, status, recorded_at, note, content_sha256)

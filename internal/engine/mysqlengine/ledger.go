@@ -113,7 +113,7 @@ func (mysqlLedgerStore) SetStatusWithHash(db ledger.DBTX, version uint64, status
 	_, err := db.Exec(fmt.Sprintf(`
 INSERT INTO %s (version, status, recorded_at, note, content_sha256)
 VALUES (?, ?, NOW(), ?, ?)
-ON DUPLICATE KEY UPDATE status = VALUES(status), recorded_at = VALUES(recorded_at), note = VALUES(note), content_sha256 = VALUES(content_sha256)`, table),
+ON DUPLICATE KEY UPDATE status = VALUES(status), recorded_at = VALUES(recorded_at), note = VALUES(note), content_sha256 = VALUES(content_sha256), hash_source = ''`, table),
 		int64(version), string(status), note, contentHash)
 	if err != nil {
 		return fmt.Errorf("setting status for version %d: %w", version, err)

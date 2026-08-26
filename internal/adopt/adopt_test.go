@@ -116,6 +116,25 @@ func TestReadSourceRows_StringVersions(t *testing.T) {
 	}
 }
 
+// TestReadSourceRows_RejectsDottedVersions is a regression test for a
+// review finding: a Flyway-style dotted version ("V1.1", "V1.2") used to
+// silently truncate to its leading digit, colliding two distinct rows onto
+// the same uint64 version and corrupting the adopted ledger.
+func TestReadSourceRows_RejectsDottedVersions(t *testing.T) {
+	db := openTestSQLite(t)
+
+	if _, err := db.Exec(`CREATE TABLE flyway_schema_history (version TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO flyway_schema_history (version) VALUES ('1.1')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := adopt.ReadSourceRows(db, "flyway_schema_history", "version", ""); err == nil {
+		t.Fatal("ReadSourceRows() with dotted version '1.1': want error, got nil")
+	}
+}
+
 func TestReadSourceRows_RejectsInvalidIdentifiers(t *testing.T) {
 	if _, err := adopt.ReadSourceRows(nil, "bad table; name", "version", ""); err == nil {
 		t.Fatal("ReadSourceRows() with invalid table name: want error, got nil")

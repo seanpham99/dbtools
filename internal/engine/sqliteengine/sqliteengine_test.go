@@ -23,6 +23,46 @@ func openTemp(t *testing.T) *sql.DB {
 	return db
 }
 
+// TestSetStatusWithHash_ClearsAdoptedHashSourceOnReapply is a regression
+// test for a review finding: SetStatusWithHash's ON CONFLICT branch didn't
+// update content_sha256 or hash_source, so a version adopted (hash_source
+// "adopted") and later reverted and genuinely re-applied would keep
+// reporting the stale adopted hash and provenance forever — doctor/verify
+// would never promote it to "actually verified" even after a real apply
+// recorded its real hash.
+func TestSetStatusWithHash_ClearsAdoptedHashSourceOnReapply(t *testing.T) {
+	db := openTemp(t)
+	store := ledgerStore{}
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SetStatusAdopted(db, 1, "adopted from schema_migrations", "deadbeef", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatusAdopted() returned error: %v", err)
+	}
+	if err := store.SetStatus(db, 1, ledger.StatusReverted, "reverted", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatus(reverted) returned error: %v", err)
+	}
+	if err := store.SetStatusWithHash(db, 1, ledger.StatusApplied, "applied via up/push", "realhash123", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatusWithHash() returned error: %v", err)
+	}
+
+	entries, err := store.List(db, "dbtools_migration_history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.ContentSHA256 != "realhash123" {
+		t.Errorf("ContentSHA256 = %q, want realhash123 (must overwrite the stale adopted hash)", e.ContentSHA256)
+	}
+	if e.HashSource != "" {
+		t.Errorf("HashSource = %q, want empty (a genuine re-apply must clear the adopted tag)", e.HashSource)
+	}
+}
+
 func TestPathFromURL(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"sqlite://relative/to.db", "relative/to.db"},

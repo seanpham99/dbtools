@@ -278,6 +278,68 @@ func TestAdoptCommand_DoesNotBackfillVersionsOutsideSourceTable(t *testing.T) {
 	}
 }
 
+// TestAdoptCommand_RefusesPendingBelowHighestMatched is a regression test
+// for a review finding: stamping the migrate cursor to the highest matched
+// version while a lower-numbered version is still only "pending" (file on
+// disk, no source row) would make that pending version permanently
+// unreachable — PendingAfter only returns versions above the cursor.
+func TestAdoptCommand_RefusesPendingBelowHighestMatched(t *testing.T) {
+	dir, rawURL, _ := setupAdoptTestEnv(t)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// A second, later migration file with no source-table row: this
+	// stays "pending" and must block stamping the cursor past it.
+	m2Up := `CREATE TABLE widgets (id INTEGER PRIMARY KEY);`
+	if err := os.WriteFile(filepath.Join(dir, "migrations", "20260822000002_widgets.up.sql"), []byte(m2Up), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// And a third file the source table DOES record, so plan.Matched's
+	// highest version (3) is above the pending version (2).
+	m3Up := `CREATE TABLE gadgets (id INTEGER PRIMARY KEY);`
+	if err := os.WriteFile(filepath.Join(dir, "migrations", "20260822000003_gadgets.up.sql"), []byte(m3Up), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, dirty BOOLEAN)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO schema_migrations (version, dirty) VALUES (20260822000001, 0), (20260822000003, 0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	adoptYes = true
+	adoptForce = false
+	adoptFromTable = ""
+	adoptVersionColumn = ""
+	adoptAppliedAtColumn = ""
+
+	err = runAdopt("testdb")
+	if err == nil {
+		t.Fatal("runAdopt() with a pending version below the highest matched: want error, got nil")
+	}
+
+	// The check runs before EnsureSchema, so the ledger table was never
+	// even created — the strongest possible evidence nothing was written.
+	entries, listErr := eng.Ledger().List(db, "dbtools_migration_history")
+	if listErr == nil && len(entries) != 0 {
+		t.Fatalf("entries = %+v, want no writes when the pending-below-matched check fails", entries)
+	}
+}
+
 func TestAdoptCommand_FromTableOverride(t *testing.T) {
 	dir, rawURL, _ := setupAdoptTestEnv(t)
 	wd, err := os.Getwd()

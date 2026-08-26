@@ -65,3 +65,5 @@ table = "my_custom_migration_history" # Default: "dbtools_migration_history"
 [migrations]
 up_suffix = ".sql"                    # Default: ".up.sql" (supports ".sql" for flat layouts)
 ```
+
+**Current limitation**: a custom `up_suffix` is honored by the read-only commands (`status`, `plan`, `doctor`, `verify`) and by `adopt` itself, but not yet by `up`/`push` — golang-migrate's own execution engine still requires the `.up.sql`/`.down.sql` convention, so `up`/`push` refuse to run with a non-default `up_suffix` rather than silently applying nothing.

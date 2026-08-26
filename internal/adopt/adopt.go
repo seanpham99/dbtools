@@ -118,6 +118,14 @@ func parseVersionString(s string) (uint64, error) {
 	clean = strings.TrimPrefix(clean, "v")
 	match := leadingDigitsPattern.FindString(clean)
 	if match != "" {
+		rest := clean[len(match):]
+		// A dotted multi-part version (Flyway's "V1.1", "V2.3.1") would
+		// silently truncate to its first segment here, colliding "1.1"
+		// and "1.2" onto the same uint64 version and corrupting the
+		// adopted ledger. Refuse rather than guess.
+		if strings.HasPrefix(rest, ".") && len(rest) > 1 && rest[1] >= '0' && rest[1] <= '9' {
+			return 0, fmt.Errorf("cannot adopt dotted version %q: multi-part versions (e.g. Flyway's V1.1) can't be represented as dbtools' single integer version without collisions — use --from-table with a purely numeric column", s)
+		}
 		if u, err := strconv.ParseUint(match, 10, 64); err == nil {
 			return u, nil
 		}

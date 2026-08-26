@@ -42,6 +42,28 @@ func TestResolveDefaults_FillsOnlyEmptyValues(t *testing.T) {
 	}
 }
 
+func TestLoad_GenerateExcludeIncludesCustomLedgerTable(t *testing.T) {
+	path := writeTemp(t, `
+[targets.local]
+url_env = "DBTOOLS_LOCAL_URL"
+[ledger]
+table = "my_custom_history"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	found := false
+	for _, name := range cfg.Generate.Exclude {
+		if name == "my_custom_history" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Generate.Exclude = %v, want it to contain the custom ledger table %q", cfg.Generate.Exclude, "my_custom_history")
+	}
+}
+
 func TestLoad_ExplicitMigrationsDir(t *testing.T) {
 	path := writeTemp(t, `
 migrations_dir = "db/migrations"

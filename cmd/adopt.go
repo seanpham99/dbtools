@@ -124,6 +124,20 @@ func runAdopt(targetName string) error {
 		}
 	}
 
+	// A pending version below the highest matched one would become
+	// permanently unreachable: PendingAfter only returns versions above
+	// the stamped cursor, so stamping past it would silently strand that
+	// migration's file forever. Checked before any write, like the
+	// orphan gate above.
+	if len(plan.Matched) > 0 {
+		highest := plan.Matched[len(plan.Matched)-1]
+		for _, p := range plan.Pending {
+			if p <= highest {
+				return fmt.Errorf("adopt found pending version %d below the highest matched version %d — stamping the cursor past it would make it permanently unreachable; apply or remove that migration file first", p, highest)
+			}
+		}
+	}
+
 	if !adoptYes {
 		logger.Infof("dry run — pass --yes to write %d matched version(s) to the ledger", len(plan.Matched))
 		return nil

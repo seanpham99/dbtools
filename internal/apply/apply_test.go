@@ -28,6 +28,25 @@ func TestRun_EnvVarNotSet(t *testing.T) {
 	}
 }
 
+// TestRun_RefusesCustomUpSuffix is a regression test for a review finding:
+// golang-migrate's own file source is hardcoded to ".up.sql"/".down.sql"
+// regardless of migrations.up_suffix, so a custom suffix would make
+// dir.PendingAfter report files as pending that m.Step() can never find —
+// applying silently nothing while looking like success. Run must refuse
+// instead of no-op'ing.
+func TestRun_RefusesCustomUpSuffix(t *testing.T) {
+	cfg := &config.Config{
+		MigrationsDir: "migrations",
+		Migrations:    config.MigrationsConfig{UpSuffix: ".sql"},
+		Targets:       map[string]config.Target{"staging": {URLEnv: "DBTOOLS_APPLY_TEST_UNSET_SUFFIX"}},
+	}
+	t.Setenv("DBTOOLS_APPLY_TEST_UNSET_SUFFIX", "sqlite://"+filepath.Join(t.TempDir(), "test.db"))
+	_, err := Run(cfg, "staging", "")
+	if err == nil {
+		t.Fatal("Run() with custom up_suffix: want error, got nil")
+	}
+}
+
 func TestRun_BatchTimestampMigrations(t *testing.T) {
 	tmpDir := t.TempDir()
 	migDir := filepath.Join(tmpDir, "migrations")

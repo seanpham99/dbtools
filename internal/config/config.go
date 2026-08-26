@@ -148,7 +148,11 @@ func Load(path string) (*Config, error) {
 	// Default exclude list to internal tool tables unless the key was set at all
 	// (including explicitly to an empty list, which means "exclude nothing").
 	if cfg.Generate.Exclude == nil {
-		cfg.Generate.Exclude = []string{"dbtools_migration_history", "schema_migrations"}
+		exclude := []string{"dbtools_migration_history", "schema_migrations"}
+		if cfg.Ledger.Table != DefaultLedgerTable {
+			exclude = append(exclude, cfg.Ledger.Table)
+		}
+		cfg.Generate.Exclude = exclude
 	}
 	return cfg, nil
 }

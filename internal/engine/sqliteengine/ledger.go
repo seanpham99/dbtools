@@ -113,7 +113,7 @@ func (ledgerStore) SetStatusWithHash(db ledger.DBTX, version uint64, status ledg
 INSERT INTO %s (version, status, recorded_at, note, content_sha256)
 VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (version) DO UPDATE
-SET status = excluded.status, recorded_at = excluded.recorded_at, note = excluded.note`, table),
+SET status = excluded.status, recorded_at = excluded.recorded_at, note = excluded.note, content_sha256 = excluded.content_sha256, hash_source = ''`, table),
 		int64(version), string(status), time.Now().UTC(), note, contentHash)
 	if err != nil {
 		return fmt.Errorf("setting status for version %d: %w", version, err)
