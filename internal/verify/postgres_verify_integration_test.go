@@ -56,11 +56,11 @@ func TestCollect_Postgres_DetectsMissingObject(t *testing.T) {
 		t.Fatalf("ensuring ledger table: %v", err)
 	}
 	// Simulate recorded as applied, but table was not created in live DB
-	if err := eng.Ledger().SetStatus(db, 20260101000000, ledger.StatusApplied, "missing table simulation"); err != nil {
+	if err := eng.Ledger().SetStatus(db, 20260101000000, ledger.StatusApplied, "missing table simulation", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, eng, dir, "pg-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "pg-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestCollect_Postgres_DetectsMissingObject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	report, err = Collect(db, eng, dir, "pg-target")
+	report, err = Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "pg-target")
 	if err != nil {
 		t.Fatalf("second Collect() returned error: %v", err)
 	}
@@ -121,12 +121,12 @@ func TestCollect_Postgres_DetectsContentHashDrift(t *testing.T) {
 	// Record hash of original content in ledger
 	origSum := sha256.Sum256(originalContent)
 	origHash := hex.EncodeToString(origSum[:])
-	if err := eng.Ledger().SetStatusWithHash(db, 20260101000000, ledger.StatusApplied, "hash test", origHash); err != nil {
+	if err := eng.Ledger().SetStatusWithHash(db, 20260101000000, ledger.StatusApplied, "hash test", origHash, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify reports OK initially
-	report, err := Collect(db, eng, dir, "pg-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "pg-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestCollect_Postgres_DetectsContentHashDrift(t *testing.T) {
 	}
 
 	// Collect should flag DRIFT due to file hash mismatch
-	report, err = Collect(db, eng, dir, "pg-target")
+	report, err = Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "pg-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}

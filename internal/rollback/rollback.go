@@ -31,7 +31,20 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	migrationsDir := cfg.MigrationsDir
+	if migrationsDir == "" {
+		migrationsDir = "migrations"
+	}
+	upSuffix := cfg.Migrations.UpSuffix
+	if upSuffix == "" {
+		upSuffix = ".up.sql"
+	}
+	ledgerTable := cfg.Ledger.Table
+	if ledgerTable == "" {
+		ledgerTable = "dbtools_migration_history"
+	}
+
+	m, err := migrator.Open(url, migrationsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -43,11 +56,11 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix); err != nil {
+	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	applied, err := eng.Ledger().AppliedVersions(db)
+	applied, err := eng.Ledger().AppliedVersions(db, ledgerTable)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
@@ -78,12 +91,12 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	defer tx.Rollback()
 
 	for _, ver := range reverted {
-		if err := eng.Ledger().SetStatus(tx, ver, ledger.StatusReverted, "soft-reverted via rollback"); err != nil {
+		if err := eng.Ledger().SetStatus(tx, ver, ledger.StatusReverted, "soft-reverted via rollback", ledgerTable); err != nil {
 			return nil, err
 		}
 	}
 
-	remaining, err := eng.Ledger().AppliedVersions(tx)
+	remaining, err := eng.Ledger().AppliedVersions(tx, ledgerTable)
 	if err != nil {
 		return nil, err
 	}

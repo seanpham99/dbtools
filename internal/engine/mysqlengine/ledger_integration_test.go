@@ -30,10 +30,10 @@ func openTestDB(t *testing.T) *sql.DB {
 func TestEnsureSchema_Idempotent(t *testing.T) {
 	db := openTestDB(t)
 	store := mysqlLedgerStore{}
-	if err := store.ensureSchema(db); err != nil {
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("ensureSchema() returned error: %v", err)
 	}
-	if err := store.ensureSchema(db); err != nil {
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("second ensureSchema() returned error: %v", err)
 	}
 }
@@ -41,14 +41,14 @@ func TestEnsureSchema_Idempotent(t *testing.T) {
 func TestSetStatusInsertsAndUpdates(t *testing.T) {
 	db := openTestDB(t)
 	store := mysqlLedgerStore{}
-	if err := store.ensureSchema(db); err != nil {
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := store.SetStatus(db, 1, ledger.StatusApplied, "first"); err != nil {
+	if err := store.SetStatus(db, 1, ledger.StatusApplied, "first", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus(insert) returned error: %v", err)
 	}
-	entries, err := store.List(db)
+	entries, err := store.List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,10 +56,10 @@ func TestSetStatusInsertsAndUpdates(t *testing.T) {
 		t.Fatalf("after insert: entries = %+v, want one applied row with non-nil RecordedAt", entries)
 	}
 
-	if err := store.SetStatus(db, 1, ledger.StatusReverted, "second"); err != nil {
+	if err := store.SetStatus(db, 1, ledger.StatusReverted, "second", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus(update) returned error: %v", err)
 	}
-	entries, err = store.List(db)
+	entries, err = store.List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,16 +71,16 @@ func TestSetStatusInsertsAndUpdates(t *testing.T) {
 func TestSetStatusWithHashPreservesHashOnPlainUpdate(t *testing.T) {
 	db := openTestDB(t)
 	store := mysqlLedgerStore{}
-	if err := store.ensureSchema(db); err != nil {
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetStatusWithHash(db, 1, ledger.StatusApplied, "with hash", "deadbeef"); err != nil {
+	if err := store.SetStatusWithHash(db, 1, ledger.StatusApplied, "with hash", "deadbeef", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetStatus(db, 1, ledger.StatusApplied, "touched again"); err != nil {
+	if err := store.SetStatus(db, 1, ledger.StatusApplied, "touched again", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := store.List(db)
+	entries, err := store.List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,19 +92,19 @@ func TestSetStatusWithHashPreservesHashOnPlainUpdate(t *testing.T) {
 func TestAppliedVersions(t *testing.T) {
 	db := openTestDB(t)
 	store := mysqlLedgerStore{}
-	if err := store.ensureSchema(db); err != nil {
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetStatus(db, 1, ledger.StatusApplied, ""); err != nil {
+	if err := store.SetStatus(db, 1, ledger.StatusApplied, "", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetStatus(db, 2, ledger.StatusReverted, ""); err != nil {
+	if err := store.SetStatus(db, 2, ledger.StatusReverted, "", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetStatus(db, 3, ledger.StatusApplied, ""); err != nil {
+	if err := store.SetStatus(db, 3, ledger.StatusApplied, "", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	versions, err := store.AppliedVersions(db)
+	versions, err := store.AppliedVersions(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}

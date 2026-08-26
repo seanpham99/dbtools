@@ -9,12 +9,12 @@ import (
 	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
-// EnsureSchema creates dbtools_migration_history if it doesn't already exist.
-func EnsureSchema(db ledger.DBTX) error {
-	_, err := db.Exec(`
-IF OBJECT_ID(N'dbtools_migration_history', N'U') IS NULL
+// EnsureSchema creates table if it doesn't already exist.
+func EnsureSchema(db ledger.DBTX, table string) error {
+	_, err := db.Exec(fmt.Sprintf(`
+IF OBJECT_ID(N'%s', N'U') IS NULL
 BEGIN
-    CREATE TABLE dbtools_migration_history (
+    CREATE TABLE %s (
         version         BIGINT        NOT NULL PRIMARY KEY,
         status          VARCHAR(10)   NOT NULL CHECK (status IN ('applied', 'reverted')),
         recorded_at     DATETIME2(0)  NULL,
@@ -22,12 +22,12 @@ BEGIN
         content_sha256  CHAR(64)      NULL
     );
 END;
-ELSE IF COL_LENGTH(N'dbtools_migration_history', N'content_sha256') IS NULL
+ELSE IF COL_LENGTH(N'%s', N'content_sha256') IS NULL
 BEGIN
-    ALTER TABLE dbtools_migration_history ADD content_sha256 CHAR(64) NULL;
-END;`)
+    ALTER TABLE %s ADD content_sha256 CHAR(64) NULL;
+END;`, table, table, table, table))
 	if err != nil {
-		return fmt.Errorf("ensuring dbtools_migration_history schema: %w", err)
+		return fmt.Errorf("ensuring %s schema: %w", table, err)
 	}
 	return nil
 }
@@ -40,7 +40,7 @@ func checkVersionRange(version uint64) error {
 }
 
 // Backfill inserts an "applied" row for every version <= currentVersion.
-func Backfill(db ledger.DBTX, currentVersion uint64, hasVersion bool, allVersions []uint64) error {
+func Backfill(db ledger.DBTX, currentVersion uint64, hasVersion bool, allVersions []uint64, table string) error {
 	if !hasVersion {
 		return nil
 	}
@@ -51,10 +51,10 @@ func Backfill(db ledger.DBTX, currentVersion uint64, hasVersion bool, allVersion
 		if err := checkVersionRange(v); err != nil {
 			return err
 		}
-		_, err := db.Exec(`
-IF NOT EXISTS (SELECT 1 FROM dbtools_migration_history WHERE version = @p1)
-INSERT INTO dbtools_migration_history (version, status, recorded_at, note)
-VALUES (@p1, 'applied', NULL, 'backfilled: applied before ledger existed');`, int64(v))
+		_, err := db.Exec(fmt.Sprintf(`
+IF NOT EXISTS (SELECT 1 FROM %s WHERE version = @p1)
+INSERT INTO %s (version, status, recorded_at, note)
+VALUES (@p1, 'applied', NULL, 'backfilled: applied before ledger existed');`, table, table), int64(v))
 		if err != nil {
 			return fmt.Errorf("backfilling version %d: %w", v, err)
 		}
@@ -63,18 +63,18 @@ VALUES (@p1, 'applied', NULL, 'backfilled: applied before ledger existed');`, in
 }
 
 // SetStatus upserts version's ledger row.
-func SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note string) error {
+func SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note, table string) error {
 	if err := checkVersionRange(version); err != nil {
 		return err
 	}
-	_, err := db.Exec(`
-IF EXISTS (SELECT 1 FROM dbtools_migration_history WITH (HOLDLOCK) WHERE version = @p1)
-    UPDATE dbtools_migration_history
+	_, err := db.Exec(fmt.Sprintf(`
+IF EXISTS (SELECT 1 FROM %s WITH (HOLDLOCK) WHERE version = @p1)
+    UPDATE %s
     SET status = @p2, recorded_at = SYSUTCDATETIME(), note = @p3
     WHERE version = @p1
 ELSE
-    INSERT INTO dbtools_migration_history (version, status, recorded_at, note)
-    VALUES (@p1, @p2, SYSUTCDATETIME(), @p3);`, int64(version), string(status), note)
+    INSERT INTO %s (version, status, recorded_at, note)
+    VALUES (@p1, @p2, SYSUTCDATETIME(), @p3);`, table, table, table), int64(version), string(status), note)
 	if err != nil {
 		return fmt.Errorf("setting status for version %d: %w", version, err)
 	}
@@ -82,18 +82,18 @@ ELSE
 }
 
 // SetStatusWithHash is SetStatus plus recording the migration file's content hash.
-func SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash string) error {
+func SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash, table string) error {
 	if err := checkVersionRange(version); err != nil {
 		return err
 	}
-	_, err := db.Exec(`
-IF EXISTS (SELECT 1 FROM dbtools_migration_history WITH (HOLDLOCK) WHERE version = @p1)
-    UPDATE dbtools_migration_history
+	_, err := db.Exec(fmt.Sprintf(`
+IF EXISTS (SELECT 1 FROM %s WITH (HOLDLOCK) WHERE version = @p1)
+    UPDATE %s
     SET status = @p2, recorded_at = SYSUTCDATETIME(), note = @p3
     WHERE version = @p1
 ELSE
-    INSERT INTO dbtools_migration_history (version, status, recorded_at, note, content_sha256)
-    VALUES (@p1, @p2, SYSUTCDATETIME(), @p3, @p4);`, int64(version), string(status), note, contentHash)
+    INSERT INTO %s (version, status, recorded_at, note, content_sha256)
+    VALUES (@p1, @p2, SYSUTCDATETIME(), @p3, @p4);`, table, table, table), int64(version), string(status), note, contentHash)
 	if err != nil {
 		return fmt.Errorf("setting status for version %d: %w", version, err)
 	}
@@ -101,8 +101,8 @@ ELSE
 }
 
 // List returns every ledger row in MSSQL, ordered by version ascending.
-func List(db ledger.DBTX) ([]ledger.Entry, error) {
-	rows, err := db.Query(`SELECT version, status, recorded_at, note, content_sha256 FROM dbtools_migration_history ORDER BY version ASC`)
+func List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
+	rows, err := db.Query(fmt.Sprintf(`SELECT version, status, recorded_at, note, content_sha256 FROM %s ORDER BY version ASC`, table))
 	if err != nil {
 		return nil, fmt.Errorf("listing ledger: %w", err)
 	}
@@ -135,8 +135,8 @@ func List(db ledger.DBTX) ([]ledger.Entry, error) {
 }
 
 // AppliedVersions returns every version currently marked "applied", ascending.
-func AppliedVersions(db ledger.DBTX) ([]uint64, error) {
-	entries, err := List(db)
+func AppliedVersions(db ledger.DBTX, table string) ([]uint64, error) {
+	entries, err := List(db, table)
 	if err != nil {
 		return nil, err
 	}
@@ -150,8 +150,8 @@ func AppliedVersions(db ledger.DBTX) ([]uint64, error) {
 }
 
 // Sync ensures MSSQL db's ledger table exists and is backfilled.
-func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) error {
-	if err := EnsureSchema(db); err != nil {
+func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
+	if err := EnsureSchema(db, table); err != nil {
 		return err
 	}
 	version, dirty, hasVersion, err := m.Version()
@@ -165,29 +165,30 @@ func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) erro
 	if err != nil {
 		return err
 	}
-	return Backfill(db, version, hasVersion, allVersions)
+	return Backfill(db, version, hasVersion, allVersions, table)
 }
 
 type mssqlLedgerStore struct{}
 
-func (mssqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) error {
-	return Sync(db, m, migrationsDir, upSuffix)
+func (mssqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
+	return Sync(db, m, migrationsDir, upSuffix, table)
 }
 
-func (mssqlLedgerStore) SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note string) error {
-	return SetStatus(db, version, status, note)
+func (mssqlLedgerStore) SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note, table string) error {
+	return SetStatus(db, version, status, note, table)
 }
 
-func (mssqlLedgerStore) SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash string) error {
-	return SetStatusWithHash(db, version, status, note, contentHash)
+func (mssqlLedgerStore) SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash, table string) error {
+	return SetStatusWithHash(db, version, status, note, contentHash, table)
 }
 
-func (mssqlLedgerStore) List(db ledger.DBTX) ([]ledger.Entry, error) {
-	return List(db)
+func (mssqlLedgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
+	return List(db, table)
 }
 
-func (mssqlLedgerStore) AppliedVersions(db ledger.DBTX) ([]uint64, error) {
-	return AppliedVersions(db)
+func (mssqlLedgerStore) AppliedVersions(db ledger.DBTX, table string) ([]uint64, error) {
+	return AppliedVersions(db, table)
 }
 
 var _ engine.LedgerStore = mssqlLedgerStore{}
+

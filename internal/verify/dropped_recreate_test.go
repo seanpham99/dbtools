@@ -44,14 +44,14 @@ func TestCollect_DropThenRecreateIsNotPermanentDrift(t *testing.T) {
 	}
 	defer db.Exec(`DROP TABLE dbtools_test_recreate_widgets`)
 
-	if err := eng.Ledger().SetStatus(db, 1, ledger.StatusApplied, "drops widgets"); err != nil {
+	if err := eng.Ledger().SetStatus(db, 1, ledger.StatusApplied, "drops widgets", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := eng.Ledger().SetStatus(db, 2, ledger.StatusApplied, "re-creates widgets"); err != nil {
+	if err := eng.Ledger().SetStatus(db, 2, ledger.StatusApplied, "re-creates widgets", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, eng, dir, ".up.sql", "test-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestCollect_DropThenRecreateIsNotPermanentDrift(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE dbtools_test_recreate_widgets`); err != nil {
 		t.Fatal(err)
 	}
-	report, err = Collect(db, eng, dir, ".up.sql", "test-target")
+	report, err = Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("second Collect() returned error: %v", err)
 	}
@@ -106,14 +106,14 @@ func TestCollect_SQLite_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.
 		t.Fatal(err)
 	}
 
-	if err := eng.Ledger().SetStatus(db, 1, ledger.StatusApplied, "creates table"); err != nil {
+	if err := eng.Ledger().SetStatus(db, 1, ledger.StatusApplied, "creates table", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := eng.Ledger().SetStatus(db, 2, ledger.StatusApplied, "drops table"); err != nil {
+	if err := eng.Ledger().SetStatus(db, 2, ledger.StatusApplied, "drops table", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, eng, dir, ".up.sql", "test-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}

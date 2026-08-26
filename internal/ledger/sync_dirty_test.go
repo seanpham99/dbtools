@@ -55,7 +55,7 @@ func TestSync_RefusesDirtyCursor(t *testing.T) {
 	defer db.Close()
 
 	ls := sqliteengine.SQLite{}.Ledger()
-	err = ls.Sync(db, m, dir, ".up.sql")
+	err = ls.Sync(db, m, dir, ".up.sql", "dbtools_migration_history")
 	if err == nil {
 		t.Fatal("Sync() over a dirty cursor should refuse")
 	}
@@ -64,7 +64,7 @@ func TestSync_RefusesDirtyCursor(t *testing.T) {
 	}
 
 	// And the ledger must NOT have backfilled the failed version.
-	entries, err := ls.List(db)
+	entries, err := ls.List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,10 +90,10 @@ func TestSync_BackfillSkipsDirty(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err := (sqliteengine.SQLite{}).Ledger().Sync(db, m, dir, ".up.sql"); err != nil {
+	if err := (sqliteengine.SQLite{}).Ledger().Sync(db, m, dir, ".up.sql", "dbtools_migration_history"); err != nil {
 		t.Fatalf("Sync() clean: %v", err)
 	}
-	entries, err := (sqliteengine.SQLite{}).Ledger().List(db)
+	entries, err := (sqliteengine.SQLite{}).Ledger().List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}

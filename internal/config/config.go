@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	toml "github.com/pelletier/go-toml/v2"
+	"github.com/seanpham99/dbtools/internal/ledger"
 )
 
 // UnsetEnvError indicates a target's connection URL environment variable is not defined.
@@ -118,6 +119,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Ledger.Table == "" {
 		cfg.Ledger.Table = "dbtools_migration_history"
+	}
+	if err := ledger.ValidateTableName(cfg.Ledger.Table); err != nil {
+		return nil, fmt.Errorf("dbtools.toml: %w", err)
 	}
 	if cfg.Migrations.UpSuffix == "" {
 		cfg.Migrations.UpSuffix = ".up.sql"

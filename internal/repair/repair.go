@@ -27,8 +27,17 @@ type Result struct {
 // applied when its migration's objects don't exist unless force is set),
 // applies all pairs, and recomputes db's cursor as the highest remaining
 // applied version.
-func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir, upSuffix string, pairs []Pair, force bool) (*Result, error) {
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix); err != nil {
+func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir, upSuffix, table string, pairs []Pair, force bool) (*Result, error) {
+	if migrationsDir == "" {
+		migrationsDir = "migrations"
+	}
+	if upSuffix == "" {
+		upSuffix = ".up.sql"
+	}
+	if table == "" {
+		table = "dbtools_migration_history"
+	}
+	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, table); err != nil {
 		return nil, err
 	}
 
@@ -75,12 +84,12 @@ func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir, upS
 	defer tx.Rollback()
 
 	for _, pair := range pairs {
-		if err := eng.Ledger().SetStatus(tx, pair.Version, pair.Status, "repaired via dbtools repair"); err != nil {
+		if err := eng.Ledger().SetStatus(tx, pair.Version, pair.Status, "repaired via dbtools repair", table); err != nil {
 			return nil, err
 		}
 	}
 
-	applied, err := eng.Ledger().AppliedVersions(tx)
+	applied, err := eng.Ledger().AppliedVersions(tx, table)
 	if err != nil {
 		return nil, err
 	}

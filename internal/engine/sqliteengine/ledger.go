@@ -25,33 +25,33 @@ func checkVersionRange(version uint64) error {
 	return nil
 }
 
-func (ledgerStore) ensureSchema(db ledger.DBTX) error {
-	_, err := db.Exec(`
-CREATE TABLE IF NOT EXISTS dbtools_migration_history (
+func (ledgerStore) ensureSchema(db ledger.DBTX, table string) error {
+	_, err := db.Exec(fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS %s (
     version         INTEGER NOT NULL PRIMARY KEY,
     status          TEXT    NOT NULL CHECK (status IN ('applied', 'reverted')),
     recorded_at     TIMESTAMP NULL,
     note            TEXT    NULL,
     content_sha256  TEXT    NULL
-)`)
+)`, table))
 	if err != nil {
-		return fmt.Errorf("ensuring dbtools_migration_history schema: %w", err)
+		return fmt.Errorf("ensuring %s schema: %w", table, err)
 	}
 	// Column added by dbtools builds before content hashing existed.
-	cols, err := db.Query(`SELECT name FROM pragma_table_info('dbtools_migration_history') WHERE name = 'content_sha256'`)
+	cols, err := db.Query(fmt.Sprintf(`SELECT name FROM pragma_table_info('%s') WHERE name = 'content_sha256'`, table))
 	if err != nil {
-		return fmt.Errorf("inspecting dbtools_migration_history columns: %w", err)
+		return fmt.Errorf("inspecting %s columns: %w", table, err)
 	}
 	defer cols.Close()
 	if !cols.Next() {
-		if _, err := db.Exec(`ALTER TABLE dbtools_migration_history ADD COLUMN content_sha256 TEXT NULL`); err != nil {
-			return fmt.Errorf("adding content_sha256 to dbtools_migration_history: %w", err)
+		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN content_sha256 TEXT NULL`, table)); err != nil {
+			return fmt.Errorf("adding content_sha256 to %s: %w", table, err)
 		}
 	}
 	return nil
 }
 
-func (ledgerStore) backfill(db ledger.DBTX, currentVersion uint64, hasVersion bool, allVersions []uint64) error {
+func (ledgerStore) backfill(db ledger.DBTX, currentVersion uint64, hasVersion bool, allVersions []uint64, table string) error {
 	if !hasVersion {
 		return nil
 	}
@@ -62,10 +62,10 @@ func (ledgerStore) backfill(db ledger.DBTX, currentVersion uint64, hasVersion bo
 		if err := checkVersionRange(v); err != nil {
 			return err
 		}
-		_, err := db.Exec(`
-INSERT INTO dbtools_migration_history (version, status, recorded_at, note)
+		_, err := db.Exec(fmt.Sprintf(`
+INSERT INTO %s (version, status, recorded_at, note)
 VALUES (?, 'applied', NULL, 'backfilled: applied before ledger existed')
-ON CONFLICT (version) DO NOTHING`, int64(v))
+ON CONFLICT (version) DO NOTHING`, table), int64(v))
 		if err != nil {
 			return fmt.Errorf("backfilling version %d: %w", v, err)
 		}
@@ -75,15 +75,15 @@ ON CONFLICT (version) DO NOTHING`, int64(v))
 
 // SetStatus upserts version's ledger row, preserving content_sha256 on
 // update (the applied file's hash must not be clobbered by a status edit).
-func (ledgerStore) SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note string) error {
+func (ledgerStore) SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note, table string) error {
 	if err := checkVersionRange(version); err != nil {
 		return err
 	}
-	_, err := db.Exec(`
-INSERT INTO dbtools_migration_history (version, status, recorded_at, note)
+	_, err := db.Exec(fmt.Sprintf(`
+INSERT INTO %s (version, status, recorded_at, note)
 VALUES (?, ?, ?, ?)
 ON CONFLICT (version) DO UPDATE
-SET status = excluded.status, recorded_at = excluded.recorded_at, note = excluded.note`,
+SET status = excluded.status, recorded_at = excluded.recorded_at, note = excluded.note`, table),
 		int64(version), string(status), time.Now().UTC(), note)
 	if err != nil {
 		return fmt.Errorf("setting status for version %d: %w", version, err)
@@ -93,15 +93,15 @@ SET status = excluded.status, recorded_at = excluded.recorded_at, note = exclude
 
 // SetStatusWithHash is SetStatus plus recording the applied migration
 // file's content hash, so verify can detect edits after apply.
-func (ledgerStore) SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash string) error {
+func (ledgerStore) SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash, table string) error {
 	if err := checkVersionRange(version); err != nil {
 		return err
 	}
-	_, err := db.Exec(`
-INSERT INTO dbtools_migration_history (version, status, recorded_at, note, content_sha256)
+	_, err := db.Exec(fmt.Sprintf(`
+INSERT INTO %s (version, status, recorded_at, note, content_sha256)
 VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (version) DO UPDATE
-SET status = excluded.status, recorded_at = excluded.recorded_at, note = excluded.note`,
+SET status = excluded.status, recorded_at = excluded.recorded_at, note = excluded.note`, table),
 		int64(version), string(status), time.Now().UTC(), note, contentHash)
 	if err != nil {
 		return fmt.Errorf("setting status for version %d: %w", version, err)
@@ -110,8 +110,8 @@ SET status = excluded.status, recorded_at = excluded.recorded_at, note = exclude
 }
 
 // List returns every ledger row, ordered by version ascending.
-func (ledgerStore) List(db ledger.DBTX) ([]ledger.Entry, error) {
-	rows, err := db.Query(`SELECT version, status, recorded_at, note, content_sha256 FROM dbtools_migration_history ORDER BY version ASC`)
+func (ledgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
+	rows, err := db.Query(fmt.Sprintf(`SELECT version, status, recorded_at, note, content_sha256 FROM %s ORDER BY version ASC`, table))
 	if err != nil {
 		return nil, fmt.Errorf("listing ledger: %w", err)
 	}
@@ -144,8 +144,8 @@ func (ledgerStore) List(db ledger.DBTX) ([]ledger.Entry, error) {
 }
 
 // AppliedVersions returns every version currently marked "applied", ascending.
-func (s ledgerStore) AppliedVersions(db ledger.DBTX) ([]uint64, error) {
-	entries, err := s.List(db)
+func (s ledgerStore) AppliedVersions(db ledger.DBTX, table string) ([]uint64, error) {
+	entries, err := s.List(db, table)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +162,8 @@ func (s ledgerStore) AppliedVersions(db ledger.DBTX) ([]uint64, error) {
 // backfill a row for every version m's cursor already considers applied.
 // Refuses to backfill when the cursor is dirty (a previous apply failed
 // partway) — see ledger.Sync.
-func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix string) error {
-	if err := s.ensureSchema(db); err != nil {
+func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
+	if err := s.ensureSchema(db, table); err != nil {
 		return err
 	}
 	version, dirty, hasVersion, err := m.Version()
@@ -177,6 +177,7 @@ func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuf
 	if err != nil {
 		return err
 	}
-	return s.backfill(db, version, hasVersion, allVersions)
+	return s.backfill(db, version, hasVersion, allVersions, table)
 }
+
 

@@ -6,6 +6,8 @@ package ledger
 
 import (
 	"database/sql"
+	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -37,3 +39,16 @@ type DBTX interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryRow(query string, args ...any) *sql.Row
 }
+
+var validTableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// ValidateTableName rejects a ledger table name that isn't a plain SQL
+// identifier — table names are inlined into SQL text (they can't be bind
+// parameters), so this is the injection guard.
+func ValidateTableName(name string) error {
+	if !validTableName.MatchString(name) {
+		return fmt.Errorf("invalid ledger table name %q: must match %s", name, validTableName.String())
+	}
+	return nil
+}
+

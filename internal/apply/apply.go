@@ -33,7 +33,20 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		}
 	}
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	migrationsDir := cfg.MigrationsDir
+	if migrationsDir == "" {
+		migrationsDir = "migrations"
+	}
+	upSuffix := cfg.Migrations.UpSuffix
+	if upSuffix == "" {
+		upSuffix = ".up.sql"
+	}
+	ledgerTable := cfg.Ledger.Table
+	if ledgerTable == "" {
+		ledgerTable = "dbtools_migration_history"
+	}
+
+	m, err := migrator.Open(url, migrationsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -45,11 +58,11 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix); err != nil {
+	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	dir, err := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
@@ -84,12 +97,12 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		if err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}
-		if err := eng.Ledger().SetStatusWithHash(db, versionAfter, ledger.StatusApplied, "applied via up/push", hash); err != nil {
+		if err := eng.Ledger().SetStatusWithHash(db, versionAfter, ledger.StatusApplied, "applied via up/push", hash, ledgerTable); err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}
 	}
 
-	status, err := statusinfo.Collect(url, cfg.MigrationsDir, cfg.Migrations.UpSuffix, targetName)
+	status, err := statusinfo.Collect(url, migrationsDir, upSuffix, targetName)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}

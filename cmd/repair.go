@@ -104,7 +104,7 @@ func runRepair(targetName string, pairs []repair.Pair) error {
 	}
 	defer m.Close()
 
-	result, err := repair.Run(db, eng, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, pairs, repairForce)
+	result, err := repair.Run(db, eng, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, pairs, repairForce)
 	if err != nil {
 		return err
 	}

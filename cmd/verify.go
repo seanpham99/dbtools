@@ -63,16 +63,16 @@ func runVerify(targetName string) error {
 	}
 	defer m.Close()
 
-	entries, err := eng.Ledger().List(db)
+	entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
 	if err != nil {
 		// No ledger table at all: with --init-ledger, create it (and
 		// backfill); without it, refuse — verify must not perform DDL/DML
 		// on a target it was asked to inspect read-only.
 		if verifyInitLedger {
-			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix); err != nil {
+			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
 				return err
 			}
-			entries, err = eng.Ledger().List(db)
+			entries, err = eng.Ledger().List(db, cfg.Ledger.Table)
 			if err != nil {
 				return err
 			}
@@ -86,7 +86,7 @@ func runVerify(targetName string) error {
 		}
 	}
 
-	report, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, targetName)
+	report, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, targetName)
 	if err != nil {
 		return err
 	}

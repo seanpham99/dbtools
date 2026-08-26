@@ -58,7 +58,7 @@ func runForce(targetName string, version uint64) error {
 
 	// Also update ledger status
 	note := fmt.Sprintf("forced to version %d via force command", version)
-	_ = eng.Ledger().SetStatus(db, version, ledger.StatusApplied, note)
+	_ = eng.Ledger().SetStatus(db, version, ledger.StatusApplied, note, cfg.Ledger.Table)
 
 	if jsonOutput {
 		b, err := json.Marshal(struct {

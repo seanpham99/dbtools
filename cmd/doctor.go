@@ -162,7 +162,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 	// 3. Ledger integrity check
 	var ledgerEntries []ledger.Entry
 	ledgerExists := true
-	entries, err := eng.Ledger().List(db)
+	entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
 	if err != nil {
 		ledgerExists = false
 		report.Checks = append(report.Checks, CheckResult{
@@ -263,7 +263,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 
 	// 5. Drift summary
 	if ledgerExists && len(ledgerEntries) > 0 {
-		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, targetName)
+		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, targetName)
 		if err != nil {
 			report.Checks = append(report.Checks, CheckResult{
 				Name:    "drift-summary",

@@ -273,3 +273,15 @@ url_env = "L_URL"
 	}
 }
 
+func TestLoad_RejectsInvalidLedgerTableName(t *testing.T) {
+	path := writeTemp(t, `
+migrations_dir = "migrations"
+[ledger]
+table = "bad; drop table users"
+`)
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load() with invalid ledger table name: want error, got nil")
+	}
+}
+
+

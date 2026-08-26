@@ -33,25 +33,25 @@ func openTestDB(t *testing.T) *sql.DB {
 func TestEnsureSchema_Idempotent(t *testing.T) {
 	db := openTestDB(t)
 
-	if err := EnsureSchema(db); err != nil {
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("EnsureSchema() returned error: %v", err)
 	}
-	if err := EnsureSchema(db); err != nil {
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("second EnsureSchema() returned error: %v", err)
 	}
 }
 
 func TestBackfillAndList(t *testing.T) {
 	db := openTestDB(t)
-	if err := EnsureSchema(db); err != nil {
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := Backfill(db, 20260102000000, true, []uint64{20260101000000, 20260102000000, 20260103000000}); err != nil {
+	if err := Backfill(db, 20260102000000, true, []uint64{20260101000000, 20260102000000, 20260103000000}, "dbtools_migration_history"); err != nil {
 		t.Fatalf("Backfill() returned error: %v", err)
 	}
 
-	entries, err := List(db)
+	entries, err := List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("List() returned error: %v", err)
 	}
@@ -71,13 +71,13 @@ func TestBackfillAndList(t *testing.T) {
 
 func TestBackfill_NoVersionYet(t *testing.T) {
 	db := openTestDB(t)
-	if err := EnsureSchema(db); err != nil {
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := Backfill(db, 0, false, []uint64{20260101000000}); err != nil {
+	if err := Backfill(db, 0, false, []uint64{20260101000000}, "dbtools_migration_history"); err != nil {
 		t.Fatalf("Backfill() returned error: %v", err)
 	}
-	entries, err := List(db)
+	entries, err := List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,14 +88,14 @@ func TestBackfill_NoVersionYet(t *testing.T) {
 
 func TestSetStatusInsertsAndUpdates(t *testing.T) {
 	db := openTestDB(t)
-	if err := EnsureSchema(db); err != nil {
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := SetStatus(db, 20260101000000, ledger.StatusApplied, "test insert"); err != nil {
+	if err := SetStatus(db, 20260101000000, ledger.StatusApplied, "test insert", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus() (insert) returned error: %v", err)
 	}
-	entries, err := List(db)
+	entries, err := List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,10 +103,10 @@ func TestSetStatusInsertsAndUpdates(t *testing.T) {
 		t.Fatalf("after insert: entries = %+v, want one applied row with non-nil RecordedAt", entries)
 	}
 
-	if err := SetStatus(db, 20260101000000, ledger.StatusReverted, "test update"); err != nil {
+	if err := SetStatus(db, 20260101000000, ledger.StatusReverted, "test update", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus() (update) returned error: %v", err)
 	}
-	entries, err = List(db)
+	entries, err = List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,20 +117,20 @@ func TestSetStatusInsertsAndUpdates(t *testing.T) {
 
 func TestAppliedVersions(t *testing.T) {
 	db := openTestDB(t)
-	if err := EnsureSchema(db); err != nil {
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetStatus(db, 20260101000000, ledger.StatusApplied, ""); err != nil {
+	if err := SetStatus(db, 20260101000000, ledger.StatusApplied, "", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetStatus(db, 20260102000000, ledger.StatusReverted, ""); err != nil {
+	if err := SetStatus(db, 20260102000000, ledger.StatusReverted, "", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := SetStatus(db, 20260103000000, ledger.StatusApplied, ""); err != nil {
+	if err := SetStatus(db, 20260103000000, ledger.StatusApplied, "", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	versions, err := AppliedVersions(db)
+	versions, err := AppliedVersions(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("AppliedVersions() returned error: %v", err)
 	}
@@ -174,11 +174,11 @@ func TestSync(t *testing.T) {
 	}
 	defer db.Close()
 
-	if err := Sync(db, m, dir); err != nil {
+	if err := Sync(db, m, dir, ".up.sql", "dbtools_migration_history"); err != nil {
 		t.Fatalf("Sync() returned error: %v", err)
 	}
 
-	entries, err := List(db)
+	entries, err := List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("List() returned error: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestSync(t *testing.T) {
 
 func TestSetStatus_WithinTransaction(t *testing.T) {
 	db := openTestDB(t)
-	if err := EnsureSchema(db); err != nil {
+	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -202,17 +202,17 @@ func TestSetStatus_WithinTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("db.Begin() returned error: %v", err)
 	}
-	if err := SetStatus(tx, 20260101000000, ledger.StatusApplied, "via tx, committed"); err != nil {
+	if err := SetStatus(tx, 20260101000000, ledger.StatusApplied, "via tx, committed", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus() within tx returned error: %v", err)
 	}
-	if _, err := AppliedVersions(tx); err != nil {
+	if _, err := AppliedVersions(tx, "dbtools_migration_history"); err != nil {
 		t.Fatalf("AppliedVersions() within tx returned error: %v", err)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("tx.Commit() returned error: %v", err)
 	}
 
-	versions, err := AppliedVersions(db)
+	versions, err := AppliedVersions(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,14 +224,14 @@ func TestSetStatus_WithinTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("db.Begin() returned error: %v", err)
 	}
-	if err := SetStatus(tx2, 20260102000000, ledger.StatusApplied, "via tx, rolled back"); err != nil {
+	if err := SetStatus(tx2, 20260102000000, ledger.StatusApplied, "via tx, rolled back", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatus() within tx2 returned error: %v", err)
 	}
 	if err := tx2.Rollback(); err != nil {
 		t.Fatalf("tx2.Rollback() returned error: %v", err)
 	}
 
-	versions, err = AppliedVersions(db)
+	versions, err = AppliedVersions(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}

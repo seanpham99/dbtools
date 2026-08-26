@@ -51,7 +51,7 @@ func TestCollect_DetectsEditedMigrationAfterApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := eng.Ledger().SetStatusWithHash(db, 20260101000000, ledger.StatusApplied, "applied via up/push", hash); err != nil {
+	if err := eng.Ledger().SetStatusWithHash(db, 20260101000000, ledger.StatusApplied, "applied via up/push", hash, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 	// The migration's object actually exists (it was really applied).
@@ -61,7 +61,7 @@ func TestCollect_DetectsEditedMigrationAfterApply(t *testing.T) {
 	defer db.Exec(`DROP TABLE dbtools_test_hash_drift`)
 
 	// Verify clean before any edit.
-	report, err := Collect(db, eng, dir, ".up.sql", "test-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestCollect_DetectsEditedMigrationAfterApply(t *testing.T) {
 	if err := os.WriteFile(file, []byte("CREATE TABLE dbtools_test_hash_drift (id INTEGER PRIMARY KEY);\nALTER TABLE dbtools_test_hash_drift ADD COLUMN extra TEXT;"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	report, err = Collect(db, eng, dir, ".up.sql", "test-target")
+	report, err = Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() after edit returned error: %v", err)
 	}
@@ -128,11 +128,11 @@ func TestCollect_BackfilledRowsWithoutHashAreNotDrift(t *testing.T) {
 		t.Fatalf("creating table: %v", err)
 	}
 	defer db.Exec(`DROP TABLE dbtools_test_hash_backfill`)
-	if err := eng.Ledger().SetStatus(db, 20260101000000, ledger.StatusApplied, "backfilled: applied before ledger existed"); err != nil {
+	if err := eng.Ledger().SetStatus(db, 20260101000000, ledger.StatusApplied, "backfilled: applied before ledger existed", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, eng, dir, ".up.sql", "test-target")
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
