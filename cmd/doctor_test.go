@@ -12,6 +12,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
+	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 func setupTestDoctorEnv(t *testing.T) (string, string, *config.Config) {
@@ -382,5 +383,87 @@ func TestRenderDoctorHuman(t *testing.T) {
 	}
 	if !strings.Contains(out, "Result: ISSUES DETECTED (exit 2)") {
 		t.Errorf("rendered output missing verdict: %s", out)
+	}
+}
+
+func TestEvaluateTarget_NoLedgerReportsSkippedNotWarn(t *testing.T) {
+	dir, rawURL, cfg := setupTestDoctorEnv(t)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create objects and stamp cursor, but no dbtools_migration_history table.
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
+
+	m, err := migrator.Open(rawURL, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Stamp(20260822000001); err != nil {
+		m.Close()
+		t.Fatal(err)
+	}
+	m.Close()
+
+	report := evaluateTarget(cfg, "testdb")
+	if !report.Healthy {
+		t.Fatalf("report.Healthy = false, want true; checks: %+v", report.Checks)
+	}
+	if report.Exit != 0 {
+		t.Fatalf("report.Exit = %d, want 0", report.Exit)
+	}
+
+	findCheck := func(name string) *CheckResult {
+		for i := range report.Checks {
+			if report.Checks[i].Name == name {
+				return &report.Checks[i]
+			}
+		}
+		return nil
+	}
+
+	ledgerIntegrity := findCheck("ledger-integrity")
+	if ledgerIntegrity == nil || ledgerIntegrity.Status != "skipped" {
+		t.Errorf("ledger-integrity = %+v, want status 'skipped'", ledgerIntegrity)
+	}
+
+	driftSummary := findCheck("drift-summary")
+	if driftSummary == nil || driftSummary.Status != "ok" || !strings.Contains(driftSummary.Message, "no ledger") {
+		t.Errorf("drift-summary = %+v, want status 'ok' mentioning 'no ledger'", driftSummary)
+	}
+
+	versionSync := findCheck("version-sync")
+	if versionSync == nil || versionSync.Status != "ok" || !strings.Contains(versionSync.Message, "no dbtools ledger") {
+		t.Errorf("version-sync = %+v, want status 'ok' mentioning '(no dbtools ledger)'", versionSync)
+	}
+}
+
+func TestRenderDoctorHuman_SkippedBadge(t *testing.T) {
+	rep := &DoctorReport{
+		Target:  "testdb",
+		Engine:  "sqlite",
+		Healthy: true,
+		Exit:    0,
+		Checks: []CheckResult{
+			{Name: "ledger-integrity", Status: "skipped", Message: "no ledger — run `dbtools adopt` to enable"},
+		},
+	}
+	out := renderDoctorHuman([]*DoctorReport{rep})
+	if !strings.Contains(out, "[SKIP]  ledger-integrity") {
+		t.Errorf("rendered output missing [SKIP] badge: %s", out)
 	}
 }

@@ -5,14 +5,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/generate"
 )
 
-type fakeEngine struct{ name string }
+type fakeDDL struct {
+	tables map[string]bool
+}
+
+func (d fakeDDL) ExtractObjects(string) []ddlcheck.ObjectRef        { return nil }
+func (d fakeDDL) ExtractDroppedObjects(string) []ddlcheck.ObjectRef { return nil }
+func (d fakeDDL) Exists(_ *sql.DB, ref ddlcheck.ObjectRef) (bool, error) {
+	key := ref.Schema + "." + ref.Name
+	if ref.Schema == "" {
+		key = ref.Name
+	}
+	return d.tables[key], nil
+}
+
+type fakeEngine struct {
+	name string
+	ddl  DDLDialect
+}
 
 func (f fakeEngine) Name() string                 { return f.name }
 func (f fakeEngine) Open(string) (*sql.DB, error) { return nil, nil }
-func (f fakeEngine) DDL() DDLDialect              { return nil }
+func (f fakeEngine) DDL() DDLDialect              { return f.ddl }
 func (f fakeEngine) Ledger() LedgerStore          { return nil }
 func (f fakeEngine) Introspect(*sql.DB, []string) ([]generate.TableSchema, []string, error) {
 	return nil, nil, nil
@@ -96,4 +114,32 @@ func TestRegisterDuplicatePanics(t *testing.T) {
 		}
 	}()
 	Register(fakeEngine{name: "fakedb"})
+}
+
+func TestTableExists(t *testing.T) {
+	d := fakeDDL{tables: map[string]bool{
+		"public.present": true,
+		"main.present":   true,
+		"dbo.present":    true,
+		"present":        true,
+	}}
+
+	for _, engName := range []string{"postgres", "sqlite", "mssql", "mysql"} {
+		eng := fakeEngine{name: engName, ddl: d}
+		exists, err := TableExists(eng, nil, "present")
+		if err != nil {
+			t.Fatalf("[%s] TableExists(present) returned error: %v", engName, err)
+		}
+		if !exists {
+			t.Errorf("[%s] TableExists(present) = false, want true", engName)
+		}
+
+		exists, err = TableExists(eng, nil, "missing")
+		if err != nil {
+			t.Fatalf("[%s] TableExists(missing) returned error: %v", engName, err)
+		}
+		if exists {
+			t.Errorf("[%s] TableExists(missing) = true, want false", engName)
+		}
+	}
 }
