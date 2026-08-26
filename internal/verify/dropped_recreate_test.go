@@ -35,7 +35,8 @@ func TestCollect_DropThenRecreateIsNotPermanentDrift(t *testing.T) {
 		status TEXT NOT NULL CHECK (status IN ('applied', 'reverted')),
 		recorded_at TIMESTAMP NULL,
 		note TEXT NULL,
-		content_sha256 TEXT NULL)`); err != nil {
+		content_sha256 TEXT NULL,
+		hash_source TEXT NULL)`); err != nil {
 		t.Fatal(err)
 	}
 	// v1 drops (recorded), v2 re-creates (recorded) and the object exists.
@@ -102,7 +103,8 @@ func TestCollect_SQLite_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.
 		status TEXT NOT NULL CHECK (status IN ('applied', 'reverted')),
 		recorded_at TIMESTAMP NULL,
 		note TEXT NULL,
-		content_sha256 TEXT NULL)`); err != nil {
+		content_sha256 TEXT NULL,
+		hash_source TEXT NULL)`); err != nil {
 		t.Fatal(err)
 	}
 

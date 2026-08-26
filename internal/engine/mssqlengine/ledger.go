@@ -19,13 +19,21 @@ BEGIN
         status          VARCHAR(10)   NOT NULL CHECK (status IN ('applied', 'reverted')),
         recorded_at     DATETIME2(0)  NULL,
         note            NVARCHAR(400) NULL,
-        content_sha256  CHAR(64)      NULL
+        content_sha256  CHAR(64)      NULL,
+        hash_source     VARCHAR(20)   NULL
     );
 END;
-ELSE IF COL_LENGTH(N'%s', N'content_sha256') IS NULL
+ELSE
 BEGIN
-    ALTER TABLE %s ADD content_sha256 CHAR(64) NULL;
-END;`, table, table, table, table))
+    IF COL_LENGTH(N'%s', N'content_sha256') IS NULL
+    BEGIN
+        ALTER TABLE %s ADD content_sha256 CHAR(64) NULL;
+    END;
+    IF COL_LENGTH(N'%s', N'hash_source') IS NULL
+    BEGIN
+        ALTER TABLE %s ADD hash_source VARCHAR(20) NULL;
+    END;
+END;`, table, table, table, table, table, table))
 	if err != nil {
 		return fmt.Errorf("ensuring %s schema: %w", table, err)
 	}
@@ -100,9 +108,28 @@ ELSE
 	return nil
 }
 
+// SetStatusAdopted records version as applied with hash_source "adopted".
+func SetStatusAdopted(db ledger.DBTX, version uint64, note, contentHash, table string) error {
+	if err := checkVersionRange(version); err != nil {
+		return err
+	}
+	_, err := db.Exec(fmt.Sprintf(`
+IF EXISTS (SELECT 1 FROM %s WITH (HOLDLOCK) WHERE version = @p1)
+    UPDATE %s
+    SET status = 'applied', recorded_at = SYSUTCDATETIME(), note = @p2, content_sha256 = @p3, hash_source = 'adopted'
+    WHERE version = @p1
+ELSE
+    INSERT INTO %s (version, status, recorded_at, note, content_sha256, hash_source)
+    VALUES (@p1, 'applied', SYSUTCDATETIME(), @p2, @p3, 'adopted');`, table, table, table), int64(version), note, contentHash)
+	if err != nil {
+		return fmt.Errorf("setting adopted status for version %d: %w", version, err)
+	}
+	return nil
+}
+
 // List returns every ledger row in MSSQL, ordered by version ascending.
 func List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
-	rows, err := db.Query(fmt.Sprintf(`SELECT version, status, recorded_at, note, content_sha256 FROM %s ORDER BY version ASC`, table))
+	rows, err := db.Query(fmt.Sprintf(`SELECT version, status, recorded_at, note, content_sha256, hash_source FROM %s ORDER BY version ASC`, table))
 	if err != nil {
 		return nil, fmt.Errorf("listing ledger: %w", err)
 	}
@@ -114,8 +141,8 @@ func List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
 		var version int64
 		var status string
 		var recordedAt sql.NullTime
-		var note, contentHash sql.NullString
-		if err := rows.Scan(&version, &status, &recordedAt, &note, &contentHash); err != nil {
+		var note, contentHash, hashSource sql.NullString
+		if err := rows.Scan(&version, &status, &recordedAt, &note, &contentHash, &hashSource); err != nil {
 			return nil, fmt.Errorf("scanning ledger row: %w", err)
 		}
 		if version < 0 {
@@ -129,6 +156,7 @@ func List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
 		}
 		e.Note = note.String
 		e.ContentSHA256 = contentHash.String
+		e.HashSource = hashSource.String
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()
@@ -180,6 +208,10 @@ func (mssqlLedgerStore) SetStatus(db ledger.DBTX, version uint64, status ledger.
 
 func (mssqlLedgerStore) SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash, table string) error {
 	return SetStatusWithHash(db, version, status, note, contentHash, table)
+}
+
+func (mssqlLedgerStore) SetStatusAdopted(db ledger.DBTX, version uint64, note, contentHash, table string) error {
+	return SetStatusAdopted(db, version, note, contentHash, table)
 }
 
 func (mssqlLedgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, error) {

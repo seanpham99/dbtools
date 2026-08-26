@@ -28,6 +28,9 @@ type Entry struct {
 	// ContentSHA256 is the hex SHA-256 of the migration file that was
 	// applied, or "" for backfilled rows recorded before hashes existed.
 	ContentSHA256 string
+	// HashSource indicates the provenance of ContentSHA256: "" for normal applies,
+	// "adopted" for rows imported without verification.
+	HashSource string
 }
 
 // DBTX is the subset of *sql.DB's interface needed for ledger operations.

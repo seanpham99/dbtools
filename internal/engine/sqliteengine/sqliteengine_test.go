@@ -244,6 +244,38 @@ func TestLedgerStore_CustomTableName(t *testing.T) {
 	}
 }
 
+func TestLedgerStore_SetStatusAdopted(t *testing.T) {
+	db := openTemp(t)
+	store := ledgerStore{}
+	table := "dbtools_migration_history"
+
+	if err := store.ensureSchema(db, table); err != nil {
+		t.Fatalf("ensureSchema() returned error: %v", err)
+	}
+
+	if err := store.SetStatusAdopted(db, 1, "adopted from schema_migrations", "abc123", table); err != nil {
+		t.Fatalf("SetStatusAdopted() returned error: %v", err)
+	}
+
+	entries, err := store.List(db, table)
+	if err != nil {
+		t.Fatalf("List() returned error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.HashSource != "adopted" {
+		t.Errorf("HashSource = %q, want \"adopted\"", e.HashSource)
+	}
+	if e.Status != ledger.StatusApplied {
+		t.Errorf("Status = %q, want applied", e.Status)
+	}
+	if e.ContentSHA256 != "abc123" {
+		t.Errorf("ContentSHA256 = %q, want abc123", e.ContentSHA256)
+	}
+}
+
 func TestLedgerRejectsVersionsAboveIntegerRange(t *testing.T) {
 	if err := (ledgerStore{}).SetStatus(nil, math.MaxInt64+1, ledger.StatusApplied, "", "dbtools_migration_history"); err == nil || !strings.Contains(err.Error(), "INTEGER range") {
 		t.Errorf("SetStatus(MaxInt64+1) err = %v, want INTEGER range error", err)

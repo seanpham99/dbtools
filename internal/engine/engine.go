@@ -73,6 +73,12 @@ type LedgerStore interface {
 	// file's content hash, so verify can detect edits after apply. Used by
 	// the apply path only.
 	SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash, table string) error
+	// SetStatusAdopted records version as applied with hash_source
+	// "adopted": the content hash is stored for reference but never
+	// compared against — the row's actual apply-time content was never
+	// observed by dbtools, only inferred from the file's current state at
+	// adopt time. Used by `dbtools adopt` only.
+	SetStatusAdopted(db ledger.DBTX, version uint64, note, contentHash, table string) error
 	List(db ledger.DBTX, table string) ([]ledger.Entry, error)
 	AppliedVersions(db ledger.DBTX, table string) ([]uint64, error)
 }

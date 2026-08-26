@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS %s (
     recorded_at     DATETIME     NULL,
     note            VARCHAR(400) NULL,
     content_sha256  CHAR(64)     NULL,
+    hash_source     VARCHAR(20)  NULL,
     CHECK (status IN ('applied', 'reverted'))
 ) ENGINE=InnoDB`, table))
 	if err != nil {
@@ -40,6 +41,19 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%s' AND COLUMN_NAME = 'content
 	if !cols.Next() {
 		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN content_sha256 CHAR(64) NULL`, table)); err != nil {
 			return fmt.Errorf("adding content_sha256 to %s: %w", table, err)
+		}
+	}
+	// Column added for adopt command.
+	srcCols, err := db.Query(fmt.Sprintf(`
+SELECT COLUMN_NAME FROM information_schema.columns
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%s' AND COLUMN_NAME = 'hash_source'`, table))
+	if err != nil {
+		return fmt.Errorf("inspecting %s columns: %w", table, err)
+	}
+	defer srcCols.Close()
+	if !srcCols.Next() {
+		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN hash_source VARCHAR(20) NULL`, table)); err != nil {
+			return fmt.Errorf("adding hash_source to %s: %w", table, err)
 		}
 	}
 	return nil
@@ -107,9 +121,25 @@ ON DUPLICATE KEY UPDATE status = VALUES(status), recorded_at = VALUES(recorded_a
 	return nil
 }
 
+// SetStatusAdopted records version as applied with hash_source "adopted".
+func (mysqlLedgerStore) SetStatusAdopted(db ledger.DBTX, version uint64, note, contentHash, table string) error {
+	if err := checkVersionRange(version); err != nil {
+		return err
+	}
+	_, err := db.Exec(fmt.Sprintf(`
+INSERT INTO %s (version, status, recorded_at, note, content_sha256, hash_source)
+VALUES (?, 'applied', NOW(), ?, ?, 'adopted')
+ON DUPLICATE KEY UPDATE status = VALUES(status), recorded_at = VALUES(recorded_at), note = VALUES(note), content_sha256 = VALUES(content_sha256), hash_source = VALUES(hash_source)`, table),
+		int64(version), note, contentHash)
+	if err != nil {
+		return fmt.Errorf("setting adopted status for version %d: %w", version, err)
+	}
+	return nil
+}
+
 // List returns every ledger row, ordered by version ascending.
 func (mysqlLedgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
-	rows, err := db.Query(fmt.Sprintf(`SELECT version, status, recorded_at, note, content_sha256 FROM %s ORDER BY version ASC`, table))
+	rows, err := db.Query(fmt.Sprintf(`SELECT version, status, recorded_at, note, content_sha256, hash_source FROM %s ORDER BY version ASC`, table))
 	if err != nil {
 		return nil, fmt.Errorf("listing ledger: %w", err)
 	}
@@ -121,8 +151,8 @@ func (mysqlLedgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, erro
 		var version int64
 		var status string
 		var recordedAt sql.NullTime
-		var note, contentHash sql.NullString
-		if err := rows.Scan(&version, &status, &recordedAt, &note, &contentHash); err != nil {
+		var note, contentHash, hashSource sql.NullString
+		if err := rows.Scan(&version, &status, &recordedAt, &note, &contentHash, &hashSource); err != nil {
 			return nil, fmt.Errorf("scanning ledger row: %w", err)
 		}
 		if version < 0 {
@@ -136,6 +166,7 @@ func (mysqlLedgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, erro
 		}
 		e.Note = note.String
 		e.ContentSHA256 = contentHash.String
+		e.HashSource = hashSource.String
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()

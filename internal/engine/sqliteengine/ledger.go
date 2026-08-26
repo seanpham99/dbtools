@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS %s (
     status          TEXT    NOT NULL CHECK (status IN ('applied', 'reverted')),
     recorded_at     TIMESTAMP NULL,
     note            TEXT    NULL,
-    content_sha256  TEXT    NULL
+    content_sha256  TEXT    NULL,
+    hash_source     TEXT    NULL
 )`, table))
 	if err != nil {
 		return fmt.Errorf("ensuring %s schema: %w", table, err)
@@ -46,6 +47,17 @@ CREATE TABLE IF NOT EXISTS %s (
 	if !cols.Next() {
 		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN content_sha256 TEXT NULL`, table)); err != nil {
 			return fmt.Errorf("adding content_sha256 to %s: %w", table, err)
+		}
+	}
+	// Column added for adopt command.
+	srcCols, err := db.Query(fmt.Sprintf(`SELECT name FROM pragma_table_info('%s') WHERE name = 'hash_source'`, table))
+	if err != nil {
+		return fmt.Errorf("inspecting %s columns: %w", table, err)
+	}
+	defer srcCols.Close()
+	if !srcCols.Next() {
+		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN hash_source TEXT NULL`, table)); err != nil {
+			return fmt.Errorf("adding hash_source to %s: %w", table, err)
 		}
 	}
 	return nil
@@ -109,9 +121,26 @@ SET status = excluded.status, recorded_at = excluded.recorded_at, note = exclude
 	return nil
 }
 
+// SetStatusAdopted records version as applied with hash_source "adopted".
+func (ledgerStore) SetStatusAdopted(db ledger.DBTX, version uint64, note, contentHash, table string) error {
+	if err := checkVersionRange(version); err != nil {
+		return err
+	}
+	_, err := db.Exec(fmt.Sprintf(`
+INSERT INTO %s (version, status, recorded_at, note, content_sha256, hash_source)
+VALUES (?, 'applied', ?, ?, ?, 'adopted')
+ON CONFLICT (version) DO UPDATE
+SET status = excluded.status, recorded_at = excluded.recorded_at, note = excluded.note, content_sha256 = excluded.content_sha256, hash_source = excluded.hash_source`, table),
+		int64(version), time.Now().UTC(), note, contentHash)
+	if err != nil {
+		return fmt.Errorf("setting adopted status for version %d: %w", version, err)
+	}
+	return nil
+}
+
 // List returns every ledger row, ordered by version ascending.
 func (ledgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
-	rows, err := db.Query(fmt.Sprintf(`SELECT version, status, recorded_at, note, content_sha256 FROM %s ORDER BY version ASC`, table))
+	rows, err := db.Query(fmt.Sprintf(`SELECT version, status, recorded_at, note, content_sha256, hash_source FROM %s ORDER BY version ASC`, table))
 	if err != nil {
 		return nil, fmt.Errorf("listing ledger: %w", err)
 	}
@@ -123,8 +152,8 @@ func (ledgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
 		var version int64
 		var status string
 		var recordedAt sql.NullTime
-		var note, contentHash sql.NullString
-		if err := rows.Scan(&version, &status, &recordedAt, &note, &contentHash); err != nil {
+		var note, contentHash, hashSource sql.NullString
+		if err := rows.Scan(&version, &status, &recordedAt, &note, &contentHash, &hashSource); err != nil {
 			return nil, fmt.Errorf("scanning ledger row: %w", err)
 		}
 		if version < 0 {
@@ -138,6 +167,7 @@ func (ledgerStore) List(db ledger.DBTX, table string) ([]ledger.Entry, error) {
 		}
 		e.Note = note.String
 		e.ContentSHA256 = contentHash.String
+		e.HashSource = hashSource.String
 		entries = append(entries, e)
 	}
 	return entries, rows.Err()

@@ -41,7 +41,8 @@ func TestCollect_DetectsEditedMigrationAfterApply(t *testing.T) {
 		status TEXT NOT NULL CHECK (status IN ('applied', 'reverted')),
 		recorded_at TIMESTAMP NULL,
 		note TEXT NULL,
-		content_sha256 TEXT NULL)`); err != nil {
+		content_sha256 TEXT NULL,
+		hash_source TEXT NULL)`); err != nil {
 		t.Fatalf("creating ledger: %v", err)
 	}
 
@@ -121,7 +122,8 @@ func TestCollect_BackfilledRowsWithoutHashAreNotDrift(t *testing.T) {
 		status TEXT NOT NULL CHECK (status IN ('applied', 'reverted')),
 		recorded_at TIMESTAMP NULL,
 		note TEXT NULL,
-		content_sha256 TEXT NULL)`); err != nil {
+		content_sha256 TEXT NULL,
+		hash_source TEXT NULL)`); err != nil {
 		t.Fatalf("creating ledger: %v", err)
 	}
 	if _, err := db.Exec(`CREATE TABLE dbtools_test_hash_backfill (id INTEGER PRIMARY KEY)`); err != nil {

@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS dbtools_migration_history (
     status          VARCHAR(10)  NOT NULL CHECK (status IN ('applied', 'reverted')),
     recorded_at     TIMESTAMPTZ  NULL,
     note            VARCHAR(400) NULL,
-    content_sha256  CHAR(64)     NULL
+    content_sha256  CHAR(64)     NULL,
+    hash_source     VARCHAR(20)  NULL
 );`
 
 func TestCollect_Postgres_DetectsMissingObject(t *testing.T) {
