@@ -1,8 +1,14 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
 )
 
 // TestVerifyCommand_MissingTargetStillPrintsUsage guards against RunE's
@@ -34,3 +40,46 @@ func TestVerifyCommand_MissingTargetStillPrintsUsage(t *testing.T) {
 		t.Fatalf("verify with a missing required argument did not print usage: %s", out.String())
 	}
 }
+
+func TestVerifyCommand_NoLedgerDoesNotError(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"),
+		[]byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(dir, "test.db")
+	rawURL := "sqlite://" + dbPath
+	t.Setenv("DBTOOLS_TEST_VERIFY_NOLEDGER_URL", rawURL)
+
+	cfgContent := fmt.Sprintf(`migrations_dir = %q
+[targets.local]
+url_env = "DBTOOLS_TEST_VERIFY_NOLEDGER_URL"
+engine = "sqlite"
+`, dir)
+	configPath := filepath.Join(dir, "dbtools.toml")
+	if err := os.WriteFile(configPath, []byte(cfgContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// widgets is never created and dbtools_migration_history never exists.
+	db.Close()
+
+	verifyInitLedger = false
+	err = runVerify("local")
+	var exitErr *ExitCodeError
+	if err != nil && !(errors.As(err, &exitErr) && exitErr.Code == 2) {
+		t.Fatalf("runVerify() with no ledger = %v, want nil or exit-2 drift, not a hard failure", err)
+	}
+}
+
