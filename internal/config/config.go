@@ -76,6 +76,21 @@ type ContainerConfig struct {
 	Port int `toml:"port"`
 }
 
+// LedgerConfig configures the migration-ledger table dbtools reads and writes.
+type LedgerConfig struct {
+	// Table overrides the ledger table name — set this to coexist with an
+	// incumbent migration tool's table (e.g. "schema_migrations") instead
+	// of dbtools' own "dbtools_migration_history".
+	Table string `toml:"table"`
+}
+
+// MigrationsConfig configures how migration files on disk are recognized.
+type MigrationsConfig struct {
+	// UpSuffix overrides the up-migration filename suffix (default
+	// ".up.sql"). Set to ".sql" for a flat "<version>_<name>.sql" layout.
+	UpSuffix string `toml:"up_suffix"`
+}
+
 // Config is the parsed contents of dbtools.toml.
 type Config struct {
 	MigrationsDir string            `toml:"migrations_dir"`
@@ -84,6 +99,8 @@ type Config struct {
 	Clone         CloneConfig       `toml:"clone"`
 	Project       ProjectConfig     `toml:"project"`
 	Container     ContainerConfig   `toml:"container"`
+	Ledger        LedgerConfig      `toml:"ledger"`
+	Migrations    MigrationsConfig  `toml:"migrations"`
 }
 
 // Load reads and parses the dbtools.toml file at path.
@@ -98,6 +115,12 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.MigrationsDir == "" {
 		cfg.MigrationsDir = "migrations"
+	}
+	if cfg.Ledger.Table == "" {
+		cfg.Ledger.Table = "dbtools_migration_history"
+	}
+	if cfg.Migrations.UpSuffix == "" {
+		cfg.Migrations.UpSuffix = ".up.sql"
 	}
 	// Default exclude list to internal tool tables unless the key was set at all
 	// (including explicitly to an empty list, which means "exclude nothing").

@@ -228,3 +228,48 @@ url_env = "L_URL"
 		t.Errorf("Container.Port = %d, want 0 (meaning: let Docker assign a port)", cfg.Container.Port)
 	}
 }
+
+func TestLoad_DefaultsLedgerTableAndUpSuffix(t *testing.T) {
+	path := writeTemp(t, `
+migrations_dir = "migrations"
+
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Ledger.Table != "dbtools_migration_history" {
+		t.Errorf("Ledger.Table = %q, want default", cfg.Ledger.Table)
+	}
+	if cfg.Migrations.UpSuffix != ".up.sql" {
+		t.Errorf("Migrations.UpSuffix = %q, want default", cfg.Migrations.UpSuffix)
+	}
+}
+
+func TestLoad_OverridesLedgerTableAndUpSuffix(t *testing.T) {
+	path := writeTemp(t, `
+migrations_dir = "migrations"
+
+[ledger]
+table = "schema_migrations"
+
+[migrations]
+up_suffix = ".sql"
+
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Ledger.Table != "schema_migrations" {
+		t.Errorf("Ledger.Table = %q, want override", cfg.Ledger.Table)
+	}
+	if cfg.Migrations.UpSuffix != ".sql" {
+		t.Errorf("Migrations.UpSuffix = %q, want override", cfg.Migrations.UpSuffix)
+	}
+}
+
