@@ -90,6 +90,15 @@ CREATE TABLE dbtools_it_orders (
 		if orders.Indexes[i].Name == "idx_it_orders_status" {
 			statusIdx = &orders.Indexes[i]
 		}
+		// The PK-backing index is always named PRIMARY in MySQL — must
+		// never appear in Indexes (already represented via
+		// ColumnSchema.IsPrimaryKey). Asserted by name rather than an
+		// exact-count check, since InnoDB also auto-creates a secondary
+		// index on the FK column (customer_id) that legitimately belongs
+		// in this list.
+		if orders.Indexes[i].Name == "PRIMARY" {
+			t.Errorf("Indexes contains the PK-backing index %+v, want it excluded", orders.Indexes[i])
+		}
 	}
 	if statusIdx == nil || !statusIdx.Unique || len(statusIdx.Columns) != 1 || statusIdx.Columns[0] != "status" {
 		t.Errorf("Indexes = %+v, want idx_it_orders_status, unique on status (PK-backing index excluded)", orders.Indexes)
