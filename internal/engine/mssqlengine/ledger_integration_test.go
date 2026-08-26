@@ -198,7 +198,7 @@ func TestSetStatusAdopted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := SetStatusAdopted(db, 20260101000000, "adopted from schema_migrations", "abc123", "dbtools_migration_history"); err != nil {
+	if err := SetStatusAdopted(db, 20260101000000, "adopted from schema_migrations", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatusAdopted() returned error: %v", err)
 	}
 
@@ -216,8 +216,8 @@ func TestSetStatusAdopted(t *testing.T) {
 	if e.HashSource != ledger.HashSourceAdopted {
 		t.Errorf("HashSource = %q, want %q", e.HashSource, ledger.HashSourceAdopted)
 	}
-	if e.ContentSHA256 != "abc123" {
-		t.Errorf("ContentSHA256 = %q, want abc123", e.ContentSHA256)
+	if e.ContentSHA256 != "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08" {
+		t.Errorf("ContentSHA256 = %q, want the expected hash", e.ContentSHA256)
 	}
 }
 
@@ -250,7 +250,7 @@ CREATE TABLE dbtools_migration_history (
 	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("EnsureSchema() on preexisting table returned error: %v", err)
 	}
-	if err := SetStatusAdopted(db, 20260101000000, "adopted", "abc123", "dbtools_migration_history"); err != nil {
+	if err := SetStatusAdopted(db, 20260101000000, "adopted", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "dbtools_migration_history"); err != nil {
 		t.Fatalf("SetStatusAdopted() after EnsureSchema migration returned error: %v", err)
 	}
 }
