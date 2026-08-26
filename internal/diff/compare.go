@@ -32,8 +32,8 @@ const (
 type Finding struct {
 	Kind   Kind       `json:"kind"`
 	Object ObjectType `json:"object"`
-	Table  string     `json:"table"` // schema-qualified, e.g. "public.orders"
-	Name   string     `json:"name"`  // column/index/FK/check name; "" for a table-level finding
+	Table  string     `json:"table"`  // schema-qualified, e.g. "public.orders"
+	Name   string     `json:"name"`   // column/index/FK/check name; "" for a table-level finding
 	Detail string     `json:"detail"` // human-readable specifics, e.g. "type text vs varchar(50)"
 }
 

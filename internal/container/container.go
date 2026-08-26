@@ -45,9 +45,9 @@ type spec struct {
 	// project-scoped name containerNameFor produces. nil for engines with
 	// no container template (sqlite).
 	scratchRunArgs func(s spec) []string
-	readyProbe    func(s spec) error
-	createDBArgs  func(s spec) []string // docker exec args creating DatabaseName idempotently; nil when the image does it itself
-	url           func(s spec, database string) string
+	readyProbe     func(s spec) error
+	createDBArgs   func(s spec) []string // docker exec args creating DatabaseName idempotently; nil when the image does it itself
+	url            func(s spec, database string) string
 	// hostPortFromLocalURL extracts the host and port this engine's local
 	// connection URL encodes, so MaintenanceURLFor can reuse whatever port
 	// the container actually ended up on (fixed or Docker-assigned)
