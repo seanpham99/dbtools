@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0](https://github.com/seanpham99/dbtools/compare/v0.4.0...v0.5.0) (2026-08-26)
+
+
+### Features
+
+* add log-format flag for structured json logging ([#68](https://github.com/seanpham99/dbtools/issues/68)) ([ef3d832](https://github.com/seanpham99/dbtools/commit/ef3d8320c274a13f547b96d63fdd02c8e179df3c))
+* add official multi-arch docker image ([#65](https://github.com/seanpham99/dbtools/issues/65)) ([1e36e55](https://github.com/seanpham99/dbtools/commit/1e36e551eda57a446c2a19d8b5314b43819609e9))
+* add postgres error diagnostics and notice forwarding ([#67](https://github.com/seanpham99/dbtools/issues/67)) ([a6f8404](https://github.com/seanpham99/dbtools/commit/a6f840463741b8d761ba1d50129e8df2663cd472))
+* implement dbtools adopt command (closes [#61](https://github.com/seanpham99/dbtools/issues/61)) ([#72](https://github.com/seanpham99/dbtools/issues/72)) ([bb62c39](https://github.com/seanpham99/dbtools/commit/bb62c3998a1e18ff7b8a645cc9121c2d78d1d64b))
+
+
+### Bug Fixes
+
+* address issue [#60](https://github.com/seanpham99/dbtools/issues/60) code-review findings ([#70](https://github.com/seanpham99/dbtools/issues/70)) ([853cfb8](https://github.com/seanpham99/dbtools/commit/853cfb826be28bf42eb4d5249650196af4e01484))
+
 ## [0.4.0](https://github.com/seanpham99/dbtools/compare/v0.3.0...v0.4.0) (2026-08-25)
 
 
