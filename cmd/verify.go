@@ -67,6 +67,15 @@ func runVerify(targetName string) error {
 	if err != nil {
 		return err
 	}
+	if !ledgerExists {
+		version, dirty, _, err := m.Version()
+		if err != nil {
+			return err
+		}
+		if dirty {
+			return fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, version, targetName)
+		}
+	}
 	if !ledgerExists && verifyInitLedger {
 		if err := requireUnprotected(cfg, targetName); err != nil {
 			return err

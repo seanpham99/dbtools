@@ -32,7 +32,7 @@ It never modifies the database, creates tables, writes to the ledger, or mutates
 - Inspects the `dbtools_migration_history` ledger table.
 - For each applied migration with a recorded SHA-256 hash, verifies the migration file on disk matches the hash recorded when applied.
 - **Skipped (`[SKIP]`)**: No ledger table exists (ledger-free mode — run `dbtools adopt` to enable).
-- **Warn**: Ledger table exists but is empty.
+- **OK**: Ledger table exists but is empty.
 - **Fail (`exit 2`)**: Content hash mismatch (migration file edited post-apply) or corrupted history.
 
 ### 3. `version-sync`

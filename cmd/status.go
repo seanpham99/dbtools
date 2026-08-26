@@ -137,8 +137,8 @@ func runStatus(targetNames ...string) error {
 			if url, uerr := cfg.ResolveURLOrFlag(r.Target, override); uerr == nil {
 				if eng, eerr := engine.ForTarget(cfg.EngineName(r.Target), url); eerr == nil {
 					if db, derr := eng.Open(url); derr == nil {
-						exists, _ := engine.TableExists(eng, db, cfg.Ledger.Table)
-						if !exists {
+						exists, existsErr := engine.TableExists(eng, db, cfg.Ledger.Table)
+						if existsErr == nil && !exists {
 							noLedgers[r.Target] = true
 						}
 						db.Close()
