@@ -164,12 +164,21 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 	// Foreign keys.
 	fkRows, err := db.Query(`
 		SELECT tc.table_schema, tc.table_name, tc.constraint_name, kcu.column_name, kcu.ordinal_position,
-			ccu.table_schema, ccu.table_name, ccu.column_name
+			ukcu.table_schema, ukcu.table_name, ukcu.column_name
 		FROM information_schema.table_constraints tc
 		JOIN information_schema.key_column_usage kcu
-			ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-		JOIN information_schema.constraint_column_usage ccu
-			ON tc.constraint_name = ccu.constraint_name
+			ON tc.constraint_catalog = kcu.constraint_catalog
+			AND tc.constraint_schema = kcu.constraint_schema
+			AND tc.constraint_name = kcu.constraint_name
+		JOIN information_schema.referential_constraints rc
+			ON tc.constraint_catalog = rc.constraint_catalog
+			AND tc.constraint_schema = rc.constraint_schema
+			AND tc.constraint_name = rc.constraint_name
+		JOIN information_schema.key_column_usage ukcu
+			ON rc.unique_constraint_catalog = ukcu.constraint_catalog
+			AND rc.unique_constraint_schema = ukcu.constraint_schema
+			AND rc.unique_constraint_name = ukcu.constraint_name
+			AND kcu.position_in_unique_constraint = ukcu.ordinal_position
 		WHERE tc.constraint_type = 'FOREIGN KEY'
 		ORDER BY tc.table_schema, tc.table_name, tc.constraint_name, kcu.ordinal_position`)
 	if err != nil {
@@ -240,19 +249,21 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 	}
 
 	// Indexes — excludes the primary key's backing index (already
-	// represented via ColumnSchema.IsPrimaryKey) by joining against
-	// pg_constraint and filtering out any index that backs a PK.
+	// represented via ColumnSchema.IsPrimaryKey) and limits indkey to
+	// indnkeyatts so INCLUDE columns are omitted.
 	ixRows, err := db.Query(`
 		SELECT n.nspname, t.relname, i.relname, a.attname, ix.indisunique,
-			array_position(ix.indkey, a.attnum)
+			key.ordinality
 		FROM pg_index ix
 		JOIN pg_class i ON i.oid = ix.indexrelid
 		JOIN pg_class t ON t.oid = ix.indrelid
 		JOIN pg_namespace n ON n.oid = t.relnamespace
-		JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+		JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS key(attnum, ordinality)
+			ON key.ordinality <= ix.indnkeyatts
+		JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = key.attnum
 		WHERE t.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
 			AND NOT ix.indisprimary
-		ORDER BY n.nspname, t.relname, i.relname, array_position(ix.indkey, a.attnum)`)
+		ORDER BY n.nspname, t.relname, i.relname, key.ordinality`)
 	if err != nil {
 		return nil, nil, fmt.Errorf("introspecting indexes: %w", err)
 	}

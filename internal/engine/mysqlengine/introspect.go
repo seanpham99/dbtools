@@ -195,29 +195,9 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 		}
 	}
 
-	// CHECK constraints (MySQL 8.0.16+).
-	ckRows, err := db.Query(`
-		SELECT tc.TABLE_NAME, cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
-		FROM information_schema.table_constraints tc
-		JOIN information_schema.check_constraints cc
-			ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
-		WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'CHECK'`)
-	if err != nil {
-		return nil, nil, fmt.Errorf("introspecting check constraints: %w", err)
-	}
-	for ckRows.Next() {
-		var tableName, constraintName, expr string
-		if err := ckRows.Scan(&tableName, &constraintName, &expr); err != nil {
-			ckRows.Close()
-			return nil, nil, fmt.Errorf("scanning check constraint: %w", err)
-		}
-		if tbl, ok := tableMap[tableName]; ok {
-			tbl.CheckConstraints = append(tbl.CheckConstraints, generate.CheckConstraintSchema{Name: constraintName, Expression: expr})
-		}
-	}
-	ckRows.Close()
-	if err := ckRows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("iterating check constraints: %w", err)
+	// CHECK constraints, when supported (MySQL 8.0.16+).
+	if err := introspectCheckConstraints(db, tableMap); err != nil {
+		return nil, nil, err
 	}
 
 	// Indexes — excludes PRIMARY (MySQL's reserved name for the PK-backing index).
@@ -268,4 +248,40 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 		result = append(result, *tableMap[name])
 	}
 	return result, unmapped, nil
+}
+
+func introspectCheckConstraints(db *sql.DB, tableMap map[string]*generate.TableSchema) error {
+	var hasCheckConstraints bool
+	if err := db.QueryRow(`
+		SELECT COUNT(*) > 0
+		FROM information_schema.tables
+		WHERE table_schema = 'information_schema' AND table_name = 'CHECK_CONSTRAINTS'`).Scan(&hasCheckConstraints); err != nil {
+		return fmt.Errorf("detecting check constraint support: %w", err)
+	}
+	if hasCheckConstraints {
+		ckRows, err := db.Query(`
+			SELECT tc.TABLE_NAME, cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+			FROM information_schema.table_constraints tc
+			JOIN information_schema.check_constraints cc
+				ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+			WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'CHECK'`)
+		if err != nil {
+			return fmt.Errorf("introspecting check constraints: %w", err)
+		}
+		for ckRows.Next() {
+			var tableName, constraintName, expr string
+			if err := ckRows.Scan(&tableName, &constraintName, &expr); err != nil {
+				ckRows.Close()
+				return fmt.Errorf("scanning check constraint: %w", err)
+			}
+			if tbl, ok := tableMap[tableName]; ok {
+				tbl.CheckConstraints = append(tbl.CheckConstraints, generate.CheckConstraintSchema{Name: constraintName, Expression: expr})
+			}
+		}
+		ckRows.Close()
+		if err := ckRows.Err(); err != nil {
+			return fmt.Errorf("iterating check constraints: %w", err)
+		}
+	}
+	return nil
 }

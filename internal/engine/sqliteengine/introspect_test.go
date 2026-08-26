@@ -18,6 +18,12 @@ func TestIntrospect_FullStructuralCatalog(t *testing.T) {
 	if _, err := db.Exec(`CREATE TABLE dbtools_it_customers (id INTEGER PRIMARY KEY, email TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`CREATE TABLE dbtools_it_text_keys (id TEXT PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE dbtools_it_implicit_fk (customer_id INTEGER, FOREIGN KEY (customer_id) REFERENCES dbtools_it_customers)`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`
 CREATE TABLE dbtools_it_orders (
     id INTEGER PRIMARY KEY,
@@ -36,10 +42,17 @@ CREATE TABLE dbtools_it_orders (
 		t.Fatalf("introspect() returned error: %v", err)
 	}
 
-	var orders *generate.TableSchema
+	var orders, customers, textKeys, implicitFK *generate.TableSchema
 	for i := range tables {
-		if tables[i].Name == "dbtools_it_orders" {
+		switch tables[i].Name {
+		case "dbtools_it_orders":
 			orders = &tables[i]
+		case "dbtools_it_customers":
+			customers = &tables[i]
+		case "dbtools_it_text_keys":
+			textKeys = &tables[i]
+		case "dbtools_it_implicit_fk":
+			implicitFK = &tables[i]
 		}
 	}
 	if orders == nil {
@@ -66,5 +79,14 @@ CREATE TABLE dbtools_it_orders (
 	}
 	if len(orders.CheckConstraints) != 0 {
 		t.Errorf("CheckConstraints = %+v, want always empty for SQLite", orders.CheckConstraints)
+	}
+	if customers == nil || len(customers.Columns) == 0 || customers.Columns[0].IsNullable {
+		t.Errorf("INTEGER PRIMARY KEY column = %+v, want non-nullable", customers)
+	}
+	if textKeys == nil || len(textKeys.Columns) == 0 || !textKeys.Columns[0].IsNullable {
+		t.Errorf("TEXT PRIMARY KEY column = %+v, want nullable without NOT NULL", textKeys)
+	}
+	if implicitFK == nil || len(implicitFK.ForeignKeys) != 1 || len(implicitFK.ForeignKeys[0].RefColumns) != 1 || implicitFK.ForeignKeys[0].RefColumns[0] != "" {
+		t.Errorf("implicit parent-key ForeignKeys = %+v, want one nullable referenced column represented as empty", implicitFK)
 	}
 }

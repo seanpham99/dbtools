@@ -52,7 +52,7 @@ CREATE TABLE dbtools_it_orders (
 )`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX idx_it_orders_status ON dbtools_it_orders (status)`); err != nil {
+	if _, err := db.Exec(`CREATE UNIQUE INDEX idx_it_orders_status ON dbtools_it_orders (status) INCLUDE (total)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,7 +89,8 @@ CREATE TABLE dbtools_it_orders (
 	if len(orders.CheckConstraints) != 1 || !strings.Contains(orders.CheckConstraints[0].Expression, "total") {
 		t.Errorf("CheckConstraints = %+v, want one mentioning total", orders.CheckConstraints)
 	}
-	if len(orders.Indexes) != 1 || orders.Indexes[0].Name != "idx_it_orders_status" || !orders.Indexes[0].Unique {
-		t.Errorf("Indexes = %+v, want exactly idx_it_orders_status, unique (PK-backing index excluded)", orders.Indexes)
+	if len(orders.Indexes) != 1 || orders.Indexes[0].Name != "idx_it_orders_status" || !orders.Indexes[0].Unique ||
+		strings.Join(orders.Indexes[0].Columns, ",") != "status" {
+		t.Errorf("Indexes = %+v, want exactly idx_it_orders_status, unique on status with INCLUDE columns excluded", orders.Indexes)
 	}
 }

@@ -254,7 +254,7 @@ func Introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 		return nil, nil, fmt.Errorf("iterating check constraints: %w", err)
 	}
 
-	// Indexes — excludes the PK-backing index (is_primary_key = 0).
+	// Indexes — excludes the PK-backing index and INCLUDE columns.
 	ixRows, err := db.Query(`
 		SELECT s.name, t.name, i.name, c.name, i.is_unique, ic.key_ordinal
 		FROM sys.indexes i
@@ -262,7 +262,7 @@ func Introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 		JOIN sys.schemas s ON s.schema_id = t.schema_id
 		JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
 		JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
-		WHERE i.name IS NOT NULL AND i.is_primary_key = 0
+		WHERE i.name IS NOT NULL AND i.is_primary_key = 0 AND ic.is_included_column = 0
 		ORDER BY s.name, t.name, i.name, ic.key_ordinal`)
 	if err != nil {
 		return nil, nil, fmt.Errorf("introspecting indexes: %w", err)

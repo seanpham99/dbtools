@@ -104,12 +104,13 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 				unmapped = append(unmapped, fmt.Sprintf("%s.%s.%s: %s", DefaultSchema, name, colName, declaredType))
 			}
 
+			integerPrimaryKey := pk > 0 && strings.EqualFold(strings.TrimSpace(declaredType), "INTEGER")
 			tbl.Columns = append(tbl.Columns, generate.ColumnSchema{
 				Name:            colName,
 				PyName:          generate.SanitizeFieldName(colName),
 				DataType:        declaredType,
 				PythonType:      pythonType,
-				IsNullable:      notNull == 0 && pk == 0, // INTEGER PRIMARY KEY is implicitly NOT NULL
+				IsNullable:      notNull == 0 && !integerPrimaryKey,
 				OrdinalPosition: cid + 1,
 				DefaultValue:    dflt,
 				IsPrimaryKey:    pk > 0,
@@ -129,7 +130,8 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 		var fkOrder []int
 		for fkRows.Next() {
 			var id, seq int
-			var refTable, fromCol, toCol string
+			var refTable, fromCol string
+			var toCol sql.NullString
 			var onUpdate, onDelete, match string
 			if err := fkRows.Scan(&id, &seq, &refTable, &fromCol, &toCol, &onUpdate, &onDelete, &match); err != nil {
 				fkRows.Close()
@@ -142,7 +144,7 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 				fkOrder = append(fkOrder, id)
 			}
 			fk.Columns = append(fk.Columns, fromCol)
-			fk.RefColumns = append(fk.RefColumns, toCol)
+			fk.RefColumns = append(fk.RefColumns, toCol.String)
 		}
 		fkRows.Close()
 		if err := fkRows.Err(); err != nil {
@@ -164,7 +166,8 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 		var ixRows []ixRow
 		for ixListRows.Next() {
 			var seq int
-			var idxName, origin string
+			var idxName sql.NullString
+			var origin string
 			var unique, partial int
 			if err := ixListRows.Scan(&seq, &idxName, &unique, &origin, &partial); err != nil {
 				ixListRows.Close()
@@ -175,7 +178,7 @@ func introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []str
 			if origin == "pk" {
 				continue
 			}
-			ixRows = append(ixRows, ixRow{name: idxName, unique: unique == 1, origin: origin})
+			ixRows = append(ixRows, ixRow{name: idxName.String, unique: unique == 1, origin: origin})
 		}
 		ixListRows.Close()
 		if err := ixListRows.Err(); err != nil {
