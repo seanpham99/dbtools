@@ -209,5 +209,3 @@ func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuf
 	}
 	return s.backfill(db, version, hasVersion, allVersions, table)
 }
-
-

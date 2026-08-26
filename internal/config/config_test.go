@@ -283,5 +283,3 @@ table = "bad; drop table users"
 		t.Fatal("Load() with invalid ledger table name: want error, got nil")
 	}
 }
-
-

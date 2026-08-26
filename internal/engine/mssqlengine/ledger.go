@@ -223,4 +223,3 @@ func (mssqlLedgerStore) AppliedVersions(db ledger.DBTX, table string) ([]uint64,
 }
 
 var _ engine.LedgerStore = mssqlLedgerStore{}
-

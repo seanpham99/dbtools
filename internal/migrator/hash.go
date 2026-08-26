@@ -11,4 +11,3 @@ func ContentHash(migrationsDir, upSuffix string, version uint64) (string, error)
 	}
 	return d.ContentHash(version)
 }
-

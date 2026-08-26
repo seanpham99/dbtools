@@ -99,4 +99,3 @@ func TestNextVersion_ExistingAheadOfClock(t *testing.T) {
 		t.Errorf("NextUpFilename() = %q, want %q", fn, wantFn)
 	}
 }
-

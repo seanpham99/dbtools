@@ -37,4 +37,3 @@ func NextUpFilename(now time.Time, migrationsDir, upSuffix, name string) (string
 	}
 	return d.NextUpFilename(now, name)
 }
-

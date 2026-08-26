@@ -16,9 +16,9 @@ import (
 
 // KnownTable describes a known third-party migration tracking table.
 type KnownTable struct {
-	Name          string
-	VersionCol    string
-	AppliedAtCol  string
+	Name         string
+	VersionCol   string
+	AppliedAtCol string
 }
 
 // KnownSourceTables lists the supported third-party migration tracking tables

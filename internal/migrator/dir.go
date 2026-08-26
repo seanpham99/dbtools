@@ -303,4 +303,3 @@ func FindMigrationFile(migrationsDir, upSuffix string, version uint64) (string, 
 	}
 	return f.Filename, nil
 }
-

@@ -54,4 +54,3 @@ func ValidateTableName(name string) error {
 	}
 	return nil
 }
-

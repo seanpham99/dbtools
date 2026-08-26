@@ -206,5 +206,3 @@ func (s mysqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, 
 	}
 	return s.backfill(db, version, hasVersion, allVersions, table)
 }
-
-

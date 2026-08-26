@@ -41,4 +41,3 @@ func BuildRows(cfg *config.Config, collect CollectFunc) []Row {
 	}
 	return rows
 }
-

@@ -173,4 +173,3 @@ func TestReadDir_CustomUpSuffix(t *testing.T) {
 		t.Errorf("ListVersions() = %v, want [1]", versions)
 	}
 }
-
