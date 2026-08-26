@@ -82,7 +82,7 @@ func TestRun_RecordsLedgerEntries(t *testing.T) {
 	}
 	defer db.Close()
 
-	entries, err := mssqlengine.List(db)
+	entries, err := mssqlengine.List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("ledger.List() returned error: %v", err)
 	}

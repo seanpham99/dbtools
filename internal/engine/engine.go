@@ -65,16 +65,28 @@ type LedgerStore interface {
 	// Sync ensures the ledger table exists and backfills a row for every
 	// version the migrate cursor already considers applied. Refuses to
 	// backfill when the cursor is dirty.
-	Sync(db *sql.DB, m *migrator.Migrator, migrationsDir string) error
+	Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error
+	// EnsureSchema creates table if it doesn't already exist (idempotent),
+	// without touching any row. Callers that must not backfill —
+	// `dbtools adopt`, so a pre-existing migrate cursor never gets
+	// silently recorded with an unverified hash — call this instead of
+	// Sync.
+	EnsureSchema(db ledger.DBTX, table string) error
 	// SetStatus upserts version's ledger row, preserving content_sha256
 	// when the row already exists.
-	SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note string) error
+	SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note, table string) error
 	// SetStatusWithHash is SetStatus plus recording the applied migration
 	// file's content hash, so verify can detect edits after apply. Used by
 	// the apply path only.
-	SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash string) error
-	List(db ledger.DBTX) ([]ledger.Entry, error)
-	AppliedVersions(db ledger.DBTX) ([]uint64, error)
+	SetStatusWithHash(db ledger.DBTX, version uint64, status ledger.Status, note, contentHash, table string) error
+	// SetStatusAdopted records version as applied with hash_source
+	// "adopted": the content hash is stored for reference but never
+	// compared against — the row's actual apply-time content was never
+	// observed by dbtools, only inferred from the file's current state at
+	// adopt time. Used by `dbtools adopt` only.
+	SetStatusAdopted(db ledger.DBTX, version uint64, note, contentHash, table string) error
+	List(db ledger.DBTX, table string) ([]ledger.Entry, error)
+	AppliedVersions(db ledger.DBTX, table string) ([]uint64, error)
 }
 
 var registry = map[string]Engine{}

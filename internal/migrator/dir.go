@@ -14,9 +14,17 @@ import (
 )
 
 var (
-	validUpFilenamePattern   = regexp.MustCompile(`^(\d+)_.+\.up\.sql$`)
 	validDownFilenamePattern = regexp.MustCompile(`^(\d+)_.+\.down\.sql$`)
 )
+
+// upFilenamePattern compiles the up-migration filename pattern for the
+// given suffix, e.g. ".up.sql" -> `^(\d+)_.+\.up\.sql$`, ".sql" -> `^(\d+)_.+\.sql$`.
+func upFilenamePattern(upSuffix string) *regexp.Regexp {
+	if upSuffix == "" {
+		upSuffix = ".up.sql"
+	}
+	return regexp.MustCompile(`^(\d+)_.+` + regexp.QuoteMeta(upSuffix) + `$`)
+}
 
 // File represents one plain-SQL migration file on disk.
 type File struct {
@@ -28,6 +36,7 @@ type File struct {
 // Dir is an in-memory indexed view of a local migrations directory.
 type Dir struct {
 	path          string
+	upSuffix      string
 	upFiles       []File
 	downFiles     []File
 	byVersion     map[uint64]File
@@ -35,13 +44,17 @@ type Dir struct {
 }
 
 // ReadDir scans migrationsDir, parses version numbers, sorts ascending, and indexes
-// all *.up.sql and *.down.sql migration files in memory.
-func ReadDir(migrationsDir string) (*Dir, error) {
+// all migration files matching upSuffix and *.down.sql in memory.
+func ReadDir(migrationsDir, upSuffix string) (*Dir, error) {
+	if upSuffix == "" {
+		upSuffix = ".up.sql"
+	}
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &Dir{
 				path:          migrationsDir,
+				upSuffix:      upSuffix,
 				upFiles:       nil,
 				downFiles:     nil,
 				byVersion:     make(map[uint64]File),
@@ -55,25 +68,14 @@ func ReadDir(migrationsDir string) (*Dir, error) {
 	var downFiles []File
 	byVersion := make(map[uint64]File)
 	byVersionDown := make(map[uint64]File)
+	upPat := upFilenamePattern(upSuffix)
 
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		name := e.Name()
-		if m := validUpFilenamePattern.FindStringSubmatch(name); m != nil {
-			ver, err := strconv.ParseUint(m[1], 10, 64)
-			if err != nil {
-				continue
-			}
-			f := File{
-				Version:  ver,
-				Filename: name,
-				Path:     filepath.Join(migrationsDir, name),
-			}
-			upFiles = append(upFiles, f)
-			byVersion[ver] = f
-		} else if m := validDownFilenamePattern.FindStringSubmatch(name); m != nil {
+		if m := validDownFilenamePattern.FindStringSubmatch(name); m != nil {
 			ver, err := strconv.ParseUint(m[1], 10, 64)
 			if err != nil {
 				continue
@@ -85,6 +87,21 @@ func ReadDir(migrationsDir string) (*Dir, error) {
 			}
 			downFiles = append(downFiles, f)
 			byVersionDown[ver] = f
+		} else if m := upPat.FindStringSubmatch(name); m != nil {
+			if upSuffix != ".up.sql" && strings.HasSuffix(name, ".up.sql") {
+				continue
+			}
+			ver, err := strconv.ParseUint(m[1], 10, 64)
+			if err != nil {
+				continue
+			}
+			f := File{
+				Version:  ver,
+				Filename: name,
+				Path:     filepath.Join(migrationsDir, name),
+			}
+			upFiles = append(upFiles, f)
+			byVersion[ver] = f
 		}
 	}
 
@@ -97,6 +114,7 @@ func ReadDir(migrationsDir string) (*Dir, error) {
 
 	return &Dir{
 		path:          migrationsDir,
+		upSuffix:      upSuffix,
 		upFiles:       upFiles,
 		downFiles:     downFiles,
 		byVersion:     byVersion,
@@ -229,7 +247,11 @@ func (d *Dir) NextUpFilename(now time.Time, name string) (string, error) {
 		return "", err
 	}
 	slug := strings.ReplaceAll(strings.TrimSpace(name), " ", "_")
-	return fmt.Sprintf("%014d_%s.up.sql", ver, slug), nil
+	suffix := d.upSuffix
+	if suffix == "" {
+		suffix = ".up.sql"
+	}
+	return fmt.Sprintf("%014d_%s%s", ver, slug, suffix), nil
 }
 
 // ContentHash computes the SHA-256 hex string of version's *.up.sql file.
@@ -260,18 +282,18 @@ func (d *Dir) DownContentHash(version uint64) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// ListVersions returns every migration version found in migrationsDir, ascending.
-func ListVersions(migrationsDir string) ([]uint64, error) {
-	d, err := ReadDir(migrationsDir)
+// ListVersions returns every migration version found in migrationsDir matching upSuffix, ascending.
+func ListVersions(migrationsDir, upSuffix string) ([]uint64, error) {
+	d, err := ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, err
 	}
 	return d.ListVersions(), nil
 }
 
-// FindMigrationFile returns the filename of the .up.sql file for version in migrationsDir.
-func FindMigrationFile(migrationsDir string, version uint64) (string, error) {
-	d, err := ReadDir(migrationsDir)
+// FindMigrationFile returns the filename of the up migration file for version in migrationsDir.
+func FindMigrationFile(migrationsDir, upSuffix string, version uint64) (string, error) {
+	d, err := ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return "", err
 	}

@@ -6,6 +6,8 @@ package ledger
 
 import (
 	"database/sql"
+	"fmt"
+	"regexp"
 	"time"
 )
 
@@ -17,6 +19,10 @@ const (
 	StatusReverted Status = "reverted"
 )
 
+// HashSourceAdopted marks an Entry's ContentSHA256 as recorded by `dbtools
+// adopt` rather than observed at apply time — see Entry.HashSource.
+const HashSourceAdopted = "adopted"
+
 // Entry is one row of dbtools_migration_history.
 type Entry struct {
 	Version    uint64
@@ -26,6 +32,9 @@ type Entry struct {
 	// ContentSHA256 is the hex SHA-256 of the migration file that was
 	// applied, or "" for backfilled rows recorded before hashes existed.
 	ContentSHA256 string
+	// HashSource indicates the provenance of ContentSHA256: "" for normal applies,
+	// "adopted" for rows imported without verification.
+	HashSource string
 }
 
 // DBTX is the subset of *sql.DB's interface needed for ledger operations.
@@ -36,4 +45,16 @@ type DBTX interface {
 	Exec(query string, args ...any) (sql.Result, error)
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryRow(query string, args ...any) *sql.Row
+}
+
+var validTableName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// ValidateTableName rejects a ledger table name that isn't a plain SQL
+// identifier — table names are inlined into SQL text (they can't be bind
+// parameters), so this is the injection guard.
+func ValidateTableName(name string) error {
+	if !validTableName.MatchString(name) {
+		return fmt.Errorf("invalid ledger table name %q: must match %s", name, validTableName.String())
+	}
+	return nil
 }

@@ -33,7 +33,20 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		}
 	}
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+
+	// migrator.Open wraps golang-migrate, whose own file source driver
+	// looks for "<version>_<name>.up.sql" unconditionally — it has no way
+	// to honor a custom up_suffix. A non-default suffix would make our
+	// own dir.PendingAfter (below) report files as pending that
+	// golang-migrate's m.Step() can never find, silently applying
+	// nothing while looking like success. Fail closed instead: today,
+	// up_suffix is only honored by the read-only commands and `adopt`.
+	if upSuffix != config.DefaultUpSuffix {
+		return nil, fmt.Errorf("target %q: migrations.up_suffix=%q is not supported for applying migrations (up/push) — golang-migrate's execution engine requires %q; the read-only commands and `dbtools adopt` honor the custom suffix, but up/push cannot yet", targetName, upSuffix, config.DefaultUpSuffix)
+	}
+
+	m, err := migrator.Open(url, migrationsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -45,11 +58,11 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
+	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	dir, err := migrator.ReadDir(cfg.MigrationsDir)
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
@@ -84,12 +97,12 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 		if err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}
-		if err := eng.Ledger().SetStatusWithHash(db, versionAfter, ledger.StatusApplied, "applied via up/push", hash); err != nil {
+		if err := eng.Ledger().SetStatusWithHash(db, versionAfter, ledger.StatusApplied, "applied via up/push", hash, ledgerTable); err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}
 	}
 
-	status, err := statusinfo.Collect(url, cfg.MigrationsDir, targetName)
+	status, err := statusinfo.Collect(url, migrationsDir, upSuffix, targetName)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}

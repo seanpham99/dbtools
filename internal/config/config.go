@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	toml "github.com/pelletier/go-toml/v2"
+	"github.com/seanpham99/dbtools/internal/ledger"
 )
 
 // UnsetEnvError indicates a target's connection URL environment variable is not defined.
@@ -76,6 +77,48 @@ type ContainerConfig struct {
 	Port int `toml:"port"`
 }
 
+// LedgerConfig configures the migration-ledger table dbtools reads and writes.
+type LedgerConfig struct {
+	// Table overrides the ledger table name — set this to coexist with an
+	// incumbent migration tool's table (e.g. "schema_migrations") instead
+	// of dbtools' own "dbtools_migration_history".
+	Table string `toml:"table"`
+}
+
+// MigrationsConfig configures how migration files on disk are recognized.
+type MigrationsConfig struct {
+	// UpSuffix overrides the up-migration filename suffix (default
+	// ".up.sql"). Set to ".sql" for a flat "<version>_<name>.sql" layout.
+	UpSuffix string `toml:"up_suffix"`
+}
+
+// Defaults for the three migration-location values below, shared with
+// ResolveDefaults so every caller (Load included) derives them once.
+const (
+	DefaultMigrationsDir = "migrations"
+	DefaultUpSuffix      = ".up.sql"
+	DefaultLedgerTable   = "dbtools_migration_history"
+)
+
+// ResolveDefaults fills in the standard default for any of migrationsDir,
+// upSuffix, or table that is empty. Load applies these to a *Config
+// directly; this exists for the internal packages (repair, verify, down,
+// apply, rollback, adopt) that take the three as plain parameters rather
+// than a *Config, so each one defaults identically instead of every
+// caller re-deriving its own copy of the same three checks.
+func ResolveDefaults(migrationsDir, upSuffix, table string) (resolvedDir, resolvedSuffix, resolvedTable string) {
+	if migrationsDir == "" {
+		migrationsDir = DefaultMigrationsDir
+	}
+	if upSuffix == "" {
+		upSuffix = DefaultUpSuffix
+	}
+	if table == "" {
+		table = DefaultLedgerTable
+	}
+	return migrationsDir, upSuffix, table
+}
+
 // Config is the parsed contents of dbtools.toml.
 type Config struct {
 	MigrationsDir string            `toml:"migrations_dir"`
@@ -84,6 +127,8 @@ type Config struct {
 	Clone         CloneConfig       `toml:"clone"`
 	Project       ProjectConfig     `toml:"project"`
 	Container     ContainerConfig   `toml:"container"`
+	Ledger        LedgerConfig      `toml:"ledger"`
+	Migrations    MigrationsConfig  `toml:"migrations"`
 }
 
 // Load reads and parses the dbtools.toml file at path.
@@ -96,13 +141,18 @@ func Load(path string) (*Config, error) {
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config %s: %w", path, err)
 	}
-	if cfg.MigrationsDir == "" {
-		cfg.MigrationsDir = "migrations"
+	cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table = ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	if err := ledger.ValidateTableName(cfg.Ledger.Table); err != nil {
+		return nil, fmt.Errorf("dbtools.toml: %w", err)
 	}
 	// Default exclude list to internal tool tables unless the key was set at all
 	// (including explicitly to an empty list, which means "exclude nothing").
 	if cfg.Generate.Exclude == nil {
-		cfg.Generate.Exclude = []string{"dbtools_migration_history", "schema_migrations"}
+		exclude := []string{"dbtools_migration_history", "schema_migrations"}
+		if cfg.Ledger.Table != DefaultLedgerTable {
+			exclude = append(exclude, cfg.Ledger.Table)
+		}
+		cfg.Generate.Exclude = exclude
 	}
 	return cfg, nil
 }

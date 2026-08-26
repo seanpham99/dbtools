@@ -62,7 +62,7 @@ func TestRun_RecordsPartiallyAppliedMigrationsOnFailure(t *testing.T) {
 	}
 	defer db.Close()
 
-	entries, err := eng.Ledger().List(db)
+	entries, err := eng.Ledger().List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestRun_RecordsPartiallyAppliedMigrationsOnFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err := eng.Ledger().SetStatus(db, 3, ledger.StatusReverted, "repair: previously failed"); err != nil {
+	if err := eng.Ledger().SetStatus(db, 3, ledger.StatusReverted, "repair: previously failed", "dbtools_migration_history"); err != nil {
 		t.Fatalf("marking 3 reverted: %v", err)
 	}
 	m, err := migratorOpen(rawURL, dir)
@@ -123,7 +123,7 @@ func TestRun_RecordsPartiallyAppliedMigrationsOnFailure(t *testing.T) {
 	if _, err := Run(cfg, "local", ""); err != nil {
 		t.Fatalf("Run() after adding migration 4 returned error: %v", err)
 	}
-	entries, err = eng.Ledger().List(db)
+	entries, err = eng.Ledger().List(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,7 +30,9 @@ func Preview(cfg *config.Config, targetName string, steps int, urlOverride strin
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+
+	m, err := migrator.Open(url, migrationsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -42,16 +44,16 @@ func Preview(cfg *config.Config, targetName string, steps int, urlOverride strin
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
+	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	dir, err := migrator.ReadDir(cfg.MigrationsDir)
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	applied, err := eng.Ledger().AppliedVersions(db)
+	applied, err := eng.Ledger().AppliedVersions(db, ledgerTable)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
@@ -72,7 +74,9 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+
+	m, err := migrator.Open(url, migrationsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -84,11 +88,11 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir); err != nil {
+	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	dir, err := migrator.ReadDir(cfg.MigrationsDir)
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
@@ -101,7 +105,7 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		return nil, fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, versionBefore, targetName)
 	}
 
-	applied, err := eng.Ledger().AppliedVersions(db)
+	applied, err := eng.Ledger().AppliedVersions(db, ledgerTable)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
@@ -135,7 +139,7 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}
 
-		if err := eng.Ledger().SetStatusWithHash(db, f.Version, ledger.StatusReverted, "reverted via down", hash); err != nil {
+		if err := eng.Ledger().SetStatusWithHash(db, f.Version, ledger.StatusReverted, "reverted via down", hash, ledgerTable); err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
 		}
 		reverted = append(reverted, f.Version)

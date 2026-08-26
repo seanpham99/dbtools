@@ -300,6 +300,61 @@ func TestDoctorLiveObjectDropDrift(t *testing.T) {
 	}
 }
 
+func TestDoctor_SkipsHashCheckForAdoptedRows(t *testing.T) {
+	dir, rawURL, cfg := setupTestDoctorEnv(t)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// Apply migration first
+	_, err = apply.Run(cfg, "testdb", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mark the row as adopted with a deliberately wrong hash
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`UPDATE dbtools_migration_history SET content_sha256 = 'deliberatelywronghash', hash_source = 'adopted' WHERE version = 20260822000001`); err != nil {
+		t.Fatal(err)
+	}
+
+	report := evaluateTarget(cfg, "testdb")
+	if !report.Healthy {
+		t.Fatalf("evaluateTarget() healthy = false, want true when row is adopted. Checks: %+v", report.Checks)
+	}
+	if report.Exit != 0 {
+		t.Fatalf("evaluateTarget() exit = %d, want 0", report.Exit)
+	}
+
+	var ledgerCheck *CheckResult
+	for i := range report.Checks {
+		if report.Checks[i].Name == "ledger-integrity" {
+			ledgerCheck = &report.Checks[i]
+			break
+		}
+	}
+	if ledgerCheck == nil {
+		t.Fatal("ledger-integrity check not found in report")
+	}
+	if ledgerCheck.Status != "ok" {
+		t.Fatalf("ledger-integrity status = %q, want ok", ledgerCheck.Status)
+	}
+	if !strings.Contains(ledgerCheck.Message, "skipped") {
+		t.Fatalf("ledger-integrity message = %q, want it to mention skipped", ledgerCheck.Message)
+	}
+}
+
 func TestRenderDoctorHuman(t *testing.T) {
 	rep := &DoctorReport{
 		Target:  "prod",

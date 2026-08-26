@@ -46,7 +46,7 @@ func runDryRun(cfg *config.Config, targetName, urlOverride string) error {
 		return fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, curVer, targetName)
 	}
 
-	dir, err := migrator.ReadDir(cfg.MigrationsDir)
+	dir, err := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
 	if err != nil {
 		return err
 	}

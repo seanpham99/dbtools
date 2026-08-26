@@ -69,7 +69,7 @@ CREATE VIEW active_users AS SELECT * FROM users;`
 	defer db.Close()
 
 	// verify: clean after up
-	report, err := verify.Collect(db, eng, "migrations", "local")
+	report, err := verify.Collect(db, eng, "migrations", cfg.Migrations.UpSuffix, cfg.Ledger.Table, "local")
 	if err != nil {
 		t.Fatalf("verify.Collect() returned error: %v", err)
 	}
@@ -83,7 +83,7 @@ CREATE VIEW active_users AS SELECT * FROM users;`
 	if _, err := db.Exec(`DROP VIEW active_users`); err != nil {
 		t.Fatal(err)
 	}
-	report, err = verify.Collect(db, eng, "migrations", "local")
+	report, err = verify.Collect(db, eng, "migrations", cfg.Migrations.UpSuffix, cfg.Ledger.Table, "local")
 	if err != nil {
 		t.Fatalf("verify.Collect() after drop returned error: %v", err)
 	}
@@ -139,7 +139,7 @@ CREATE VIEW active_users AS SELECT * FROM users;`
 	}
 
 	// verify: after down, table is gone and ledger records reverted (not drift)
-	report, err = verify.Collect(db2, eng, "migrations", "local")
+	report, err = verify.Collect(db2, eng, "migrations", cfg.Migrations.UpSuffix, cfg.Ledger.Table, "local")
 	if err != nil {
 		t.Fatalf("verify.Collect() after down returned error: %v", err)
 	}

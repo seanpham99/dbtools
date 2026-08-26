@@ -34,16 +34,16 @@ func TestCollect_DetectsStampedButNeverRunTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := mssqlengine.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 	// Reproduces the 2026-07-10 incident: the ledger claims this version is
 	// applied, but its CREATE TABLE was never actually run.
-	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "simulated stamp-without-running"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "simulated stamp-without-running", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestCollect_DetectsStampedButNeverRunTable(t *testing.T) {
 	}
 	defer db.Exec("DROP TABLE dbtools_test_verify_widgets")
 
-	report, err = Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
+	report, err = Collect(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("second Collect() returned error: %v", err)
 	}
@@ -92,14 +92,14 @@ func TestCollect_RevertedButStillExists(t *testing.T) {
 	}
 	defer db.Exec("DROP TABLE dbtools_test_verify_reverted")
 
-	if err := mssqlengine.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusReverted, "test"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusReverted, "test", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -129,14 +129,14 @@ func TestCollect_RevertedWithFileGoneIsNotDrift(t *testing.T) {
 	// drift: reverted already means "these objects shouldn't exist".
 	dir := t.TempDir()
 
-	if err := mssqlengine.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusReverted, "superseded by a rename, file no longer exists"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusReverted, "superseded by a rename, file no longer exists", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -165,14 +165,14 @@ func TestCollect_AppliedWithFileGoneIsStillDrift(t *testing.T) {
 	// must stay DRIFT even after the reverted-with-missing-file exemption.
 	dir := t.TempDir()
 
-	if err := mssqlengine.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "file missing, still claimed applied"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "file missing, still claimed applied", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -206,17 +206,17 @@ func TestCollect_CreatedThenDroppedByLaterMigrationIsNotDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := mssqlengine.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "creates the table"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "creates the table", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := mssqlengine.SetStatus(db, 20260102000000, ledger.StatusApplied, "drops the table"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260102000000, ledger.StatusApplied, "drops the table", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}
@@ -252,14 +252,14 @@ func TestCollect_ReportsAllMissingObjectsInOneMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := mssqlengine.EnsureSchema(db); err != nil {
+	if err := mssqlengine.EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "neither object was actually created"); err != nil {
+	if err := mssqlengine.SetStatus(db, 20260101000000, ledger.StatusApplied, "neither object was actually created", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
-	report, err := Collect(db, mssqlengine.MSSQL{}, dir, "test-target")
+	report, err := Collect(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", "test-target")
 	if err != nil {
 		t.Fatalf("Collect() returned error: %v", err)
 	}

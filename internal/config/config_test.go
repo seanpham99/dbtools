@@ -30,6 +30,40 @@ url_env = "DBTOOLS_LOCAL_URL"
 	}
 }
 
+func TestResolveDefaults_FillsOnlyEmptyValues(t *testing.T) {
+	dir, suffix, table := ResolveDefaults("", "", "")
+	if dir != DefaultMigrationsDir || suffix != DefaultUpSuffix || table != DefaultLedgerTable {
+		t.Errorf("ResolveDefaults(\"\", \"\", \"\") = (%q, %q, %q), want the three defaults", dir, suffix, table)
+	}
+
+	dir, suffix, table = ResolveDefaults("db/migrations", ".sql", "schema_migrations")
+	if dir != "db/migrations" || suffix != ".sql" || table != "schema_migrations" {
+		t.Errorf("ResolveDefaults with all set = (%q, %q, %q), want inputs unchanged", dir, suffix, table)
+	}
+}
+
+func TestLoad_GenerateExcludeIncludesCustomLedgerTable(t *testing.T) {
+	path := writeTemp(t, `
+[targets.local]
+url_env = "DBTOOLS_LOCAL_URL"
+[ledger]
+table = "my_custom_history"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	found := false
+	for _, name := range cfg.Generate.Exclude {
+		if name == "my_custom_history" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Generate.Exclude = %v, want it to contain the custom ledger table %q", cfg.Generate.Exclude, "my_custom_history")
+	}
+}
+
 func TestLoad_ExplicitMigrationsDir(t *testing.T) {
 	path := writeTemp(t, `
 migrations_dir = "db/migrations"
@@ -226,5 +260,60 @@ url_env = "L_URL"
 	}
 	if cfg.Container.Port != 0 {
 		t.Errorf("Container.Port = %d, want 0 (meaning: let Docker assign a port)", cfg.Container.Port)
+	}
+}
+
+func TestLoad_DefaultsLedgerTableAndUpSuffix(t *testing.T) {
+	path := writeTemp(t, `
+migrations_dir = "migrations"
+
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Ledger.Table != "dbtools_migration_history" {
+		t.Errorf("Ledger.Table = %q, want default", cfg.Ledger.Table)
+	}
+	if cfg.Migrations.UpSuffix != ".up.sql" {
+		t.Errorf("Migrations.UpSuffix = %q, want default", cfg.Migrations.UpSuffix)
+	}
+}
+
+func TestLoad_OverridesLedgerTableAndUpSuffix(t *testing.T) {
+	path := writeTemp(t, `
+migrations_dir = "migrations"
+
+[ledger]
+table = "schema_migrations"
+
+[migrations]
+up_suffix = ".sql"
+
+[targets.local]
+url_env = "L_URL"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Ledger.Table != "schema_migrations" {
+		t.Errorf("Ledger.Table = %q, want override", cfg.Ledger.Table)
+	}
+	if cfg.Migrations.UpSuffix != ".sql" {
+		t.Errorf("Migrations.UpSuffix = %q, want override", cfg.Migrations.UpSuffix)
+	}
+}
+
+func TestLoad_RejectsInvalidLedgerTableName(t *testing.T) {
+	path := writeTemp(t, `
+migrations_dir = "migrations"
+[ledger]
+table = "bad; drop table users"
+`)
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load() with invalid ledger table name: want error, got nil")
 	}
 }

@@ -35,7 +35,9 @@ same core.
 | v0.3/4 ✅ | **Clone prod→dev** | Shipped: `dbtools clone <source> <dest>`, `internal/clone`. Masking on by default (built-in sensitive-column list + `[clone.mask]` overrides); `--no-mask` is the explicit opt-out. Same-engine only; row-count/WHERE subsetting via `--limit`/`--where`. |
 | v0.3/4 ✅ | **MySQL engine** | Shipped: `internal/engine/mysqlengine`, mirroring the mssql/postgres/sqlite seam. classicmodels fixtures ported to MySQL with real FKs. Scope: TABLE/VIEW DDL detection only (no stored procedures — see the implementation plan for why). `internal/container` local-dev support shipped separately (see Docker project lifecycle, below). |
 | v0.4 ✅ | **Docker project lifecycle** | Shipped: project-scoped local container/volume naming (path-hash or `[project] name`), dynamic or pinned (`[container] port`) host ports, data persists across `stop`/`start` via a named volume (`stop --no-backup` opts back into a full wipe), new `restart`/`logs` commands, and the missing MySQL container spec. `dbtools reset` on MySQL remains unsupported (separate, deferred gap — `cmd/reset.go` has no `mysql` case yet). |
-| v0.5 | **Backup** | Table-stakes backup/restore. |
+| v0.5 ✅ | **Private-network job execution** (issue #60) | Shipped: official multi-arch Docker image (`ghcr.io/seanpham99/dbtools`), Postgres diagnostics (NOTICE forwarding, character-offset error translation, SQLSTATE 42501 permission diagnostic), `--log-format=json` structured logging with clean stdout/stderr separation, job-completion summary record, and container-orchestrator retry-semantics docs. Landed as `feat:` commits, correctly bumping past v0.4 per semver — this table is the roadmap's record of *why*, not a manual override of the version number. |
+| v0.6 | **Incumbent-ledger adoption** (issues #61–#63) | `dbtools adopt` (import an existing migration ledger + configurable table name/filename convention), ledger-free read-only mode for `plan`/`verify`/`doctor`/`status`, `dbtools diff` (replay-and-compare drift check), `dbtools squash` (verified baseline collapse, safe on fresh and existing databases). In progress — see `docs/superpowers/plans/2026-08-25-adopt.md` for `adopt`. |
+| v0.7 | **Backup** | Table-stakes backup/restore. |
 | Mongo | **C → B → A** | Starts only after SQL is stable (gate = v0.2 shipped — met). See design below. |
 | launch | — | Public launch (announcements, directories) happens only after the v0.2/v0.3 features above. |
 
@@ -110,7 +112,7 @@ non-SQL seam, so it is a semantic fork, not a new engine. Sequence:
 
 ## Open questions (deferred)
 
-- Backup scope (v0.4): full vs incremental, engine support, restore test strategy.
+- Backup scope (v0.7): full vs incremental, engine support, restore test strategy.
 - `doctor` exact check list — spec at v0.3 start.
 - Exact exit-code values — written up in `docs/exit-codes.md` with v0.2.
 - Mongo `generate` output shape — decide at step B (pydantic vs TS).

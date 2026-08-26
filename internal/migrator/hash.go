@@ -4,8 +4,8 @@ package migrator
 // is what the ledger stores when a migration is applied, so verify can
 // detect an applied migration being edited after the fact — the most
 // common real-world schema drift.
-func ContentHash(migrationsDir string, version uint64) (string, error) {
-	d, err := ReadDir(migrationsDir)
+func ContentHash(migrationsDir, upSuffix string, version uint64) (string, error) {
+	d, err := ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return "", err
 	}

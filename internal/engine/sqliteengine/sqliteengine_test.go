@@ -23,6 +23,46 @@ func openTemp(t *testing.T) *sql.DB {
 	return db
 }
 
+// TestSetStatusWithHash_ClearsAdoptedHashSourceOnReapply is a regression
+// test for a review finding: SetStatusWithHash's ON CONFLICT branch didn't
+// update content_sha256 or hash_source, so a version adopted (hash_source
+// "adopted") and later reverted and genuinely re-applied would keep
+// reporting the stale adopted hash and provenance forever — doctor/verify
+// would never promote it to "actually verified" even after a real apply
+// recorded its real hash.
+func TestSetStatusWithHash_ClearsAdoptedHashSourceOnReapply(t *testing.T) {
+	db := openTemp(t)
+	store := ledgerStore{}
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.SetStatusAdopted(db, 1, "adopted from schema_migrations", "deadbeef", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatusAdopted() returned error: %v", err)
+	}
+	if err := store.SetStatus(db, 1, ledger.StatusReverted, "reverted", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatus(reverted) returned error: %v", err)
+	}
+	if err := store.SetStatusWithHash(db, 1, ledger.StatusApplied, "applied via up/push", "realhash123", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatusWithHash() returned error: %v", err)
+	}
+
+	entries, err := store.List(db, "dbtools_migration_history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.ContentSHA256 != "realhash123" {
+		t.Errorf("ContentSHA256 = %q, want realhash123 (must overwrite the stale adopted hash)", e.ContentSHA256)
+	}
+	if e.HashSource != "" {
+		t.Errorf("HashSource = %q, want empty (a genuine re-apply must clear the adopted tag)", e.HashSource)
+	}
+}
+
 func TestPathFromURL(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"sqlite://relative/to.db", "relative/to.db"},
@@ -171,27 +211,28 @@ func TestExists(t *testing.T) {
 func TestLedgerRoundTrip(t *testing.T) {
 	db := openTemp(t)
 	store := ledgerStore{}
-	if err := store.ensureSchema(db); err != nil {
+	table := "dbtools_migration_history"
+	if err := store.ensureSchema(db, table); err != nil {
 		t.Fatalf("ensureSchema() returned error: %v", err)
 	}
-	if err := store.ensureSchema(db); err != nil {
+	if err := store.ensureSchema(db, table); err != nil {
 		t.Fatalf("second ensureSchema() returned error: %v", err)
 	}
 
-	if err := store.SetStatus(db, 100, ledger.StatusApplied, "first"); err != nil {
+	if err := store.SetStatus(db, 100, ledger.StatusApplied, "first", table); err != nil {
 		t.Fatalf("SetStatus() returned error: %v", err)
 	}
-	if err := store.SetStatus(db, 100, ledger.StatusReverted, "rolled back"); err != nil {
+	if err := store.SetStatus(db, 100, ledger.StatusReverted, "rolled back", table); err != nil {
 		t.Fatalf("SetStatus() upsert returned error: %v", err)
 	}
-	if err := store.SetStatus(db, 200, ledger.StatusApplied, "second"); err != nil {
+	if err := store.SetStatus(db, 200, ledger.StatusApplied, "second", table); err != nil {
 		t.Fatalf("SetStatus() returned error: %v", err)
 	}
-	if err := store.backfill(db, 300, true, []uint64{100, 200, 300, 400}); err != nil {
+	if err := store.backfill(db, 300, true, []uint64{100, 200, 300, 400}, table); err != nil {
 		t.Fatalf("backfill() returned error: %v", err)
 	}
 
-	entries, err := store.List(db)
+	entries, err := store.List(db, table)
 	if err != nil {
 		t.Fatalf("List() returned error: %v", err)
 	}
@@ -208,7 +249,7 @@ func TestLedgerRoundTrip(t *testing.T) {
 		t.Errorf("entry[2] = %+v, want backfilled 300 with nil RecordedAt", entries[2])
 	}
 
-	applied, err := store.AppliedVersions(db)
+	applied, err := store.AppliedVersions(db, table)
 	if err != nil {
 		t.Fatalf("AppliedVersions() returned error: %v", err)
 	}
@@ -217,11 +258,69 @@ func TestLedgerRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLedgerStore_CustomTableName(t *testing.T) {
+	db := openTemp(t)
+	store := ledgerStore{}
+	customTable := "custom_migration_history"
+
+	if err := store.ensureSchema(db, customTable); err != nil {
+		t.Fatalf("ensureSchema(customTable): %v", err)
+	}
+	if err := store.SetStatus(db, 1, ledger.StatusApplied, "first", customTable); err != nil {
+		t.Fatalf("SetStatus(customTable): %v", err)
+	}
+	entries, err := store.List(db, customTable)
+	if err != nil {
+		t.Fatalf("List(customTable): %v", err)
+	}
+	if len(entries) != 1 || entries[0].Version != 1 {
+		t.Fatalf("List(customTable) = %+v, want 1 entry", entries)
+	}
+
+	// Verify table was created with custom name
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='custom_migration_history'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("custom table count = %d, want 1", count)
+	}
+}
+
+func TestLedgerStore_SetStatusAdopted(t *testing.T) {
+	db := openTemp(t)
+	store := ledgerStore{}
+	table := "dbtools_migration_history"
+
+	if err := store.ensureSchema(db, table); err != nil {
+		t.Fatalf("ensureSchema() returned error: %v", err)
+	}
+
+	if err := store.SetStatusAdopted(db, 1, "adopted from schema_migrations", "abc123", table); err != nil {
+		t.Fatalf("SetStatusAdopted() returned error: %v", err)
+	}
+
+	entries, err := store.List(db, table)
+	if err != nil {
+		t.Fatalf("List() returned error: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("len(entries) = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.HashSource != "adopted" {
+		t.Errorf("HashSource = %q, want \"adopted\"", e.HashSource)
+	}
+	if e.Status != ledger.StatusApplied {
+		t.Errorf("Status = %q, want applied", e.Status)
+	}
+	if e.ContentSHA256 != "abc123" {
+		t.Errorf("ContentSHA256 = %q, want abc123", e.ContentSHA256)
+	}
+}
+
 func TestLedgerRejectsVersionsAboveIntegerRange(t *testing.T) {
-	if err := (ledgerStore{}).SetStatus(nil, math.MaxInt64+1, ledger.StatusApplied, ""); err == nil || !strings.Contains(err.Error(), "INTEGER range") {
+	if err := (ledgerStore{}).SetStatus(nil, math.MaxInt64+1, ledger.StatusApplied, "", "dbtools_migration_history"); err == nil || !strings.Contains(err.Error(), "INTEGER range") {
 		t.Errorf("SetStatus(MaxInt64+1) err = %v, want INTEGER range error", err)
 	}
-	if err := (ledgerStore{}).backfill(nil, math.MaxUint64, true, []uint64{math.MaxInt64 + 1}); err == nil || !strings.Contains(err.Error(), "INTEGER range") {
+	if err := (ledgerStore{}).backfill(nil, math.MaxUint64, true, []uint64{math.MaxInt64 + 1}, "dbtools_migration_history"); err == nil || !strings.Contains(err.Error(), "INTEGER range") {
 		t.Errorf("backfill(MaxInt64+1) err = %v, want INTEGER range error", err)
 	}
 }

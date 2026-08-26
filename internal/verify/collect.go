@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
@@ -30,13 +31,14 @@ type Report struct {
 // versions marked "applied" must have every object their migration creates
 // actually present AND the migration file's content must still match the
 // hash recorded when it was applied; versions marked "reverted" must not.
-func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*Report, error) {
-	entries, err := eng.Ledger().List(db)
+func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targetName string) (*Report, error) {
+	migrationsDir, upSuffix, table = config.ResolveDefaults(migrationsDir, upSuffix, table)
+	entries, err := eng.Ledger().List(db, table)
 	if err != nil {
 		return nil, err
 	}
 
-	dir, err := migrator.ReadDir(migrationsDir)
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +98,9 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, targetName string) (*
 		// Content-hash check: an applied migration whose file was edited
 		// after apply is drift even when every object still exists — the
 		// DB no longer matches what the file says. Backfilled rows have no
-		// hash (recorded before hashing existed) and are skipped.
-		if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" {
+		// hash (recorded before hashing existed) and adopted rows (inferred
+		// at adopt time, not observed at apply time) are skipped.
+		if e.Status == ledger.StatusApplied && e.ContentSHA256 != "" && e.HashSource != ledger.HashSourceAdopted {
 			sum, err := dir.ContentHash(e.Version)
 			if err != nil {
 				return nil, err

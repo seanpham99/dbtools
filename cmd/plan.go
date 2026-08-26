@@ -117,7 +117,7 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 			url, _ := cfg.ResolveURLOrFlag(r.Target, override)
 			eng, err := engine.ForTarget(cfg.EngineName(r.Target), url)
 			if err == nil {
-				e.Drift = planDrift(url, eng, cfg.MigrationsDir, r.Target)
+				e.Drift = planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, r.Target)
 			}
 		}
 		entries = append(entries, e)
@@ -127,14 +127,14 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 
 // planDrift runs a read-only verify pass against url and returns the
 // drift details for applied/reverted versions.
-func planDrift(url string, eng engine.Engine, migrationsDir, targetName string) []string {
+func planDrift(url string, eng engine.Engine, migrationsDir, upSuffix, table, targetName string) []string {
 	db, err := eng.Open(url)
 	if err != nil {
 		return []string{"verify: " + err.Error()}
 	}
 	defer db.Close()
 
-	report, err := verify.Collect(db, eng, migrationsDir, targetName)
+	report, err := verify.Collect(db, eng, migrationsDir, upSuffix, table, targetName)
 	if err != nil {
 		return []string{"verify: " + err.Error()}
 	}
