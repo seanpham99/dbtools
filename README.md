@@ -15,6 +15,7 @@
 - **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
 - **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
 - **Full Structural Replay & Diff**: `dbtools diff` replays migrations into an ephemeral scratch database and compares its structural schema catalog against live targets to detect unrecorded 2am manual hotfixes that bypass the ledger.
+- **Verified Migration Squash**: `dbtools squash` collapses long migration histories into a single, structurally verified baseline safe on both fresh and already-migrated targets.
 - **Rollback & Down Migrations**: `dbtools down` applies `.down.sql` files in reverse; `dbtools rollback` is a ledger-only soft-revert — the safe prod verb. Destructive ops on protected targets require `--preview --yes`.
 - **Agent-First Ergonomics**: Terraform-style exit-code contract (`0` clean / `1` error / `2` pending changes or drift), `--dry-run` previews, universal `--json`, and `DBTOOLS_NO_PROMPT=1` fail-closed mode for CI and AI agents. See [docs/exit-codes.md](docs/exit-codes.md).
 - **Environment & Target Protection**: Targets are defined in `dbtools.toml` by environment variable names (`url_env`), ensuring secrets never leak into version control. Protected targets reject destructive operations (`up`, `reset`, and `down` without `--preview --yes`).
@@ -137,6 +138,7 @@ dbtools status
 | `rollback` | `dbtools rollback <target> [--yes]` | Ledger-only soft-revert (marks `reverted`, never data-destroying). The safe prod verb. |
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
 | `adopt` | `dbtools adopt <target> [--yes] [--force]` | Imports existing migration history from another tool (Flyway, Knex, EF, Alembic, golang-migrate). |
+| `squash` | `dbtools squash <target> [--upto <v>] [--out <f>] [--yes]` | Collapses migration history into a verified baseline (dry-run by default; re-stamps target). |
 | `force` | `dbtools force <version> [--target <target>] [--yes]` | Sets tracking version cursor and clears dirty state without running migration SQL. |
 | `reset` | `dbtools reset [target] [--yes]` | Unprotected targets: drops database, replays all migrations from zero, and executes `seed.sql`. |
 | `generate` | `dbtools generate [target] [--lang python\|ts] [--zod] [--out file]` | Introspects live schema and renders Pydantic v2 models (`python`, default) or Supabase-style TypeScript interfaces (`ts`; `--zod` adds zod schemas). |
