@@ -48,9 +48,18 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 	}
 	if cleanup != nil {
 		defer func() {
-			if cerr := cleanup(); cerr != nil {
-				notes = append(notes, fmt.Sprintf("warning: scratch database cleanup failed: %v", cerr))
+			cerr := cleanup()
+			if cerr == nil {
+				return
 			}
+			if err != nil {
+				// The run already failed — fold the cleanup failure into
+				// that error rather than the notes slice, which callers
+				// don't render on a non-nil error (see cmd/diff.go).
+				err = fmt.Errorf("%w (scratch database cleanup also failed: %v)", err, cerr)
+				return
+			}
+			notes = append(notes, fmt.Sprintf("warning: scratch database cleanup failed: %v", cerr))
 		}()
 	}
 

@@ -111,8 +111,8 @@ func TestDiffCommand_AgainstTargetURLRejectedBeforeReplay(t *testing.T) {
 	t.Cleanup(func() { diffAgainst = "" })
 
 	err = runDiff("testdb")
-	if err == nil || !strings.Contains(err.Error(), "--against must not match") {
-		t.Fatalf("runDiff with target URL as --against returned %v, want a matching-URL error", err)
+	if err == nil || !strings.Contains(err.Error(), "identifies the same database as the target") {
+		t.Fatalf("runDiff with target URL as --against returned %v, want a same-database error", err)
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
@@ -126,6 +126,34 @@ func TestDiffCommand_AgainstTargetURLRejectedBeforeReplay(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("found %d table(s) after matching --against rejection; migration replay started", count)
+	}
+}
+
+// TestDiffCommand_AgainstEquivalentTargetURLRejected is a regression test
+// for a review finding: the original guard only caught an exact string
+// match, so the same physical database spelled differently (here: a
+// relative path resolving to the same file as the target's absolute
+// path) would slip through and diff.Run would replay migrations onto the
+// live target.
+func TestDiffCommand_AgainstEquivalentTargetURLRejected(t *testing.T) {
+	dir, dbPath, _ := setupDiffCmdTestEnv(t)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+
+	// Same file as the target's absolute-path URL, spelled as a relative
+	// path from the working directory (which is now dir).
+	diffAgainst = "sqlite://" + filepath.Base(dbPath)
+	t.Cleanup(func() { diffAgainst = "" })
+
+	err = runDiff("testdb")
+	if err == nil || !strings.Contains(err.Error(), "identifies the same database as the target") {
+		t.Fatalf("runDiff with an equivalent (relative-path) --against URL returned %v, want a same-database error", err)
 	}
 }
 
