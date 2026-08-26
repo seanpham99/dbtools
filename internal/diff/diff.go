@@ -14,7 +14,7 @@ import (
 // skipping provisioning), replays every migration file into it via the
 // real apply path, introspects both it and target, and returns the
 // structural comparison. Never writes to target.
-func Run(cfg *config.Config, targetName, againstURL string) ([]Finding, []string, error) {
+func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding, notes []string, err error) {
 	targetURL, err := cfg.ResolveURLOrFlag(targetName, "")
 	if err != nil {
 		return nil, nil, err
@@ -48,7 +48,9 @@ func Run(cfg *config.Config, targetName, againstURL string) ([]Finding, []string
 	}
 	if cleanup != nil {
 		defer func() {
-			_ = cleanup()
+			if cerr := cleanup(); cerr != nil {
+				notes = append(notes, fmt.Sprintf("warning: scratch database cleanup failed: %v", cerr))
+			}
 		}()
 	}
 
@@ -80,6 +82,6 @@ func Run(cfg *config.Config, targetName, againstURL string) ([]Finding, []string
 		return nil, nil, fmt.Errorf("introspecting target database: %w", err)
 	}
 
-	findings, notes := Compare(scratchSchema, targetSchema)
+	findings, notes = Compare(scratchSchema, targetSchema)
 	return findings, notes, nil
 }

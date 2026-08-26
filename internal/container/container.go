@@ -484,21 +484,29 @@ func StartScratch(engineName string) (rawURL string, cleanup func() error, err e
 		return nil
 	}
 
+	// abortWith cleans up the just-started container and folds any
+	// cleanup failure into the returned error rather than dropping it —
+	// a container that fails to stop needs a manual `docker rm -f`, and
+	// silently losing that fact leaves it running unnoticed.
+	abortWith := func(err error) error {
+		if cerr := cleanup(); cerr != nil {
+			return fmt.Errorf("%w (cleanup also failed: %v)", err, cerr)
+		}
+		return err
+	}
+
 	port, err := discoverHostPort(s.name, s.containerPort)
 	if err != nil {
-		_ = cleanup()
-		return "", nil, err
+		return "", nil, abortWith(err)
 	}
 	s.hostPort = port
 
 	if err := waitReadyWithTimeout(s, 60*time.Second); err != nil {
-		_ = cleanup()
-		return "", nil, err
+		return "", nil, abortWith(err)
 	}
 	if s.createDBArgs != nil {
 		if out, err := exec.Command("docker", s.createDBArgs(s)...).CombinedOutput(); err != nil {
-			_ = cleanup()
-			return "", nil, fmt.Errorf("creating %s: %w: %s", DatabaseName, err, strings.TrimSpace(string(out)))
+			return "", nil, abortWith(fmt.Errorf("creating %s: %w: %s", DatabaseName, err, strings.TrimSpace(string(out))))
 		}
 	}
 	return s.url(s, DatabaseName), cleanup, nil

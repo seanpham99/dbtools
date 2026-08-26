@@ -63,6 +63,58 @@ func nullInt64Str(n sql.NullInt64) string {
 	return "<none>"
 }
 
+// sortedKeys returns the union of a's and b's keys, sorted — the shared
+// key-union shape every object-kind comparison below needs before it can
+// walk scratch/target in a deterministic order.
+func sortedKeys[T any](a, b map[string]T) []string {
+	seen := make(map[string]struct{}, len(a)+len(b))
+	for k := range a {
+		seen[k] = struct{}{}
+	}
+	for k := range b {
+		seen[k] = struct{}{}
+	}
+	keys := make([]string, 0, len(seen))
+	for k := range seen {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// diffKeyed walks the sorted union of scratch's and target's keys,
+// emitting a MISSING/EXTRA Finding for a key present on only one side,
+// and calling diffFn for a key present on both — diffFn returns the
+// human-readable differences found (nil/empty means no CHANGED finding).
+// label names the object kind for the MISSING/EXTRA messages, e.g. "index".
+func diffKeyed[T any](tblKey string, obj ObjectType, label string, scratch, target map[string]T, diffFn func(s, t T) []string) []Finding {
+	var findings []Finding
+	for _, name := range sortedKeys(scratch, target) {
+		s, inScratch := scratch[name]
+		t, inTarget := target[name]
+		switch {
+		case inScratch && !inTarget:
+			findings = append(findings, Finding{
+				Kind: KindMissing, Object: obj, Table: tblKey, Name: name,
+				Detail: fmt.Sprintf("%s exists in migrations but missing in target", label),
+			})
+		case !inScratch && inTarget:
+			findings = append(findings, Finding{
+				Kind: KindExtra, Object: obj, Table: tblKey, Name: name,
+				Detail: fmt.Sprintf("%s exists in target but missing in migrations", label),
+			})
+		case inScratch && inTarget:
+			if diffs := diffFn(s, t); len(diffs) > 0 {
+				findings = append(findings, Finding{
+					Kind: KindChanged, Object: obj, Table: tblKey, Name: name,
+					Detail: strings.Join(diffs, "; "),
+				})
+			}
+		}
+	}
+	return findings
+}
+
 // Compare returns every structural difference between scratch (the
 // migrations' truth) and target (the live database), plus a separate
 // slice of purely informational notes (currently: column ordinal-position
@@ -78,21 +130,7 @@ func Compare(scratch, target []generate.TableSchema) (findings []Finding, notes 
 		targetMap[tableIdent(t.Schema, t.Name)] = t
 	}
 
-	// Union of all table keys, sorted for deterministic output.
-	allTableKeys := make(map[string]struct{})
-	for k := range scratchMap {
-		allTableKeys[k] = struct{}{}
-	}
-	for k := range targetMap {
-		allTableKeys[k] = struct{}{}
-	}
-	tableNames := make([]string, 0, len(allTableKeys))
-	for k := range allTableKeys {
-		tableNames = append(tableNames, k)
-	}
-	sort.Strings(tableNames)
-
-	for _, tblKey := range tableNames {
+	for _, tblKey := range sortedKeys(scratchMap, targetMap) {
 		sTbl, inScratch := scratchMap[tblKey]
 		tTbl, inTarget := targetMap[tblKey]
 
@@ -137,13 +175,6 @@ func compareTable(tblKey string, sTbl, tTbl generate.TableSchema) ([]Finding, []
 		tCols[c.Name] = c
 	}
 
-	allColNamesMap := make(map[string]struct{})
-	for k := range sCols {
-		allColNamesMap[k] = struct{}{}
-	}
-	for k := range tCols {
-		allColNamesMap[k] = struct{}{}
-	}
 	var colNames []string
 	// Maintain scratch column order first, then any extra columns from target
 	for _, c := range sTbl.Columns {
@@ -235,60 +266,16 @@ func compareTable(tblKey string, sTbl, tTbl generate.TableSchema) ([]Finding, []
 	for _, idx := range tTbl.Indexes {
 		tIndexes[idx.Name] = idx
 	}
-
-	allIdxNamesMap := make(map[string]struct{})
-	for k := range sIndexes {
-		allIdxNamesMap[k] = struct{}{}
-	}
-	for k := range tIndexes {
-		allIdxNamesMap[k] = struct{}{}
-	}
-	idxNames := make([]string, 0, len(allIdxNamesMap))
-	for k := range allIdxNamesMap {
-		idxNames = append(idxNames, k)
-	}
-	sort.Strings(idxNames)
-
-	for _, idxName := range idxNames {
-		sIdx, inScratch := sIndexes[idxName]
-		tIdx, inTarget := tIndexes[idxName]
-
-		switch {
-		case inScratch && !inTarget:
-			findings = append(findings, Finding{
-				Kind:   KindMissing,
-				Object: ObjectIndex,
-				Table:  tblKey,
-				Name:   idxName,
-				Detail: "index exists in migrations but missing in target",
-			})
-		case !inScratch && inTarget:
-			findings = append(findings, Finding{
-				Kind:   KindExtra,
-				Object: ObjectIndex,
-				Table:  tblKey,
-				Name:   idxName,
-				Detail: "index exists in target but missing in migrations",
-			})
-		case inScratch && inTarget:
-			var diffs []string
-			if sIdx.Unique != tIdx.Unique {
-				diffs = append(diffs, fmt.Sprintf("unique %t vs %t", sIdx.Unique, tIdx.Unique))
-			}
-			if !equalStringSlices(sIdx.Columns, tIdx.Columns) {
-				diffs = append(diffs, fmt.Sprintf("columns %v vs %v", sIdx.Columns, tIdx.Columns))
-			}
-			if len(diffs) > 0 {
-				findings = append(findings, Finding{
-					Kind:   KindChanged,
-					Object: ObjectIndex,
-					Table:  tblKey,
-					Name:   idxName,
-					Detail: strings.Join(diffs, "; "),
-				})
-			}
+	findings = append(findings, diffKeyed(tblKey, ObjectIndex, "index", sIndexes, tIndexes, func(sIdx, tIdx generate.IndexSchema) []string {
+		var diffs []string
+		if sIdx.Unique != tIdx.Unique {
+			diffs = append(diffs, fmt.Sprintf("unique %t vs %t", sIdx.Unique, tIdx.Unique))
 		}
-	}
+		if !equalStringSlices(sIdx.Columns, tIdx.Columns) {
+			diffs = append(diffs, fmt.Sprintf("columns %v vs %v", sIdx.Columns, tIdx.Columns))
+		}
+		return diffs
+	})...)
 
 	// 3. Foreign Keys
 	sFKs := make(map[string]generate.ForeignKeySchema, len(sTbl.ForeignKeys))
@@ -299,66 +286,22 @@ func compareTable(tblKey string, sTbl, tTbl generate.TableSchema) ([]Finding, []
 	for _, fk := range tTbl.ForeignKeys {
 		tFKs[fk.Name] = fk
 	}
-
-	allFKNamesMap := make(map[string]struct{})
-	for k := range sFKs {
-		allFKNamesMap[k] = struct{}{}
-	}
-	for k := range tFKs {
-		allFKNamesMap[k] = struct{}{}
-	}
-	fkNames := make([]string, 0, len(allFKNamesMap))
-	for k := range allFKNamesMap {
-		fkNames = append(fkNames, k)
-	}
-	sort.Strings(fkNames)
-
-	for _, fkName := range fkNames {
-		sFK, inScratch := sFKs[fkName]
-		tFK, inTarget := tFKs[fkName]
-
-		switch {
-		case inScratch && !inTarget:
-			findings = append(findings, Finding{
-				Kind:   KindMissing,
-				Object: ObjectForeignKey,
-				Table:  tblKey,
-				Name:   fkName,
-				Detail: "foreign key exists in migrations but missing in target",
-			})
-		case !inScratch && inTarget:
-			findings = append(findings, Finding{
-				Kind:   KindExtra,
-				Object: ObjectForeignKey,
-				Table:  tblKey,
-				Name:   fkName,
-				Detail: "foreign key exists in target but missing in migrations",
-			})
-		case inScratch && inTarget:
-			var diffs []string
-			if sFK.RefSchema != tFK.RefSchema {
-				diffs = append(diffs, fmt.Sprintf("ref schema %s vs %s", sFK.RefSchema, tFK.RefSchema))
-			}
-			if sFK.RefTable != tFK.RefTable {
-				diffs = append(diffs, fmt.Sprintf("ref table %s vs %s", sFK.RefTable, tFK.RefTable))
-			}
-			if !equalStringSlices(sFK.Columns, tFK.Columns) {
-				diffs = append(diffs, fmt.Sprintf("columns %v vs %v", sFK.Columns, tFK.Columns))
-			}
-			if !equalStringSlices(sFK.RefColumns, tFK.RefColumns) {
-				diffs = append(diffs, fmt.Sprintf("ref columns %v vs %v", sFK.RefColumns, tFK.RefColumns))
-			}
-			if len(diffs) > 0 {
-				findings = append(findings, Finding{
-					Kind:   KindChanged,
-					Object: ObjectForeignKey,
-					Table:  tblKey,
-					Name:   fkName,
-					Detail: strings.Join(diffs, "; "),
-				})
-			}
+	findings = append(findings, diffKeyed(tblKey, ObjectForeignKey, "foreign key", sFKs, tFKs, func(sFK, tFK generate.ForeignKeySchema) []string {
+		var diffs []string
+		if sFK.RefSchema != tFK.RefSchema {
+			diffs = append(diffs, fmt.Sprintf("ref schema %s vs %s", sFK.RefSchema, tFK.RefSchema))
 		}
-	}
+		if sFK.RefTable != tFK.RefTable {
+			diffs = append(diffs, fmt.Sprintf("ref table %s vs %s", sFK.RefTable, tFK.RefTable))
+		}
+		if !equalStringSlices(sFK.Columns, tFK.Columns) {
+			diffs = append(diffs, fmt.Sprintf("columns %v vs %v", sFK.Columns, tFK.Columns))
+		}
+		if !equalStringSlices(sFK.RefColumns, tFK.RefColumns) {
+			diffs = append(diffs, fmt.Sprintf("ref columns %v vs %v", sFK.RefColumns, tFK.RefColumns))
+		}
+		return diffs
+	})...)
 
 	// 4. Check Constraints
 	sCKs := make(map[string]generate.CheckConstraintSchema, len(sTbl.CheckConstraints))
@@ -369,53 +312,12 @@ func compareTable(tblKey string, sTbl, tTbl generate.TableSchema) ([]Finding, []
 	for _, ck := range tTbl.CheckConstraints {
 		tCKs[ck.Name] = ck
 	}
-
-	allCKNamesMap := make(map[string]struct{})
-	for k := range sCKs {
-		allCKNamesMap[k] = struct{}{}
-	}
-	for k := range tCKs {
-		allCKNamesMap[k] = struct{}{}
-	}
-	ckNames := make([]string, 0, len(allCKNamesMap))
-	for k := range allCKNamesMap {
-		ckNames = append(ckNames, k)
-	}
-	sort.Strings(ckNames)
-
-	for _, ckName := range ckNames {
-		sCK, inScratch := sCKs[ckName]
-		tCK, inTarget := tCKs[ckName]
-
-		switch {
-		case inScratch && !inTarget:
-			findings = append(findings, Finding{
-				Kind:   KindMissing,
-				Object: ObjectCheck,
-				Table:  tblKey,
-				Name:   ckName,
-				Detail: "check constraint exists in migrations but missing in target",
-			})
-		case !inScratch && inTarget:
-			findings = append(findings, Finding{
-				Kind:   KindExtra,
-				Object: ObjectCheck,
-				Table:  tblKey,
-				Name:   ckName,
-				Detail: "check constraint exists in target but missing in migrations",
-			})
-		case inScratch && inTarget:
-			if sCK.Expression != tCK.Expression {
-				findings = append(findings, Finding{
-					Kind:   KindChanged,
-					Object: ObjectCheck,
-					Table:  tblKey,
-					Name:   ckName,
-					Detail: fmt.Sprintf("expression %q vs %q", sCK.Expression, tCK.Expression),
-				})
-			}
+	findings = append(findings, diffKeyed(tblKey, ObjectCheck, "check constraint", sCKs, tCKs, func(sCK, tCK generate.CheckConstraintSchema) []string {
+		if sCK.Expression != tCK.Expression {
+			return []string{fmt.Sprintf("expression %q vs %q", sCK.Expression, tCK.Expression)}
 		}
-	}
+		return nil
+	})...)
 
 	return findings, notes
 }
