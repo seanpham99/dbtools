@@ -4,6 +4,21 @@ on:
   push:
     tags:
       - "v*"
+  # release-please creates its tag with GITHUB_TOKEN, and GitHub does not
+  # trigger workflows from token-created refs — so the push trigger above
+  # never fires for an automated release. Every release since the workflow
+  # was added has therefore shipped with no goreleaser binaries and no npm
+  # publish, which is why npm's `latest` sat several versions behind the
+  # GitHub releases.
+  #
+  # This makes the release runnable by hand for those tags. The durable fix
+  # is to give release-please a PAT so its tags trigger workflows normally;
+  # until then, run this after a release PR merges.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (e.g. v0.7.0)"
+        required: true
 
 permissions:
   contents: write
@@ -19,10 +34,19 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Resolve the release tag
+        id: release_tag
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG="${GITHUB_REF#refs/tags/}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Check CHANGELOG entry
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${{ steps.release_tag.outputs.version }}"
           # awk string-compare (no regex) on line start; grep -F would treat ^ as literal
           if ! awk -v v="## [$VERSION]" 'index($0, v) == 1 { found=1 } END { exit !found }' CHANGELOG.md; then
             echo "::error::CHANGELOG.md is missing an entry for [$VERSION]. Add one (Keep a Changelog format) before tagging."
@@ -64,7 +88,7 @@ jobs:
       - name: Publish to npm
         run: |
           npm install -g npm@latest
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${{ steps.release_tag.outputs.version }}"
           cd npm
           if [ "$(node -p "require('./package.json').version")" != "$VERSION" ]; then
             npm version "$VERSION" --no-git-tag-version
@@ -73,7 +97,7 @@ jobs:
 
       - name: Publish to GitHub Packages
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${{ steps.release_tag.outputs.version }}"
           rm -rf /tmp/gh-pkg && cp -r npm /tmp/gh-pkg
           cd /tmp/gh-pkg
           npm pkg set name="@${GITHUB_REPOSITORY_OWNER,,}/dbtools-cli"
