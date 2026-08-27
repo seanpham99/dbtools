@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0](https://github.com/seanpham99/dbtools/compare/v0.5.0...v0.6.0) (2026-08-27)
+
+
+### Features
+
+* add dbtools squash command (closes [#63](https://github.com/seanpham99/dbtools/issues/63)) ([#77](https://github.com/seanpham99/dbtools/issues/77)) ([4bd49c8](https://github.com/seanpham99/dbtools/commit/4bd49c88e9f7ee9122d881edea0272ffa2a04133))
+* extend Introspect to a full structural catalog ([#75](https://github.com/seanpham99/dbtools/issues/75)) ([0563d99](https://github.com/seanpham99/dbtools/commit/0563d9903c951be03e126c9fc119b51895fbe3a4))
+* implement dbtools diff command (closes [#62](https://github.com/seanpham99/dbtools/issues/62)) ([#76](https://github.com/seanpham99/dbtools/issues/76)) ([436bff3](https://github.com/seanpham99/dbtools/commit/436bff3b5d7f076dacb52ab78d51cadc5bc329d9))
+* ledger-free mode for plan, verify, doctor, status ([#62](https://github.com/seanpham99/dbtools/issues/62)) ([#73](https://github.com/seanpham99/dbtools/issues/73)) ([0e70c75](https://github.com/seanpham99/dbtools/commit/0e70c75334a82bd212216f69614b533ba8e70b6d))
+
 ## [0.5.0](https://github.com/seanpham99/dbtools/compare/v0.4.0...v0.5.0) (2026-08-26)
 
 
