@@ -71,7 +71,19 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 	}
 	defer db.Close()
 
-	state0, err := migrator.NewRunner(eng, db, dir, ledgerTable).State(context.Background())
+	// Squash rewrites the ledger — marking collapsed versions reverted and
+	// installing the baseline — while also moving files on disk. It holds
+	// the migration lock across all of it: a concurrent `up` executing one
+	// of those versions would otherwise have its row rewritten underneath
+	// it, corrupting the single source of truth.
+	runner := migrator.NewRunner(eng, db, dir, ledgerTable)
+	releaseLock, err := runner.LockForWrite(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	defer releaseLock()
+
+	state0, err := runner.State(context.Background())
 	if err != nil {
 		return nil, err
 	}

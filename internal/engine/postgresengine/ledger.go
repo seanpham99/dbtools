@@ -2,8 +2,10 @@ package postgresengine
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
 )
@@ -37,12 +39,35 @@ CREATE TABLE IF NOT EXISTS %[1]s (
 	if err != nil {
 		return fmt.Errorf("adding hash_source to %s: %w", table, err)
 	}
-	// A ledger created before v0.7 carries a two-value status constraint
-	// that rejects "applying", so the first migration run against an
-	// upgraded database would fail on its own bookkeeping. Replace the
-	// constraint with one generated from the current statuses. Postgres
-	// names an inline column CHECK "<table>_status_check", which is what
-	// the older schema produced.
+	return widenStatusConstraint(db, table)
+}
+
+// widenStatusConstraint replaces a pre-v0.7 two-value status CHECK with one
+// covering every current status, so an upgraded database can record the
+// "applying" state the runner writes before each migration.
+//
+// It inspects the constraint first and only rewrites when the current
+// statuses are missing. EnsureSchema runs on nearly every command, and each
+// ALTER TABLE takes an ACCESS EXCLUSIVE lock — doing that unconditionally
+// would make routine status and doctor calls block each other, and rewrite
+// the catalog every time, for no change at all.
+func widenStatusConstraint(db ledger.DBTX, table string) error {
+	var definition sql.NullString
+	err := db.QueryRow(`
+SELECT pg_get_constraintdef(c.oid)
+FROM pg_constraint c
+WHERE c.conrelid = $1::regclass AND c.contype = 'c' AND pg_get_constraintdef(c.oid) LIKE '%status%'
+LIMIT 1`, table).Scan(&definition)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // no status constraint to widen
+	}
+	if err != nil {
+		return fmt.Errorf("inspecting the status constraint on %s: %w", table, err)
+	}
+	if !definition.Valid || strings.Contains(definition.String, string(ledger.StatusApplying)) {
+		return nil // already current
+	}
+
 	if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %[1]s DROP CONSTRAINT IF EXISTS %[1]s_status_check`, table)); err != nil {
 		return fmt.Errorf("dropping the old status constraint on %s: %w", table, err)
 	}

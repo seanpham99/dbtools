@@ -1,6 +1,7 @@
 package repair
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -28,7 +29,24 @@ type Result struct {
 // applied when its migration's objects don't exist unless force is set),
 // applies all pairs, and recomputes db's cursor as the highest remaining
 // applied version.
-func Run(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table string, pairs []Pair, force bool) (*Result, error) {
+func Run(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table string, pairs []Pair, force bool) (result *Result, err error) {
+	// Repair rewrites ledger rows the runner depends on, including the
+	// "applying" marker a live migration is relying on, so it takes the
+	// same migration lock rather than racing whatever else is running.
+	dir, dirErr := migrator.ReadDir(migrationsDir, upSuffix)
+	if dirErr != nil {
+		return nil, dirErr
+	}
+	runner := migrator.NewRunner(eng, db, dir, table)
+	err = runner.WithLock(context.Background(), func() error {
+		var runErr error
+		result, runErr = run(db, eng, migrationsDir, upSuffix, table, pairs, force)
+		return runErr
+	})
+	return result, err
+}
+
+func run(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table string, pairs []Pair, force bool) (*Result, error) {
 	migrationsDir, upSuffix, table = config.ResolveDefaults(migrationsDir, upSuffix, table)
 	if err := eng.Ledger().EnsureSchema(db, table); err != nil {
 		return nil, err

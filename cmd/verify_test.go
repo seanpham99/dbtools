@@ -77,7 +77,6 @@ engine = "sqlite"
 	// widgets is never created and dbtools_migration_history never exists.
 	db.Close()
 
-	verifyInitLedger = false
 	err = runVerify("local")
 	var exitErr *ExitCodeError
 	if err != nil && !(errors.As(err, &exitErr) && exitErr.Code == 2) {
@@ -151,7 +150,11 @@ engine = "sqlite"
 	}
 }
 
-func TestVerifyCommand_InitLedgerRefusesProtectedTarget(t *testing.T) {
+// verify is read-only now: --init-ledger was the only path that wrote, and
+// it is gone (an empty ledger it created made verify.Collect report a clean
+// bill of health for a schema it had never checked). Importing history is
+// `dbtools adopt`, which is where the protected-target guard lives.
+func TestVerifyCommand_RefusesToVerifyAnEmptyLedger(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"),
 		[]byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
@@ -160,18 +163,27 @@ func TestVerifyCommand_InitLedgerRefusesProtectedTarget(t *testing.T) {
 
 	dbPath := filepath.Join(dir, "test.db")
 	rawURL := "sqlite://" + dbPath
-	t.Setenv("DBTOOLS_TEST_VERIFY_PROT_URL", rawURL)
+	t.Setenv("DBTOOLS_TEST_VERIFY_EMPTY_URL", rawURL)
 
 	cfgContent := fmt.Sprintf(`migrations_dir = %q
-[targets.prod]
-url_env = "DBTOOLS_TEST_VERIFY_PROT_URL"
+[targets.local]
+url_env = "DBTOOLS_TEST_VERIFY_EMPTY_URL"
 engine = "sqlite"
-protected = true
 `, dir)
-	configPath := filepath.Join(dir, "dbtools.toml")
-	if err := os.WriteFile(configPath, []byte(cfgContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "dbtools.toml"), []byte(cfgContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
+
+	eng := sqliteengine.SQLite{}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Ledger().EnsureSchema(db, "dbtools_migration_history"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	db.Close()
 
 	wd, _ := os.Getwd()
 	t.Cleanup(func() { _ = os.Chdir(wd) })
@@ -179,11 +191,8 @@ protected = true
 		t.Fatal(err)
 	}
 
-	verifyInitLedger = true
-	t.Cleanup(func() { verifyInitLedger = false })
-
-	err := runVerify("prod")
-	if err == nil || !strings.Contains(err.Error(), "protected") {
-		t.Fatalf("runVerify(prod, --init-ledger) = %v, want protected target error", err)
+	err = runVerify("local")
+	if err == nil || !strings.Contains(err.Error(), "dbtools adopt") {
+		t.Fatalf("runVerify() over an empty ledger = %v, want a refusal pointing at `dbtools adopt`", err)
 	}
 }

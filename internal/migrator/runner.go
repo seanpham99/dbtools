@@ -149,61 +149,72 @@ func (r *Runner) applyOne(ctx context.Context, conn *sql.Conn, f File) error {
 }
 
 // Down reverts the last steps applied migrations using their .down.sql
-// files, most recent first.
-func (r *Runner) Down(ctx context.Context, steps int) (reverted int, err error) {
+// files, most recent first, and returns the versions it reverted.
+//
+// The ledger row for each version is written before the lock is released,
+// so a caller cannot observe — or overwrite — a half-recorded revert.
+func (r *Runner) Down(ctx context.Context, steps int) (revertedVersions []uint64, err error) {
 	release, err := r.lock(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer func() { err = errors.Join(err, release()) }()
 
 	store := r.eng.Ledger()
 	if err := store.EnsureSchema(r.db, r.ledgerTable); err != nil {
-		return 0, err
+		return nil, err
 	}
 	state, err := store.State(r.db, r.ledgerTable)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if state.Dirty {
-		return 0, &ledger.DirtyError{Version: state.Applying, Table: r.ledgerTable}
+		return nil, &ledger.DirtyError{Version: state.Applying, Table: r.ledgerTable}
 	}
 
 	appliedVersions, err := store.AppliedVersions(r.db, r.ledgerTable)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	plan, err := r.dir.DownPlan(appliedVersions, steps)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if len(plan) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 
 	conn, err := r.db.Conn(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("opening a connection to revert migrations: %w", err)
+		return nil, fmt.Errorf("opening a connection to revert migrations: %w", err)
 	}
 	defer conn.Close()
 
 	for _, f := range plan {
 		sqlText, err := f.Read()
 		if err != nil {
-			return reverted, err
+			return revertedVersions, err
+		}
+		hash, err := r.dir.DownContentHash(f.Version)
+		if err != nil {
+			return revertedVersions, err
 		}
 		if err := store.SetStatus(r.db, f.Version, ledger.StatusApplying, "revert started", r.ledgerTable); err != nil {
-			return reverted, err
+			return revertedVersions, err
 		}
 		if err := r.eng.ExecMigration(ctx, conn, sqlText); err != nil {
-			return reverted, fmt.Errorf("reverting migration %s: %w", f.Filename, err)
+			return revertedVersions, fmt.Errorf("reverting migration %s: %w", f.Filename, err)
 		}
-		if err := store.SetStatus(r.db, f.Version, ledger.StatusReverted, "", r.ledgerTable); err != nil {
-			return reverted, err
+		// Recorded here, inside the lock. Doing it after Down returns
+		// would let a new run acquire the lock, mark this version
+		// applying, and have that marker overwritten while its SQL is
+		// still running.
+		if err := store.SetStatusWithHash(r.db, f.Version, ledger.StatusReverted, "reverted via down", hash, r.ledgerTable); err != nil {
+			return revertedVersions, err
 		}
-		reverted++
+		revertedVersions = append(revertedVersions, f.Version)
 	}
-	return reverted, nil
+	return revertedVersions, nil
 }
 
 // Force records version as applied without running its SQL, clearing a
@@ -225,6 +236,33 @@ func (r *Runner) Force(ctx context.Context, version uint64) (err error) {
 		return err
 	}
 	return store.SetStatus(r.db, version, ledger.StatusApplied, "forced", r.ledgerTable)
+}
+
+// WithLock runs fn holding the migration lock for this target.
+//
+// Every command that writes the ledger needs it, not just the ones that run
+// migration SQL: repair, rollback, adopt and squash all rewrite rows the
+// runner relies on, and doing that while a migration is in flight can clear
+// an "applying" marker for SQL that is still executing — which is exactly
+// the state the marker exists to preserve.
+func (r *Runner) WithLock(ctx context.Context, fn func() error) (err error) {
+	release, err := r.lock(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, release()) }()
+	return fn()
+}
+
+// LockForWrite takes the migration lock and returns a release function, for
+// callers whose control flow does not fit WithLock's closure. The caller
+// must defer the returned function.
+func (r *Runner) LockForWrite(ctx context.Context) (func(), error) {
+	release, err := r.lock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return func() { _ = release() }, nil
 }
 
 // lock takes the migration lock and returns its release function.

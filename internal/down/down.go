@@ -6,7 +6,6 @@ import (
 
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
-	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
@@ -100,26 +99,14 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		}, nil
 	}
 
-	plan, err := dir.DownPlan(applied, steps)
-	if err != nil {
-		return nil, fmt.Errorf("target %q: %w", targetName, err)
-	}
-
-	// The runner holds the migration lock for the whole revert and refuses
-	// to start if a previous run left a migration mid-apply.
+	// The runner holds the migration lock for the whole revert, refuses to
+	// start if a previous run left a migration mid-apply, and records each
+	// revert in the ledger before releasing the lock — so there is nothing
+	// to plan or write here.
 	runner := migrator.NewRunner(eng, db, dir, ledgerTable)
-	n, err := runner.Down(context.Background(), steps)
+	reverted, err := runner.Down(context.Background(), steps)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
-	}
-	reverted := make([]uint64, 0, n)
-	for i := 0; i < n && i < len(plan); i++ {
-		f := plan[i]
-		hash, hErr := dir.DownContentHash(f.Version)
-		if hErr == nil {
-			_ = eng.Ledger().SetStatusWithHash(db, f.Version, ledger.StatusReverted, "reverted via down", hash, ledgerTable)
-		}
-		reverted = append(reverted, f.Version)
 	}
 
 	state, err := runner.State(context.Background())

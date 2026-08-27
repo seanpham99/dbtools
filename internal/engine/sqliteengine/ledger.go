@@ -90,8 +90,13 @@ func widenStatusConstraint(db ledger.DBTX, table string) error {
 		return nil // no constraint to widen, or already current
 	}
 
+	// One transaction for the whole rebuild. Run as separate autocommit
+	// statements, a crash between DROP and RENAME would leave the ledger
+	// gone and only a temporary table behind — losing the migration
+	// history during the upgrade that was supposed to preserve it.
 	tmp := table + "_v07_migration"
 	stmts := []string{
+		`BEGIN IMMEDIATE`,
 		fmt.Sprintf(`DROP TABLE IF EXISTS %s`, tmp),
 		fmt.Sprintf(`CREATE TABLE %[1]s (
     version         INTEGER NOT NULL PRIMARY KEY,
@@ -105,9 +110,13 @@ func widenStatusConstraint(db ledger.DBTX, table string) error {
 SELECT version, status, recorded_at, note, content_sha256, hash_source FROM %[2]s`, tmp, table),
 		fmt.Sprintf(`DROP TABLE %s`, table),
 		fmt.Sprintf(`ALTER TABLE %s RENAME TO %s`, tmp, table),
+		`COMMIT`,
 	}
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
+			// Best-effort unwind; the failing statement has already
+			// aborted the transaction in most cases.
+			_, _ = db.Exec(`ROLLBACK`)
 			return fmt.Errorf("widening the status constraint on %s: %w", table, err)
 		}
 	}

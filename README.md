@@ -137,7 +137,7 @@ dbtools status
 | `down` | `dbtools down <target> [N] [--preview] [--yes]` | Applies `.down.sql` migrations in reverse order, recorded in the ledger. Protected targets require `--preview --yes`. |
 | `rollback` | `dbtools rollback <target> [--yes]` | Ledger-only soft-revert (marks `reverted`, never data-destroying). The safe prod verb. |
 | `repair` | `dbtools repair <target> <v>:<status> --yes` | Corrects ledger state (`applied`/`reverted`) and resynchronizes the version cursor. |
-| `adopt` | `dbtools adopt <target> [--yes] [--force]` | Imports existing migration history from another tool (Flyway, Knex, EF, Alembic, golang-migrate, or dbtools before v0.7). |
+| `adopt` | `dbtools adopt <target> [--yes] [--force]` | Imports existing migration history from another tool (Flyway, Knex, EF, Alembic, golang-migrate). |
 | `squash` | `dbtools squash <target> [--upto <v>] [--out <f>] [--yes]` | Collapses migration history into a verified baseline (dry-run by default; re-stamps target). |
 | `force` | `dbtools force <version> [--target <target>] [--yes]` | Sets tracking version cursor and clears dirty state without running migration SQL. |
 | `reset` | `dbtools reset [target] [--yes]` | Unprotected targets: drops database, replays all migrations from zero, and executes `seed.sql`. |
@@ -196,7 +196,7 @@ Running `dbtools verify <target>` inspects whether:
 - Every database object (table, view) created by applied migrations actually exists in the database schema.
 - Drop operations from subsequent migrations correctly excuse dropped tables without falsely flagging drift.
 
-When inspecting targets with no `dbtools_migration_history` ledger (e.g. incumbent databases before running `dbtools adopt`), `verify` operates in **ledger-free mode**: it checks object existence directly for every migration file on disk without hard-failing. Pass `--init-ledger` to initialize and backfill the ledger.
+When inspecting targets with no `dbtools_migration_history` ledger (e.g. incumbent databases before running `dbtools adopt`), `verify` operates in **ledger-free mode**: it checks object existence directly for every migration file on disk without hard-failing. To import that history into a ledger, run `dbtools adopt` — it records where each version came from, rather than creating an empty ledger and calling the database verified.
 
 ---
 

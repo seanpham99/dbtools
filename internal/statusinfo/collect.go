@@ -41,11 +41,21 @@ func Collect(databaseURL, engineName, migrationsDir, upSuffix, ledgerTable, targ
 	}
 	defer db.Close()
 
-	state, err := eng.Ledger().State(db, ledgerTable)
+	// Check for the table explicitly rather than treating any State error
+	// as "no ledger". A missing table genuinely means nothing has been
+	// applied; a dropped connection, a permission failure or a malformed
+	// ledger do not, and reporting those as "no version, everything
+	// pending" would hide the real fault behind a plausible answer.
+	var state ledger.State
+	exists, err := engine.TableExists(eng, db, ledgerTable)
 	if err != nil {
-		// No ledger table yet means nothing has ever been applied here,
-		// which is a legitimate state to report rather than an error.
-		state = ledger.State{}
+		return nil, err
+	}
+	if exists {
+		state, err = eng.Ledger().State(db, ledgerTable)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	d, err := migrator.ReadDir(migrationsDir, upSuffix)

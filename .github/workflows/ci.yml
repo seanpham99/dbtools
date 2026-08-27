@@ -167,7 +167,11 @@ jobs:
               go test -tags=integration -p 1 $(go list ./... | grep -v '/internal/container$') -count=1
               ;;
             mysql)
-              go test -tags=integration ./internal/engine/mysqlengine/... -count=1
+              # dblock too: its GET_LOCK mutual-exclusion test skips unless
+              # DBTOOLS_TEST_MYSQL_URL is set, so running only the engine
+              # package left the MySQL half of the migration lock untested
+              # on both advertised versions.
+              go test -tags=integration -p 1 ./internal/engine/mysqlengine/... ./internal/dblock/... -count=1
               ;;
           esac
 

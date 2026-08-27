@@ -30,29 +30,40 @@ func runDryRun(cfg *config.Config, targetName, urlOverride string) error {
 		return err
 	}
 
-	if _, err := engine.ForTarget(cfg.EngineName(targetName), url); err != nil {
+	eng, err := engine.ForTarget(cfg.EngineName(targetName), url)
+	if err != nil {
 		return err
 	}
 
-	_, db, r, _, err := OpenTarget(cfg, targetName, "")
+	// Deliberately not OpenTarget: it calls engine.EnsureDatabase for
+	// unprotected targets, so routing a preview through it could *create*
+	// the database it was asked to describe. A dry run must not be the
+	// thing that provisions anything.
+	//
+	// Opening url directly also keeps --url meaningful; OpenTarget would
+	// re-resolve the configured target and silently preview a different
+	// database than the one requested.
+	db, err := eng.Open(url)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	state, err := r.State(context.Background())
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
+	previewDir, err := migrator.ReadDir(migrationsDir, upSuffix)
+	if err != nil {
+		return err
+	}
+	state, err := migrator.NewRunner(eng, db, previewDir, ledgerTable).State(context.Background())
 	if err != nil {
 		return err
 	}
 	if state.Dirty {
-		return &ledger.DirtyError{Version: state.Applying, Table: cfg.LedgerTableName()}
+		return &ledger.DirtyError{Version: state.Applying, Table: ledgerTable}
 	}
 	curVer, hasVer := state.Version, state.HasVersion
 
-	dir, err := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
-	if err != nil {
-		return err
-	}
+	dir := previewDir
 
 	pending := dir.PendingAfter(curVer, hasVer)
 
