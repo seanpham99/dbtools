@@ -36,6 +36,32 @@ END;`, table, ledger.StatusList()))
 	if err != nil {
 		return fmt.Errorf("ensuring %s schema: %w", table, err)
 	}
+	return widenStatusConstraint(db, table)
+}
+
+// widenStatusConstraint replaces a pre-v0.7 two-value status CHECK with one
+// covering every current status, so an upgraded database can record the
+// "applying" state the runner writes before each migration.
+//
+// SQL Server auto-names an unnamed CHECK with a random suffix
+// (CK__table__status__1A2B3C4D), so the constraint has to be looked up in
+// sys.check_constraints rather than guessed. It is only replaced when its
+// definition does not already cover the current statuses, which keeps this
+// a no-op on every run after the first.
+func widenStatusConstraint(db ledger.DBTX, table string) error {
+	_, err := db.Exec(fmt.Sprintf(`
+DECLARE @name sysname, @def nvarchar(max);
+SELECT TOP 1 @name = cc.name, @def = cc.definition
+FROM sys.check_constraints cc
+WHERE cc.parent_object_id = OBJECT_ID(N'%[1]s') AND cc.definition LIKE '%%status%%';
+IF @name IS NOT NULL AND @def NOT LIKE '%%%[2]s%%'
+BEGIN
+    EXEC('ALTER TABLE %[1]s DROP CONSTRAINT [' + @name + ']');
+    ALTER TABLE %[1]s ADD CONSTRAINT %[1]s_status_check CHECK (status IN (%[3]s));
+END;`, table, ledger.StatusApplying, ledger.StatusList()))
+	if err != nil {
+		return fmt.Errorf("widening the status constraint on %s: %w", table, err)
+	}
 	return nil
 }
 

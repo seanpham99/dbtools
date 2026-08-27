@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
 )
@@ -36,8 +37,9 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%s' AND COLUMN_NAME = 'content
 	if err != nil {
 		return fmt.Errorf("inspecting %s columns: %w", table, err)
 	}
-	defer cols.Close()
-	if !cols.Next() {
+	hasContentHash := cols.Next()
+	cols.Close()
+	if !hasContentHash {
 		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN content_sha256 CHAR(64) NULL`, table)); err != nil {
 			return fmt.Errorf("adding content_sha256 to %s: %w", table, err)
 		}
@@ -49,11 +51,58 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%s' AND COLUMN_NAME = 'hash_so
 	if err != nil {
 		return fmt.Errorf("inspecting %s columns: %w", table, err)
 	}
-	defer srcCols.Close()
-	if !srcCols.Next() {
+	hasHashSource := srcCols.Next()
+	srcCols.Close()
+	if !hasHashSource {
 		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN hash_source VARCHAR(20) NULL`, table)); err != nil {
 			return fmt.Errorf("adding hash_source to %s: %w", table, err)
 		}
+	}
+	return widenStatusConstraint(db, table)
+}
+
+// widenStatusConstraint replaces a pre-v0.7 two-value status CHECK with one
+// covering every current status, so an upgraded database can record the
+// "applying" state the runner writes before each migration.
+//
+// MySQL names an unnamed table-level CHECK "<table>_chk_1"; the constraint
+// is looked up by parent table rather than assumed, since a hand-created
+// ledger may have named it something else.
+func widenStatusConstraint(db ledger.DBTX, table string) error {
+	rows, err := db.Query(`
+SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+FROM information_schema.check_constraints cc
+JOIN information_schema.table_constraints tc
+  ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+WHERE tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = ?`, table)
+	if err != nil {
+		// check_constraints predates 8.0.16; nothing to widen if the view
+		// is absent, because the constraint cannot exist either.
+		return nil
+	}
+	var name, clause string
+	found := false
+	for rows.Next() {
+		var n, c string
+		if err := rows.Scan(&n, &c); err != nil {
+			rows.Close()
+			return fmt.Errorf("inspecting %s constraints: %w", table, err)
+		}
+		if strings.Contains(c, "status") {
+			name, clause, found = n, c, true
+		}
+	}
+	rows.Close()
+	if !found || strings.Contains(clause, string(ledger.StatusApplying)) {
+		return nil
+	}
+	if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s DROP CHECK `%s`", table, name)); err != nil {
+		return fmt.Errorf("dropping the old status constraint on %s: %w", table, err)
+	}
+	if _, err := db.Exec(fmt.Sprintf(
+		`ALTER TABLE %[1]s ADD CONSTRAINT %[1]s_status_check CHECK (status IN (%[2]s))`,
+		table, ledger.StatusList())); err != nil {
+		return fmt.Errorf("widening the status constraint on %s: %w", table, err)
 	}
 	return nil
 }

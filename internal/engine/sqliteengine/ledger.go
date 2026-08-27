@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
@@ -42,8 +43,12 @@ CREATE TABLE IF NOT EXISTS %[1]s (
 	if err != nil {
 		return fmt.Errorf("inspecting %s columns: %w", table, err)
 	}
-	defer cols.Close()
-	if !cols.Next() {
+	hasContentHash := cols.Next()
+	// Closed immediately rather than deferred: SQLite refuses schema
+	// changes while a read cursor is open on the same connection, and the
+	// constraint widen below rebuilds this table.
+	cols.Close()
+	if !hasContentHash {
 		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN content_sha256 TEXT NULL`, table)); err != nil {
 			return fmt.Errorf("adding content_sha256 to %s: %w", table, err)
 		}
@@ -53,10 +58,57 @@ CREATE TABLE IF NOT EXISTS %[1]s (
 	if err != nil {
 		return fmt.Errorf("inspecting %s columns: %w", table, err)
 	}
-	defer srcCols.Close()
-	if !srcCols.Next() {
+	hasHashSource := srcCols.Next()
+	srcCols.Close()
+	if !hasHashSource {
 		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN hash_source TEXT NULL`, table)); err != nil {
 			return fmt.Errorf("adding hash_source to %s: %w", table, err)
+		}
+	}
+	return widenStatusConstraint(db, table)
+}
+
+// widenStatusConstraint replaces a pre-v0.7 two-value status CHECK with one
+// covering every current status.
+//
+// A ledger created before v0.7 rejects "applying", so the first migration
+// run against an upgraded database would fail on its own bookkeeping.
+// SQLite cannot ALTER a CHECK constraint, so the table is rebuilt — the
+// documented approach, and cheap here because a ledger holds one row per
+// migration.
+//
+// Detection is on the stored DDL rather than a trial insert: a failed
+// insert would have to be rolled back, and doing that inside a caller's
+// transaction is not something this function can assume it may do.
+func widenStatusConstraint(db ledger.DBTX, table string) error {
+	var ddl string
+	err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&ddl)
+	if err != nil {
+		return fmt.Errorf("reading %s definition: %w", table, err)
+	}
+	if !strings.Contains(ddl, "CHECK (status IN") || strings.Contains(ddl, string(ledger.StatusApplying)) {
+		return nil // no constraint to widen, or already current
+	}
+
+	tmp := table + "_v07_migration"
+	stmts := []string{
+		fmt.Sprintf(`DROP TABLE IF EXISTS %s`, tmp),
+		fmt.Sprintf(`CREATE TABLE %[1]s (
+    version         INTEGER NOT NULL PRIMARY KEY,
+    status          TEXT    NOT NULL CHECK (status IN (%[2]s)),
+    recorded_at     TIMESTAMP NULL,
+    note            TEXT    NULL,
+    content_sha256  TEXT    NULL,
+    hash_source     TEXT    NULL
+)`, tmp, ledger.StatusList()),
+		fmt.Sprintf(`INSERT INTO %[1]s (version, status, recorded_at, note, content_sha256, hash_source)
+SELECT version, status, recorded_at, note, content_sha256, hash_source FROM %[2]s`, tmp, table),
+		fmt.Sprintf(`DROP TABLE %s`, table),
+		fmt.Sprintf(`ALTER TABLE %s RENAME TO %s`, tmp, table),
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("widening the status constraint on %s: %w", table, err)
 		}
 	}
 	return nil

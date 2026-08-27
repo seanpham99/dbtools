@@ -37,6 +37,20 @@ CREATE TABLE IF NOT EXISTS %[1]s (
 	if err != nil {
 		return fmt.Errorf("adding hash_source to %s: %w", table, err)
 	}
+	// A ledger created before v0.7 carries a two-value status constraint
+	// that rejects "applying", so the first migration run against an
+	// upgraded database would fail on its own bookkeeping. Replace the
+	// constraint with one generated from the current statuses. Postgres
+	// names an inline column CHECK "<table>_status_check", which is what
+	// the older schema produced.
+	if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %[1]s DROP CONSTRAINT IF EXISTS %[1]s_status_check`, table)); err != nil {
+		return fmt.Errorf("dropping the old status constraint on %s: %w", table, err)
+	}
+	if _, err := db.Exec(fmt.Sprintf(
+		`ALTER TABLE %[1]s ADD CONSTRAINT %[1]s_status_check CHECK (status IN (%[2]s))`,
+		table, ledger.StatusList())); err != nil {
+		return fmt.Errorf("widening the status constraint on %s: %w", table, err)
+	}
 	return nil
 }
 

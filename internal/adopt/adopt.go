@@ -23,6 +23,11 @@ type KnownTable struct {
 
 // KnownSourceTables lists the supported third-party migration tracking tables
 // in probe order.
+//
+// schema_migrations leads the list because it is the most common name by a
+// wide margin: golang-migrate, Rails, Supabase and many hand-rolled runners
+// all use it — including dbtools itself before v0.7, whose version cursor
+// lived there. A database migrated by any of them adopts the same way.
 var KnownSourceTables = []KnownTable{
 	{Name: "schema_migrations", VersionCol: "version", AppliedAtCol: ""},
 	{Name: "flyway_schema_history", VersionCol: "version", AppliedAtCol: "installed_on"},
