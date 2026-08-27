@@ -33,7 +33,15 @@ func openPostgresResetDriver(rawURL string) (database.Driver, error) {
 		logger.Infof("postgres: %s: %s", n.Severity, n.Message)
 	})
 	db := sql.OpenDB(nhConnector)
-	inner, err := postgres.WithInstance(db, &postgres.Config{})
+	// WithInstance takes an explicit Config rather than the URL, so
+	// golang-migrate's own x-migrations-table handling never runs on this
+	// path. Carry the parameter across by hand, or a configured cursor
+	// table would be silently ignored for Postgres alone — the one engine
+	// where it is most likely to be needed. An empty value leaves
+	// golang-migrate's default in place.
+	inner, err := postgres.WithInstance(db, &postgres.Config{
+		MigrationsTable: purl.Query().Get("x-migrations-table"),
+	})
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("opening postgres driver: %w", err)

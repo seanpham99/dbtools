@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
@@ -119,9 +120,38 @@ func (mg *Migrator) Version() (version uint64, dirty bool, hasVersion bool, err 
 		return 0, false, false, nil
 	}
 	if err != nil {
-		return 0, false, false, fmt.Errorf("reading version: %w", err)
+		return 0, false, false, fmt.Errorf("reading version: %w", explainCursorCollision(err))
 	}
 	return uint64(v), d, true, nil
+}
+
+// explainCursorCollision turns the raw driver error produced by a version
+// cursor that collides with somebody else's table into an actionable one.
+//
+// golang-migrate keeps its cursor in a (version, dirty) table it calls
+// schema_migrations by default. That is also what golang-migrate itself,
+// Rails, Supabase and many hand-rolled runners name their *ledger*, and
+// those tables are shaped differently — commonly a text version column and
+// no dirty column at all. Pointed at one of those, every command that reads
+// the version fails with `column "dirty" does not exist`, which says
+// nothing about the actual problem or the fix.
+func explainCursorCollision(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `"dirty"`) || !strings.Contains(msg, "does not exist") {
+		return err
+	}
+	return fmt.Errorf("%w\n\n"+
+		"This looks like a version-cursor table collision: the table dbtools uses for its\n"+
+		"version cursor already exists and belongs to another migration tool (it has no\n"+
+		"\"dirty\" column, so it is not golang-migrate's).\n\n"+
+		"Point the cursor at a table of its own in dbtools.toml:\n\n"+
+		"    [ledger]\n"+
+		"    cursor_table = \"dbtools_schema_version\"\n\n"+
+		"then re-run. To import the other tool's history afterwards: dbtools adopt <target>.",
+		err)
 }
 
 // Stamp marks version as the current applied migration WITHOUT executing

@@ -459,6 +459,14 @@ func StartScratch(engineName string) (rawURL string, cleanup func() error, err e
 	return StartScratchWithTimeout(engineName, 60*time.Second)
 }
 
+// StartScratchMajor is StartScratch pinned to a server major version, so a
+// scratch database can be made to match the target it will be compared
+// against. An empty or unrecognised major falls back to the engine's default
+// image. See ScratchImageFor for why the match matters.
+func StartScratchMajor(engineName, major string) (rawURL string, cleanup func() error, err error) {
+	return startScratch(engineName, major, 60*time.Second)
+}
+
 // StartScratchWithTimeout starts a throwaway, --rm container for engineName,
 // waits up to timeout for readiness, and returns its connection URL plus a
 // cleanup function that stops (and thereby removes) it. Unlike StartForWithTimeout,
@@ -466,6 +474,53 @@ func StartScratch(engineName string) (rawURL string, cleanup func() error, err e
 // container, since a scratch database must start empty. Returns an error
 // for engines with no scratchRunArgs (sqlite — callers use a tempfile).
 func StartScratchWithTimeout(engineName string, timeout time.Duration) (rawURL string, cleanup func() error, err error) {
+	return startScratch(engineName, "", timeout)
+}
+
+// ScratchImageFor returns the image to run a scratch container of engineName
+// on, pinned to major when that is a plausible major version.
+//
+// Matching the target's major version matters because catalog rendering is
+// not stable across majors, and a scratch/target mismatch shows up as drift
+// that does not exist. Postgres 16 renders a CHECK constraint's
+// information_schema.check_clause as "((total_jobs >= 0))" where 17 renders
+// "(total_jobs >= 0)" — identical constraints, one paren apart, on every
+// CHECK in the schema. Against a default-image scratch database, that alone
+// produced dozens of false-positive findings for every user not already on
+// the default major.
+func ScratchImageFor(engineName, major string) string {
+	if !plausibleMajor(major) {
+		return ""
+	}
+	switch engineName {
+	case "postgres":
+		return "postgres:" + major + "-alpine"
+	case "mysql":
+		return "mysql:" + major
+	default:
+		// mssql tags are not major-version-shaped (2019-latest,
+		// 2022-latest), so leave the default image alone rather than
+		// guess a tag that will fail to pull.
+		return ""
+	}
+}
+
+// plausibleMajor reports whether v looks like a version tag component, so a
+// malformed or hostile server_version string cannot be interpolated into a
+// docker image reference.
+func plausibleMajor(v string) bool {
+	if v == "" || len(v) > 2 {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] < '0' || v[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func startScratch(engineName, major string, timeout time.Duration) (rawURL string, cleanup func() error, err error) {
 	s, err := specFor(engineName)
 	if err != nil {
 		return "", nil, err
@@ -475,6 +530,9 @@ func StartScratchWithTimeout(engineName string, timeout time.Duration) (rawURL s
 	}
 	if err := checkDocker(); err != nil {
 		return "", nil, err
+	}
+	if img := ScratchImageFor(engineName, major); img != "" {
+		s.image = img
 	}
 	s.name = scratchNameFor(engineName)
 	s.hostPort = "0"

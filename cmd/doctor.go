@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -19,11 +20,28 @@ var doctorCmd = &cobra.Command{
 	Short: "Perform read-only health and security checks on target databases",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Reset explicitly: cmd is a package-level singleton, so a prior
+		// invocation's outcome would otherwise leak into every later one in
+		// the same process. Same pattern as plan/verify/diff.
+		cmd.SilenceUsage = false
+		cmd.SilenceErrors = false
 		target := ""
 		if len(args) > 0 {
 			target = args[0]
 		}
-		return runDoctor(target)
+		err := runDoctor(target)
+		// Exit 1 (target unreachable) and exit 2 (issues detected) are both
+		// documented outcomes of a correct run. doctor has already printed a
+		// per-check report ending in "Result: ...", so the usage block and a
+		// second rendering of the error add nothing. An actual
+		// invalid-flag/argument error, which cobra routes through this same
+		// path without an ExitCodeError, still shows both.
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+		}
+		return err
 	},
 }
 

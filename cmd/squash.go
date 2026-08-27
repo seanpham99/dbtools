@@ -8,6 +8,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/scratchdb"
 	"github.com/seanpham99/dbtools/internal/squash"
 	"github.com/spf13/cobra"
 )
@@ -64,7 +65,16 @@ func runSquash(targetName string) error {
 		upto = versions[len(versions)-1]
 	}
 
-	plan, err := squash.BuildPlan(cfg, eng, migrationsDir, upSuffix, upto)
+	// Pin the scratch databases to the target's major version. Best-effort:
+	// if the target is unreachable we still build the plan, since squash
+	// itself only writes files and the scratch databases are throwaway.
+	targetMajor := ""
+	if targetDB, derr := eng.Open(url); derr == nil {
+		targetMajor = scratchdb.ServerMajor(targetDB, eng.Name())
+		targetDB.Close()
+	}
+
+	plan, err := squash.BuildPlan(cfg, eng, migrationsDir, upSuffix, upto, targetMajor)
 	if err != nil {
 		return err
 	}

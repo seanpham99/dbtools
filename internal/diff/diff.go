@@ -23,7 +23,18 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 		return nil, nil, err
 	}
 
-	scratchURL, cleanup, err := scratchdb.Provision(eng, againstURL)
+	// Open the target first, purely to read its server major version: the
+	// scratch database has to be the same major or the comparison reports
+	// rendering differences between versions as schema drift. Best-effort —
+	// an unknown version falls back to the default image.
+	targetDB, err := eng.Open(targetURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer targetDB.Close()
+	targetMajor := scratchdb.ServerMajor(targetDB, eng.Name())
+
+	scratchURL, cleanup, err := scratchdb.ProvisionMajor(eng, againstURL, targetMajor)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -62,11 +73,6 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 		return nil, nil, fmt.Errorf("introspecting scratch database: %w", err)
 	}
 
-	targetDB, err := eng.Open(targetURL)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer targetDB.Close()
 	targetSchema, _, err := eng.Introspect(targetDB, cfg.Generate.Exclude)
 	if err != nil {
 		return nil, nil, fmt.Errorf("introspecting target database: %w", err)

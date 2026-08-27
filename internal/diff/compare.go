@@ -313,11 +313,73 @@ func compareTable(tblKey string, sTbl, tTbl generate.TableSchema) ([]Finding, []
 		tCKs[ck.Name] = ck
 	}
 	findings = append(findings, diffKeyed(tblKey, ObjectCheck, "check constraint", sCKs, tCKs, func(sCK, tCK generate.CheckConstraintSchema) []string {
-		if sCK.Expression != tCK.Expression {
+		if !equalExpressions(sCK.Expression, tCK.Expression) {
 			return []string{fmt.Sprintf("expression %q vs %q", sCK.Expression, tCK.Expression)}
 		}
 		return nil
 	})...)
 
 	return findings, notes
+}
+
+// equalExpressions compares two catalog-rendered SQL expressions for
+// semantic equality, ignoring the two things the server is free to vary:
+// redundant outer parentheses and whitespace.
+//
+// The server decides how to print a stored parse tree, and that rendering is
+// not stable. Postgres 16 renders a CHECK constraint as "((total_jobs >= 0))"
+// where 17 renders "(total_jobs >= 0)" for the identical constraint. diff
+// pins its scratch database to the target's major version to avoid that
+// class entirely (see scratchdb.ProvisionMajor), so this is the second line
+// of defence: point releases, --against databases the caller provisioned
+// themselves, and future rendering changes can all still put a cosmetic
+// difference in front of the comparison.
+//
+// It normalises only formatting. Any difference in operators, literals, or
+// identifiers survives and is still reported.
+func equalExpressions(a, b string) bool {
+	return a == b || normalizeExpression(a) == normalizeExpression(b)
+}
+
+// normalizeExpression strips balanced outer parentheses and collapses
+// whitespace runs to a single space.
+func normalizeExpression(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	for len(s) >= 2 && s[0] == '(' && s[len(s)-1] == ')' && outerParensBalanced(s) {
+		s = strings.TrimSpace(s[1 : len(s)-1])
+	}
+	return s
+}
+
+// outerParensBalanced reports whether s's first parenthesis is closed by its
+// last one, so they can be stripped as a redundant wrapper. It is false for
+// "(a) AND (b)", where the outer pair is not a wrapper at all and removing
+// the ends would corrupt the expression.
+//
+// Parentheses inside string literals are skipped: '(' is a legitimate
+// character in a CHECK against text, and counting it would mis-balance.
+func outerParensBalanced(s string) bool {
+	depth := 0
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\'':
+			// '' inside a quoted literal is an escaped quote, not a close.
+			if inQuote && i+1 < len(s) && s[i+1] == '\'' {
+				i++
+				continue
+			}
+			inQuote = !inQuote
+		case inQuote:
+			continue
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth == 0 && i != len(s)-1 {
+				return false
+			}
+		}
+	}
+	return depth == 0 && !inQuote
 }
