@@ -16,33 +16,40 @@ import (
 // Schema returns the DDL that reproduces eng's schema at scratchURL, via
 // the engine's native dump tool (pg_dump/mysqldump/mssql-scripter on the
 // host, connecting to scratchURL's published port) or, for SQLite, a
-// direct catalog query — no external tool needed.
-func Schema(eng engine.Engine, scratchURL string) (string, error) {
+// direct catalog query — no external tool needed. Any tables in excludeTables
+// (e.g. migration tracking tables) are omitted from the dump.
+func Schema(eng engine.Engine, scratchURL string, excludeTables ...string) (string, error) {
 	switch eng.Name() {
 	case "postgres":
-		return dumpPostgres(scratchURL)
+		return dumpPostgres(scratchURL, excludeTables)
 	case "mysql":
-		return dumpMySQL(scratchURL)
+		return dumpMySQL(scratchURL, excludeTables)
 	case "mssql":
-		return dumpMSSQL(scratchURL)
+		return dumpMSSQL(scratchURL, excludeTables)
 	case "sqlite":
 		db, err := eng.Open(scratchURL)
 		if err != nil {
 			return "", err
 		}
 		defer db.Close()
-		return SchemaFromDB(eng, db)
+		return SchemaFromDB(eng, db, excludeTables...)
 	default:
 		return "", fmt.Errorf("no schema dump support for engine %q", eng.Name())
 	}
 }
 
-func dumpPostgres(scratchURL string) (string, error) {
+func dumpPostgres(scratchURL string, excludeTables []string) (string, error) {
 	const toolName = "pg_dump"
 	if _, err := exec.LookPath(toolName); err != nil {
 		return "", fmt.Errorf("%s not found on PATH — install postgresql-client to use squash with postgres: %w", toolName, err)
 	}
-	args := []string{"--no-owner", scratchURL}
+	args := []string{"--no-owner", "--schema-only"}
+	for _, tbl := range excludeTables {
+		if tbl != "" {
+			args = append(args, "-T", tbl, "-T", "*."+tbl)
+		}
+	}
+	args = append(args, scratchURL)
 	out, err := exec.Command(toolName, args...).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("%s failed: %w: %s", toolName, err, strings.TrimSpace(string(out)))
@@ -50,13 +57,13 @@ func dumpPostgres(scratchURL string) (string, error) {
 	return StripPostgresSessionState(string(out)), nil
 }
 
-func dumpMySQL(scratchURL string) (string, error) {
+func dumpMySQL(scratchURL string, excludeTables []string) (string, error) {
 	const toolName = "mysqldump"
 	if _, err := exec.LookPath(toolName); err != nil {
 		return "", fmt.Errorf("%s not found on PATH — install mysql-client or mariadb-client to use squash with mysql: %w", toolName, err)
 	}
 
-	args := []string{"--no-tablespaces", "--skip-comments"}
+	args := []string{"--no-tablespaces", "--skip-comments", "--no-data"}
 	raw := strings.TrimPrefix(scratchURL, "mysql://")
 	cfg, err := mysql.ParseDSN(raw)
 	if err == nil && cfg != nil {
@@ -74,6 +81,15 @@ func dumpMySQL(scratchURL string) (string, error) {
 		if cfg.Passwd != "" {
 			args = append(args, "--password="+cfg.Passwd)
 		}
+		for _, tbl := range excludeTables {
+			if tbl != "" {
+				if cfg.DBName != "" {
+					args = append(args, fmt.Sprintf("--ignore-table=%s.%s", cfg.DBName, tbl))
+				} else {
+					args = append(args, fmt.Sprintf("--ignore-table=%s", tbl))
+				}
+			}
+		}
 		if cfg.DBName != "" {
 			args = append(args, cfg.DBName)
 		}
@@ -88,7 +104,7 @@ func dumpMySQL(scratchURL string) (string, error) {
 	return string(out), nil
 }
 
-func dumpMSSQL(scratchURL string) (string, error) {
+func dumpMSSQL(scratchURL string, excludeTables []string) (string, error) {
 	const toolName = "mssql-scripter"
 	if _, err := exec.LookPath(toolName); err != nil {
 		return "", fmt.Errorf("%s not found on PATH — install it via 'pip install mssql-scripter' to use squash with mssql: %w", toolName, err)
@@ -123,16 +139,30 @@ func dumpMSSQL(scratchURL string) (string, error) {
 		args = append(args, scratchURL)
 	}
 
+	if len(excludeTables) > 0 {
+		var validExcludes []string
+		for _, tbl := range excludeTables {
+			if tbl != "" {
+				validExcludes = append(validExcludes, tbl)
+			}
+		}
+		if len(validExcludes) > 0 {
+			args = append(args, "--exclude-objects")
+			args = append(args, validExcludes...)
+		}
+	}
+
 	out, err := exec.Command(toolName, args...).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("%s failed: %w: %s", toolName, err, strings.TrimSpace(string(out)))
 	}
-	return string(out), nil
+	return StripMSSQLUseStatement(string(out)), nil
 }
 
 var (
 	pgSetConfigSearchPathRE = regexp.MustCompile(`(?m)^SELECT pg_catalog\.set_config\('search_path', '', false\);\n?`)
 	pgClientMinMessagesRE   = regexp.MustCompile(`(?m)^SET client_min_messages = warning;\n?`)
+	mssqlUseRE              = regexp.MustCompile(`(?im)^\s*USE\s+\[?[^;\n]+\]?\s*;?\s*(\r?\n)?`)
 )
 
 // StripPostgresSessionState removes the two session-state lines pg_dump
@@ -147,23 +177,40 @@ func StripPostgresSessionState(sqlText string) string {
 	return sqlText
 }
 
+// StripMSSQLUseStatement removes any generated USE [database] commands
+// so the baseline script is not pinned to the throwaway scratch database name.
+func StripMSSQLUseStatement(sqlText string) string {
+	return mssqlUseRE.ReplaceAllString(sqlText, "")
+}
+
 // SchemaFromDB queries db's own catalog directly — only implemented for
 // SQLite today (sqlite_master.sql already contains verbatim CREATE
 // statements; no external dump tool exists or is needed).
-func SchemaFromDB(eng engine.Engine, db *sql.DB) (string, error) {
+func SchemaFromDB(eng engine.Engine, db *sql.DB, excludeTables ...string) (string, error) {
 	if eng.Name() != "sqlite" {
 		return "", fmt.Errorf("SchemaFromDB is only implemented for sqlite, got %q", eng.Name())
 	}
-	rows, err := db.Query(`SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND type IN ('table', 'index', 'view', 'trigger') ORDER BY rowid`)
+	rows, err := db.Query(`SELECT tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND type IN ('table', 'index', 'view', 'trigger') ORDER BY rowid`)
 	if err != nil {
 		return "", fmt.Errorf("querying sqlite_master: %w", err)
 	}
 	defer rows.Close()
+
+	excludeMap := make(map[string]bool)
+	for _, tbl := range excludeTables {
+		if tbl != "" {
+			excludeMap[tbl] = true
+		}
+	}
+
 	var b strings.Builder
 	for rows.Next() {
-		var stmt string
-		if err := rows.Scan(&stmt); err != nil {
+		var tblName, stmt string
+		if err := rows.Scan(&tblName, &stmt); err != nil {
 			return "", fmt.Errorf("scanning sqlite_master row: %w", err)
+		}
+		if excludeMap[tblName] {
+			continue
 		}
 		b.WriteString(stmt)
 		b.WriteString(";\n")

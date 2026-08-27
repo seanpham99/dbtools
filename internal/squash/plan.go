@@ -94,7 +94,9 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("replaying migrations into scratch database: %w", err)
 	}
 
-	baselineSQL, err := dump.Schema(eng, url1)
+	_, _, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	excludeTables := []string{"schema_migrations", "dbtools_migration_history", ledgerTable}
+	baselineSQL, err := dump.Schema(eng, url1, excludeTables...)
 	if err != nil {
 		return nil, fmt.Errorf("dumping scratch database schema: %w", err)
 	}
@@ -128,11 +130,13 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, err
 	}
 	defer replayDB.Close()
-	replaySchema, _, err := eng.Introspect(replayDB, cfg.Generate.Exclude)
+	introspectExcludes := append([]string{}, cfg.Generate.Exclude...)
+	introspectExcludes = append(introspectExcludes, excludeTables...)
+	replaySchema, _, err := eng.Introspect(replayDB, introspectExcludes)
 	if err != nil {
 		return nil, fmt.Errorf("introspecting replay database: %w", err)
 	}
-	baselineSchema, _, err := eng.Introspect(verifyDB, cfg.Generate.Exclude)
+	baselineSchema, _, err := eng.Introspect(verifyDB, introspectExcludes)
 	if err != nil {
 		return nil, fmt.Errorf("introspecting verification database: %w", err)
 	}

@@ -116,8 +116,10 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 	}
 
 	if state == TargetRestamped {
-		if err := m.Stamp(0); err != nil {
-			return nil, err
+		if currentVer == plan.UptoVersion {
+			if err := m.Stamp(0); err != nil {
+				return nil, err
+			}
 		}
 		db, err := eng.Open(url)
 		if err != nil {

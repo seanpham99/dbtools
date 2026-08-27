@@ -308,3 +308,101 @@ func TestApplyPlan_PartiallyAppliedTargetRefuses(t *testing.T) {
 		t.Errorf("file 1 missing from migrations dir: %v", statErr)
 	}
 }
+
+func TestApplyPlan_TargetCursorAboveUptoPreserved(t *testing.T) {
+	dir := t.TempDir()
+	archiveDir := filepath.Join(dir, "_archived")
+	f1 := filepath.Join(dir, "1_create_widgets.up.sql")
+	f2 := filepath.Join(dir, "2_create_gadgets.up.sql")
+	f3 := filepath.Join(dir, "3_create_doodads.up.sql")
+	if err := os.WriteFile(f1, []byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f2, []byte("CREATE TABLE gadgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f3, []byte("CREATE TABLE doodads (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbFile := filepath.Join(t.TempDir(), "target.db")
+	targetURL := "sqlite://" + dbFile
+	t.Setenv("TEST_SQUASH_LOCAL_URL_4", targetURL)
+
+	cfg := &config.Config{
+		MigrationsDir: dir,
+		Migrations: config.MigrationsConfig{
+			UpSuffix: ".up.sql",
+		},
+		Targets: map[string]config.Target{
+			"local": {
+				Engine: "sqlite",
+				URLEnv: "TEST_SQUASH_LOCAL_URL_4",
+			},
+		},
+	}
+	eng, err := engine.ForName("sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Fully apply all 3 migrations first (cursor at version 3)
+	if _, err := apply.Run(cfg, "local", ""); err != nil {
+		t.Fatalf("initial apply.Run: %v", err)
+	}
+
+	d, err := migrator.ReadDir(dir, ".up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	baselineSQL := "CREATE TABLE widgets (id INTEGER PRIMARY KEY);\nCREATE TABLE gadgets (id INTEGER PRIMARY KEY);\n"
+	plan := &squash.Plan{
+		UptoVersion:       2,
+		BaselineSQL:       baselineSQL,
+		Verified:          true,
+		CollapsedVersions: []uint64{1, 2},
+	}
+
+	res, err := squash.ApplyPlan(cfg, "local", eng, d, dir, archiveDir, "0000000000000_squashed_baseline.up.sql", plan)
+	if err != nil {
+		t.Fatalf("ApplyPlan() returned error: %v", err)
+	}
+	if res.TargetState != squash.TargetRestamped {
+		t.Fatalf("TargetState = %v, want %v", res.TargetState, squash.TargetRestamped)
+	}
+
+	// Verify target cursor remained at version 3 (not reset to 0)
+	m, err := migrator.Open(targetURL, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ver, dirty, hasVer, err := m.Version()
+	m.Close()
+	if err != nil {
+		t.Fatalf("reading target version: %v", err)
+	}
+	if !hasVer || dirty || ver != 3 {
+		t.Errorf("cursor: hasVersion=%v, dirty=%v, version=%d, want true, false, 3", hasVer, dirty, ver)
+	}
+
+	// Verify file 3 remains in migrationsDir, and files 1 & 2 are in archiveDir
+	if _, err := os.Stat(f3); err != nil {
+		t.Errorf("file 3 missing from migrations dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(archiveDir, "1_create_widgets.up.sql")); err != nil {
+		t.Errorf("archived file 1 not found: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(archiveDir, "2_create_gadgets.up.sql")); err != nil {
+		t.Errorf("archived file 2 not found: %v", err)
+	}
+
+	// 2. Second apply.Run: should succeed without error and without replaying migration 3
+	status, err := apply.Run(cfg, "local", "")
+	if err != nil {
+		t.Fatalf("second apply.Run after squash failed: %v", err)
+	}
+	if status.CurrentVersion != 3 {
+		t.Errorf("post-apply version = %d, want 3", status.CurrentVersion)
+	}
+}

@@ -80,3 +80,45 @@ func TestSchema_SQLiteNeedsNoExternalTool(t *testing.T) {
 		t.Errorf("Schema() = %q, want it to contain the widgets table DDL", sqlTextFromSchema)
 	}
 }
+
+func TestSchema_SQLiteExcludesMigrationLedgerTables(t *testing.T) {
+	eng, err := engine.ForName("sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := eng.Open("sqlite://" + dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+CREATE TABLE widgets (id INTEGER PRIMARY KEY);
+CREATE TABLE schema_migrations (version bigint, dirty boolean);
+CREATE TABLE dbtools_migration_history (version bigint);
+`); err != nil {
+		t.Fatal(err)
+	}
+
+	sqlText, err := dump.Schema(eng, "sqlite://"+dbPath, "schema_migrations", "dbtools_migration_history")
+	if err != nil {
+		t.Fatalf("Schema() returned error: %v", err)
+	}
+	if !strings.Contains(sqlText, "widgets") {
+		t.Errorf("Schema() = %q, want it to contain widgets table", sqlText)
+	}
+	if strings.Contains(sqlText, "schema_migrations") || strings.Contains(sqlText, "dbtools_migration_history") {
+		t.Errorf("Schema() = %q, want migration tables excluded", sqlText)
+	}
+}
+
+func TestStripMSSQLUseStatement(t *testing.T) {
+	in := "USE [dbtools_scratch_mssql_123];\nGO\nCREATE TABLE widgets (id INT PRIMARY KEY);\n"
+	out := dump.StripMSSQLUseStatement(in)
+	if strings.Contains(out, "USE [") {
+		t.Errorf("StripMSSQLUseStatement() = %q, still contains USE statement", out)
+	}
+	if !strings.Contains(out, "CREATE TABLE widgets") {
+		t.Errorf("StripMSSQLUseStatement() = %q, lost DDL", out)
+	}
+}
