@@ -14,5 +14,15 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v4
         with:
+          # A PAT so the tag release-please pushes triggers release.yml.
+          # GitHub deliberately does not run workflows for refs created with
+          # GITHUB_TOKEN, which is why every release before v0.7.1 shipped
+          # with no binaries and no npm publish — the release workflow never
+          # started (#92).
+          #
+          # Falls back to the default token when the secret is absent, so
+          # this stays working (minus the trigger) rather than failing shut.
+          # Needs Contents and Pull requests: read and write, on this repo.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
