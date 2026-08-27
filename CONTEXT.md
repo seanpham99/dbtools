@@ -1,6 +1,6 @@
 # db-tools
 
-`dbtools` is a standalone Go CLI (wrapping `golang-migrate`) providing a Supabase-CLI-style local dev loop and migration authority for MSSQL/Postgres/future engines. Not a business bounded context — a dev-tooling component living at `tools/db-tools/`. See `docs/adr/001-dbtools-migration-authority.md` for why it exists and what it replaces.
+`dbtools` is a standalone Go CLI providing a Supabase-CLI-style local dev loop and migration authority for MSSQL/Postgres/future engines. Not a business bounded context — a dev-tooling component living at `tools/db-tools/`. See `docs/adr/001-dbtools-migration-authority.md` for why it exists and what it replaces.
 
 ## Language
 
@@ -33,14 +33,14 @@ _Avoid_: dev database, local db (ambiguous with a repo's own compose-managed ins
 
 **ledger**:
 `dbtools_migration_history` — the per-migration `applied`/`reverted` record
-`verify` and `repair` reason over. Additive alongside `golang-migrate`'s own
+`verify` and `repair` reason over. The ledger is the only migration state dbtools keeps.
 single-cursor `schema_migrations` table, not a replacement for it; see
 ADR-021.
 _Avoid_: migration history (ambiguous with `schema_migrations` itself), tracking table (also ambiguous)
 
 **repair**:
 Corrects the ledger's `applied`/`reverted` status for one or more versions in
-a single call, then recomputes `golang-migrate`'s cursor as the highest
+a single call. The current version is derived as the highest
 remaining applied version. Replaces `stamp`.
 _Avoid_: stamp (removed — see ADR-021)
 

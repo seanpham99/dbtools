@@ -62,11 +62,13 @@ Container orchestrators often configure retry policies:
 - **AWS ECS / Step Functions**: Retry on task failure
 
 When a migration script fails partway through execution:
-1. `dbtools` records `dirty = true` at the failed migration version in the database ledger (`dbtools_migration_history`).
+1. `dbtools` leaves the failed version's row in the ledger (`dbtools_migration_history`) with status `applying` — written before the migration ran, and never replaced because it did not finish.
 2. The container exits with code `1`.
-3. If the orchestrator automatically restarts or spawns a retry replica, `dbtools` inspects the ledger on startup, detects `dirty = true`, and **fails closed immediately** with exit code `1`.
+3. If the orchestrator automatically restarts or spawns a retry replica, `dbtools` inspects the ledger on startup, finds the surviving `applying` row, and **fails closed immediately** with exit code `1` — naming the migration that died, which a boolean dirty flag could not.
 
-This prevents catastrophic partial-state replay or double-execution of non-idempotent DDL statements. The cursor remains locked until an operator inspects the failure and runs `dbtools repair <target> <version>:<status> --yes` or `dbtools force <version> --yes`.
+This prevents catastrophic partial-state replay or double-execution of non-idempotent DDL statements. The ledger stays blocked until an operator inspects the failure and runs `dbtools repair <target> <version>:<status> --yes` or `dbtools force <version> --yes`.
+
+Concurrent executions are also excluded outright: every write path holds an engine-level advisory lock (`pg_advisory_lock`, `GET_LOCK`, `sp_getapplock`) for the whole run, so a job triggered twice serialises instead of interleaving DDL.
 
 ---
 

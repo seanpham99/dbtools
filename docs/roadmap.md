@@ -25,6 +25,7 @@ same core.
 
 | Phase | Feature | Notes |
 |-------|---------|-------|
+| v0.7 ✅ | **Native runner, one ledger** | Dropped golang-migrate. The ledger is the only migration state: the version is derived from its rows, and a surviving `applying` row replaces the dirty cursor flag. Removes the cursor-table collision (#79) that made dbtools unusable against a database an incumbent tool already managed, and makes `[migrations] up_suffix` work for every command instead of only the read-only ones. Adds a cross-process migration lock, version-matched scratch databases and dump tooling, and a declared supported-version window. |
 | v0.1.2 ✅ | `plan` preview | Read-only preview of pending migrations + ledger drift. Agent/CI-friendly: exit 0 = safe to apply. |
 | v0.2 ✅ | **Rollback & down migrations** | `down` (reverse `.down.sql` apply) + ledger-only `rollback`, with production gates. Shipped in v0.2.0. |
 | v0.2 ✅ | **Agent ergonomics** | Universal `--json`, `--dry-run`, non-interactive mode, dirty-ledger refusal, exit-code contract. Shipped in v0.2.0. |
@@ -43,7 +44,7 @@ same core.
 
 ## Rollback & down migrations
 
-- Support `.down.sql` files (golang-migrate already parses them; dbtools currently
+- Support `.down.sql` files (dbtools currently
   ignores them).
 - `dbtools down <target> [N]` — applies down files in reverse, each recorded in the
   ledger with its content hash.
