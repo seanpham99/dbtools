@@ -5,6 +5,7 @@ import (
 
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/scratchdb"
 )
@@ -23,18 +24,34 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 		return nil, nil, err
 	}
 
-	// Open the target first, purely to read its server major version: the
-	// scratch database has to be the same major or the comparison reports
-	// rendering differences between versions as schema drift. Best-effort —
-	// an unknown version falls back to the default image.
+	// Open the target first, purely to read its server version: the scratch
+	// database has to render catalog metadata the same way, or the
+	// comparison reports version differences as schema drift. Parity is what
+	// makes byte-exact comparison correct — see
+	// docs/adr/003-v0.7-native-runner.md.
 	targetDB, err := eng.Open(targetURL)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer targetDB.Close()
-	targetMajor := scratchdb.ServerMajor(targetDB, eng.Name())
+	targetSeries := scratchdb.ServerSeries(targetDB, eng.Name())
 
-	scratchURL, cleanup, err := scratchdb.ProvisionMajor(eng, againstURL, targetMajor)
+	// A caller-supplied scratch database is not ours to pin, so verify it
+	// instead. Refusing is the right outcome: a mismatched --against
+	// produces findings that look real and are not, and a wrong answer from
+	// a drift checker is worse than no answer.
+	if againstURL != "" {
+		if err := verifyAgainstParity(eng, againstURL, targetSeries); err != nil {
+			return nil, nil, err
+		}
+	}
+	if targetSeries == "" && container.PinsVersion(eng.Name()) {
+		notes = append(notes, fmt.Sprintf(
+			"could not determine the %s server version; the scratch database uses the default image, "+
+				"so version-specific rendering differences may appear as findings", eng.Name()))
+	}
+
+	scratchURL, cleanup, err := scratchdb.ProvisionSeries(eng, againstURL, targetSeries)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -78,6 +95,46 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 		return nil, nil, fmt.Errorf("introspecting target database: %w", err)
 	}
 
-	findings, notes = Compare(scratchSchema, targetSchema)
-	return findings, notes, nil
+	compareFindings, compareNotes := Compare(scratchSchema, targetSchema)
+	return compareFindings, append(notes, compareNotes...), nil
+}
+
+// verifyAgainstParity refuses a caller-supplied scratch database whose
+// server version does not match the target's. targetSeries may be empty
+// (version undetectable), in which case there is nothing to compare against
+// and the caller has already been warned.
+func verifyAgainstParity(eng engine.Engine, againstURL, targetSeries string) error {
+	if targetSeries == "" {
+		return nil
+	}
+	againstDB, err := eng.Open(againstURL)
+	if err != nil {
+		return fmt.Errorf("opening --against database: %w", err)
+	}
+	defer againstDB.Close()
+
+	againstSeries := scratchdb.ServerSeries(againstDB, eng.Name())
+	if againstSeries == "" {
+		return fmt.Errorf(
+			"could not determine the --against database's %s version, so it cannot be confirmed to match "+
+				"the target (%s). Supply a scratch database on the same version, or omit --against and let "+
+				"dbtools provision a matching one",
+			eng.Name(), targetSeries)
+	}
+	if againstSeries != targetSeries {
+		return newMismatchError(eng.Name(), againstSeries, targetSeries)
+	}
+	return nil
+}
+
+// newMismatchError explains a --against database whose version does not
+// match the target's, and names the version the user needs. Separated out so
+// the remediation can be tested without a live server on two versions.
+func newMismatchError(engineName, againstSeries, targetSeries string) error {
+	return fmt.Errorf(
+		"--against database is %[1]s %[2]s but the target is %[1]s %[3]s. Comparing schemas across "+
+			"versions reports rendering differences as drift, so the result would be wrong rather than "+
+			"merely noisy. Supply a scratch database on %[1]s %[3]s, or omit --against and let dbtools "+
+			"provision a matching one",
+		engineName, againstSeries, targetSeries)
 }

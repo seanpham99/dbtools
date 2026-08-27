@@ -94,7 +94,7 @@ func isLoopbackHost(host string) bool {
 
 var mssqlSpec = spec{
 	engine:        "mssql",
-	image:         "mcr.microsoft.com/mssql/server:2025-latest",
+	image:         "mcr.microsoft.com/mssql/server:2022-latest",
 	containerPort: "1433",
 	dataDir:       "/var/opt/mssql",
 	runArgs: func(s spec) []string {
@@ -459,12 +459,13 @@ func StartScratch(engineName string) (rawURL string, cleanup func() error, err e
 	return StartScratchWithTimeout(engineName, 60*time.Second)
 }
 
-// StartScratchMajor is StartScratch pinned to a server major version, so a
+// StartScratchSeries is StartScratch pinned to a server version series, so a
 // scratch database can be made to match the target it will be compared
-// against. An empty or unrecognised major falls back to the engine's default
-// image. See ScratchImageFor for why the match matters.
-func StartScratchMajor(engineName, major string) (rawURL string, cleanup func() error, err error) {
-	return startScratch(engineName, major, 60*time.Second)
+// against. An empty or unrecognised series falls back to the engine's default
+// image. See ScratchImageFor for why the match matters, and
+// scratchdb.ServerSeries for what a series is per engine.
+func StartScratchSeries(engineName, series string) (rawURL string, cleanup func() error, err error) {
+	return startScratch(engineName, series, 60*time.Second)
 }
 
 // StartScratchWithTimeout starts a throwaway, --rm container for engineName,
@@ -477,50 +478,92 @@ func StartScratchWithTimeout(engineName string, timeout time.Duration) (rawURL s
 	return startScratch(engineName, "", timeout)
 }
 
+// mssqlYearTag maps a SQL Server ProductMajorVersion to its image tag.
+// SQL Server is the one engine whose tags are not version-shaped, so the
+// mapping is explicit rather than interpolated. Versions outside this table
+// fall back to the default image and are warned about by the caller.
+var mssqlYearTag = map[string]string{
+	"15": "2019-latest",
+	"16": "2022-latest",
+	"17": "2025-latest",
+}
+
 // ScratchImageFor returns the image to run a scratch container of engineName
-// on, pinned to major when that is a plausible major version.
+// on, matching series. Returns "" when no image can be chosen with
+// confidence, which means "use the engine's default".
 //
-// Matching the target's major version matters because catalog rendering is
-// not stable across majors, and a scratch/target mismatch shows up as drift
+// Matching the target's version matters because catalog rendering is not
+// stable across versions, and a scratch/target mismatch shows up as drift
 // that does not exist. Postgres 16 renders a CHECK constraint's
 // information_schema.check_clause as "((total_jobs >= 0))" where 17 renders
 // "(total_jobs >= 0)" — identical constraints, one paren apart, on every
-// CHECK in the schema. Against a default-image scratch database, that alone
-// produced dozens of false-positive findings for every user not already on
-// the default major.
-func ScratchImageFor(engineName, major string) string {
-	if !plausibleMajor(major) {
+// CHECK in the schema. Against a default-image scratch database that alone
+// produced dozens of false-positive findings for every user not on the
+// default version.
+//
+// Parity is what makes byte-exact schema comparison correct, so it is the
+// mechanism, not an optimisation: see docs/adr/003-v0.7-native-runner.md.
+func ScratchImageFor(engineName, series string) string {
+	if !plausibleSeries(series) {
 		return ""
 	}
 	switch engineName {
 	case "postgres":
-		return "postgres:" + major + "-alpine"
+		return "postgres:" + series + "-alpine"
 	case "mysql":
-		return "mysql:" + major
+		// 8.0 and 8.4 are separate tag series that render differently,
+		// so the series here is major.minor, not just the major.
+		return "mysql:" + series
+	case "mssql":
+		if tag, ok := mssqlYearTag[series]; ok {
+			return "mcr.microsoft.com/mssql/server:" + tag
+		}
+		return ""
 	default:
-		// mssql tags are not major-version-shaped (2019-latest,
-		// 2022-latest), so leave the default image alone rather than
-		// guess a tag that will fail to pull.
 		return ""
 	}
 }
 
-// plausibleMajor reports whether v looks like a version tag component, so a
-// malformed or hostile server_version string cannot be interpolated into a
-// docker image reference.
-func plausibleMajor(v string) bool {
-	if v == "" || len(v) > 2 {
+// PinsVersion reports whether engineName runs on a server whose version a
+// scratch container can be matched to. False for sqlite, which has no
+// server and no image — there is nothing to pin, and nothing to warn about
+// when a version cannot be detected.
+func PinsVersion(engineName string) bool {
+	switch engineName {
+	case "postgres", "mysql", "mssql":
+		return true
+	default:
 		return false
 	}
+}
+
+// plausibleSeries reports whether v looks like a version tag component —
+// digits with at most one interior dot — so a malformed or hostile
+// server_version string cannot be interpolated into a docker image
+// reference.
+func plausibleSeries(v string) bool {
+	if v == "" || len(v) > 4 {
+		return false
+	}
+	dots := 0
 	for i := 0; i < len(v); i++ {
-		if v[i] < '0' || v[i] > '9' {
+		c := v[i]
+		if c == '.' {
+			// No leading, trailing, or repeated dots.
+			if dots > 0 || i == 0 || i == len(v)-1 {
+				return false
+			}
+			dots++
+			continue
+		}
+		if c < '0' || c > '9' {
 			return false
 		}
 	}
 	return true
 }
 
-func startScratch(engineName, major string, timeout time.Duration) (rawURL string, cleanup func() error, err error) {
+func startScratch(engineName, series string, timeout time.Duration) (rawURL string, cleanup func() error, err error) {
 	s, err := specFor(engineName)
 	if err != nil {
 		return "", nil, err
@@ -531,7 +574,7 @@ func startScratch(engineName, major string, timeout time.Duration) (rawURL strin
 	if err := checkDocker(); err != nil {
 		return "", nil, err
 	}
-	if img := ScratchImageFor(engineName, major); img != "" {
+	if img := ScratchImageFor(engineName, series); img != "" {
 		s.image = img
 	}
 	s.name = scratchNameFor(engineName)

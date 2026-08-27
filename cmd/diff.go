@@ -20,13 +20,16 @@ var diffCmd = &cobra.Command{
 	Short: "Replay migrations into a scratch database and compare structurally against the live target (read-only)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cmd.SilenceUsage = false
-		err := runDiff(args[0])
-		var exitErr *ExitCodeError
-		if errors.As(err, &exitErr) {
-			cmd.SilenceUsage = true
-		}
-		return err
+		// Past flag parsing and Args validation by the time RunE runs, so
+		// every error from here on is operational, not a usage mistake:
+		// findings (exit 2), an unreachable target, or a refused --against.
+		// Printing the flag list after any of those is the noise #80 was
+		// filed about, one command over.
+		// SilenceErrors too: main already prints the error, so leaving
+		// cobra's copy on renders every failure twice.
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+		return runDiff(args[0])
 	},
 }
 
