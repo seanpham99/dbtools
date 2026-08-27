@@ -51,11 +51,12 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 				"so version-specific rendering differences may appear as findings", eng.Name()))
 	}
 
-	scratchURL, cleanup, err := scratchdb.ProvisionSeries(eng, againstURL, targetSeries)
+	scratch, err := scratchdb.ProvisionSeries(eng, againstURL, targetSeries)
 	if err != nil {
 		return nil, nil, err
 	}
-	if cleanup != nil {
+	scratchURL := scratch.URL
+	if cleanup := scratch.Cleanup; cleanup != nil {
 		defer func() {
 			cerr := cleanup()
 			if cerr == nil {

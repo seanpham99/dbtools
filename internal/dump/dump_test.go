@@ -29,7 +29,7 @@ func TestSchema_MissingToolGivesInstallHint(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = dump.Schema(eng, tt.engine+"://ignored")
+			_, err = dump.Schema(eng, tt.engine+"://ignored", dump.Options{})
 			if err == nil || !strings.Contains(err.Error(), tt.toolName) {
 				t.Fatalf("Schema() with no %s on PATH = %v, want an error naming %s", tt.toolName, err, tt.toolName)
 			}
@@ -72,7 +72,7 @@ func TestSchema_SQLiteNeedsNoExternalTool(t *testing.T) {
 	}
 
 	// Also test dump.Schema on sqlite
-	sqlTextFromSchema, err := dump.Schema(eng, "sqlite://"+dbPath)
+	sqlTextFromSchema, err := dump.Schema(eng, "sqlite://"+dbPath, dump.Options{})
 	if err != nil {
 		t.Fatalf("Schema() returned error: %v", err)
 	}
@@ -100,7 +100,7 @@ CREATE TABLE dbtools_migration_history (version bigint);
 		t.Fatal(err)
 	}
 
-	sqlText, err := dump.Schema(eng, "sqlite://"+dbPath, "schema_migrations", "dbtools_migration_history")
+	sqlText, err := dump.Schema(eng, "sqlite://"+dbPath, dump.Options{}, "schema_migrations", "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("Schema() returned error: %v", err)
 	}

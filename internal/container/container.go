@@ -456,7 +456,8 @@ func waitReadyWithTimeout(s spec, timeout time.Duration) error {
 // StartScratch starts a throwaway, --rm container for engineName and waits
 // up to 60s for readiness.
 func StartScratch(engineName string) (rawURL string, cleanup func() error, err error) {
-	return StartScratchWithTimeout(engineName, 60*time.Second)
+	rawURL, _, cleanup, err = startScratch(engineName, "", 60*time.Second)
+	return rawURL, cleanup, err
 }
 
 // StartScratchSeries is StartScratch pinned to a server version series, so a
@@ -464,7 +465,7 @@ func StartScratch(engineName string) (rawURL string, cleanup func() error, err e
 // against. An empty or unrecognised series falls back to the engine's default
 // image. See ScratchImageFor for why the match matters, and
 // scratchdb.ServerSeries for what a series is per engine.
-func StartScratchSeries(engineName, series string) (rawURL string, cleanup func() error, err error) {
+func StartScratchSeries(engineName, series string) (rawURL, containerName string, cleanup func() error, err error) {
 	return startScratch(engineName, series, 60*time.Second)
 }
 
@@ -475,7 +476,8 @@ func StartScratchSeries(engineName, series string) (rawURL string, cleanup func(
 // container, since a scratch database must start empty. Returns an error
 // for engines with no scratchRunArgs (sqlite — callers use a tempfile).
 func StartScratchWithTimeout(engineName string, timeout time.Duration) (rawURL string, cleanup func() error, err error) {
-	return startScratch(engineName, "", timeout)
+	rawURL, _, cleanup, err = startScratch(engineName, "", timeout)
+	return rawURL, cleanup, err
 }
 
 // mssqlYearTag maps a SQL Server ProductMajorVersion to its image tag.
@@ -563,16 +565,16 @@ func plausibleSeries(v string) bool {
 	return true
 }
 
-func startScratch(engineName, series string, timeout time.Duration) (rawURL string, cleanup func() error, err error) {
+func startScratch(engineName, series string, timeout time.Duration) (rawURL, containerName string, cleanup func() error, err error) {
 	s, err := specFor(engineName)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	if s.scratchRunArgs == nil {
-		return "", nil, fmt.Errorf("no scratch container template for engine %q", engineName)
+		return "", "", nil, fmt.Errorf("no scratch container template for engine %q", engineName)
 	}
 	if err := checkDocker(); err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 	if img := ScratchImageFor(engineName, series); img != "" {
 		s.image = img
@@ -581,7 +583,7 @@ func startScratch(engineName, series string, timeout time.Duration) (rawURL stri
 	s.hostPort = "0"
 
 	if out, err := exec.Command("docker", s.scratchRunArgs(s)...).CombinedOutput(); err != nil {
-		return "", nil, fmt.Errorf("docker run failed: %w: %s", err, strings.TrimSpace(string(out)))
+		return "", "", nil, fmt.Errorf("docker run failed: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	cleanup = func() error {
 		out, err := exec.Command("docker", "stop", s.name).CombinedOutput()
@@ -604,19 +606,19 @@ func startScratch(engineName, series string, timeout time.Duration) (rawURL stri
 
 	port, err := discoverHostPort(s.name, s.containerPort)
 	if err != nil {
-		return "", nil, abortWith(err)
+		return "", "", nil, abortWith(err)
 	}
 	s.hostPort = port
 
 	if err := waitReadyWithTimeout(s, timeout); err != nil {
-		return "", nil, abortWith(err)
+		return "", "", nil, abortWith(err)
 	}
 	if s.createDBArgs != nil {
 		if out, err := exec.Command("docker", s.createDBArgs(s)...).CombinedOutput(); err != nil {
-			return "", nil, abortWith(fmt.Errorf("creating %s: %w: %s", DatabaseName, err, strings.TrimSpace(string(out))))
+			return "", "", nil, abortWith(fmt.Errorf("creating %s: %w: %s", DatabaseName, err, strings.TrimSpace(string(out))))
 		}
 	}
-	return s.url(s, DatabaseName), cleanup, nil
+	return s.url(s, DatabaseName), s.name, cleanup, nil
 }
 
 // StopFor stops and removes engineName's tool-owned local container
