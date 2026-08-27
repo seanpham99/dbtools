@@ -1,11 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 
-	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/spf13/cobra"
 )
 
@@ -45,20 +45,18 @@ func runForce(targetName string, version uint64) error {
 		return err
 	}
 
-	eng, db, m, _, err := OpenTarget(cfg, targetName, "")
+	_, db, m, _, err := OpenTarget(cfg, targetName, "")
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	defer m.Close()
 
-	if err := m.Force(version); err != nil {
+	// Force takes the migration lock and records the version as applied
+	// without running its SQL — one write to one table, so there is no
+	// longer a separate cursor to update alongside the ledger.
+	if err := m.Force(context.Background(), version); err != nil {
 		return err
 	}
-
-	// Also update ledger status
-	note := fmt.Sprintf("forced to version %d via force command", version)
-	_ = eng.Ledger().SetStatus(db, version, ledger.StatusApplied, note, cfg.Ledger.Table)
 
 	if jsonOutput {
 		b, err := json.Marshal(struct {

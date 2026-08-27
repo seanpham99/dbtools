@@ -3,7 +3,7 @@
 package sqliteengine
 
 import (
-	"database/sql"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -43,33 +43,33 @@ func TestLiveMigrateUpAndLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := migrator.Open(rawURL, dir)
+	d, err := migrator.ReadDir(dir, ".up.sql")
 	if err != nil {
-		t.Fatalf("migrator.Open() returned error: %v", err)
+		t.Fatal(err)
 	}
-	defer m.Close()
+	runner := migrator.NewRunner(SQLite{}, db, d, "dbtools_sqlite_migrate_it_history")
 
-	applied, err := m.Up()
+	appliedCount, err := runner.Up(context.Background())
 	if err != nil {
 		t.Fatalf("Up() returned error: %v", err)
 	}
-	if !applied {
-		t.Fatal("Up() = false, want an applied migration")
+	if appliedCount == 0 {
+		t.Fatal("Up() applied 0 migrations, want at least one")
 	}
-	version, dirty, hasVersion, err := m.Version()
-	if err != nil || dirty || !hasVersion || version != 20260817000001 {
-		t.Fatalf("Version() = %d dirty=%v has=%v err=%v", version, dirty, hasVersion, err)
+	state, err := runner.State(context.Background())
+	if err != nil || state.Dirty || !state.HasVersion || state.Version != 20260817000001 {
+		t.Fatalf("State() = %+v err=%v", state, err)
 	}
 
 	// Ledger round trip through the engine seam.
 	store := ledgerStore{}
-	if err := store.EnsureSchema(db, "dbtools_migration_history"); err != nil {
-		t.Fatalf("Sync() returned error: %v", err)
+	if err := store.EnsureSchema(db, "dbtools_sqlite_migrate_it_history"); err != nil {
+		t.Fatalf("EnsureSchema() returned error: %v", err)
 	}
-	if err := store.SetStatus(db, 20260817000001, "applied", "applied via integration test", "dbtools_migration_history"); err != nil {
+	if err := store.SetStatus(db, 20260817000001, "applied", "applied via integration test", "dbtools_sqlite_migrate_it_history"); err != nil {
 		t.Fatalf("SetStatus() returned error: %v", err)
 	}
-	entries, err := store.List(db, "dbtools_migration_history")
+	entries, err := store.List(db, "dbtools_sqlite_migrate_it_history")
 	if err != nil {
 		t.Fatalf("List() returned error: %v", err)
 	}
@@ -86,21 +86,14 @@ func TestLiveMigrateUpAndLedger(t *testing.T) {
 		t.Fatalf("it_widgets table count = %d, want 1", n)
 	}
 
-	// The cursor and ledger must both see the file as up to date now.
-	if err := m.Close(); err != nil {
-		t.Fatal(err)
-	}
-	m2, err := migrator.Open(rawURL, dir)
-	if err != nil {
-		t.Fatalf("re-open migrator: %v", err)
-	}
-	defer m2.Close()
-	applied, err = m2.Up()
+	// A second run must find nothing pending: the ledger is now the only
+	// record, so "already applied" is derived from the rows just written.
+	again, err := runner.Up(context.Background())
 	if err != nil {
 		t.Fatalf("second Up() returned error: %v", err)
 	}
-	if applied {
-		t.Fatal("second Up() = true, want no-change (ErrNoChange path)")
+	if again != 0 {
+		t.Fatalf("second Up() applied %d migrations, want 0", again)
 	}
 }
 
@@ -122,24 +115,40 @@ func TestLiveMigrateDirtyFlag(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "1_good.up.sql"), []byte("CREATE TABLE good_t (id INTEGER);"), 0o644)
 	os.WriteFile(filepath.Join(dir, "2_bad.up.sql"), []byte("THIS IS NOT SQL"), 0o644)
 
-	m, err := migrator.Open(rawURL, dir)
+	eng := SQLite{}
+	db, err := eng.Open(rawURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer m.Close()
+	defer db.Close()
+	d, err := migrator.ReadDir(dir, ".up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := migrator.NewRunner(eng, db, d, "dbtools_sqlite_migrate_it_history")
 
-	if _, err := m.Up(); err == nil {
+	applied, err := runner.Up(context.Background())
+	if err == nil {
 		t.Fatal("Up() with a bad second migration should error")
 	}
-	version, dirty, has, err := m.Version()
+	if applied != 1 {
+		t.Fatalf("Up() applied %d migrations before failing, want 1 (the good one)", applied)
+	}
+
+	// The failed migration's "applying" row survives, which is what stops
+	// the next run rather than a separate dirty flag — and unlike a
+	// boolean, it names the migration that died.
+	state, err := runner.State(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !has || !dirty || version != 2 {
-		t.Fatalf("after failed Up(): version=%d dirty=%v has=%v; want version=2 dirty=true has=true", version, dirty, has)
+	if !state.Dirty || state.Applying != 2 {
+		t.Fatalf("after failed Up(): state = %+v, want dirty at version 2", state)
 	}
 
-	// The cursor must be dirty so a consumer (ledger.Sync's dirty check)
-	// can refuse to backfill over it.
-	_ = sql.ErrNoRows // keep database/sql import used if this test is trimmed
+	// A second run must refuse rather than apply more SQL on top of a
+	// schema in an unknown state.
+	if _, err := runner.Up(context.Background()); err == nil {
+		t.Fatal("second Up() succeeded over a mid-apply migration, want a refusal")
+	}
 }

@@ -1,24 +1,17 @@
 package migrator
 
 import (
-	"net/url"
 	"strings"
+
+	"github.com/seanpham99/dbtools/internal/dburl"
 )
 
-// SchemeOf returns rawURL's scheme. It first tries a plain string cut on
-// "://" because several dbtools connection strings are not valid
-// net/url URLs — MySQL's mysql://user:pass@tcp(host:port)/db, for
-// instance, makes url.Parse fail outright ("invalid port") on the
-// tcp(...) host syntax. Falls back to url.Parse for anything that isn't
-// scheme-prefixed that way, returning "" if neither yields a scheme.
+// SchemeOf returns rawURL's scheme. Thin re-export of dburl.SchemeOf, kept
+// so callers already reaching for the migrator package do not all have to
+// change; the implementation lives in dburl because engine resolution needs
+// it and must not depend on the runner.
 func SchemeOf(rawURL string) string {
-	if idx := strings.Index(rawURL, "://"); idx > 0 {
-		return rawURL[:idx]
-	}
-	if u, err := url.Parse(rawURL); err == nil {
-		return u.Scheme
-	}
-	return ""
+	return dburl.SchemeOf(rawURL)
 }
 
 // ensureMySQLMultiStatements appends multiStatements=true to rawURL if

@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
@@ -32,19 +34,20 @@ func runDryRun(cfg *config.Config, targetName, urlOverride string) error {
 		return err
 	}
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	_, db, r, _, err := OpenTarget(cfg, targetName, "")
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	defer db.Close()
 
-	curVer, dirty, hasVer, err := m.Version()
+	state, err := r.State(context.Background())
 	if err != nil {
 		return err
 	}
-	if dirty {
-		return fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, curVer, targetName)
+	if state.Dirty {
+		return &ledger.DirtyError{Version: state.Applying, Table: cfg.LedgerTableName()}
 	}
+	curVer, hasVer := state.Version, state.HasVersion
 
 	dir, err := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
 	if err != nil {

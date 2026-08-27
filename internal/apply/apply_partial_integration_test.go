@@ -12,10 +12,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/engine"
 	_ "github.com/seanpham99/dbtools/internal/engine/sqliteengine"
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
-
-var migratorOpen = migrator.Open
 
 // TestRun_RecordsPartiallyAppliedMigrationsOnFailure is the C2 regression:
 // with three pending migrations where the third fails, the first two are
@@ -66,10 +63,20 @@ func TestRun_RecordsPartiallyAppliedMigrationsOnFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("ledger has %d entries, want exactly the 2 applied migrations (got %+v)", len(entries), entries)
+	// Two applied, plus an "applying" row for the migration that failed.
+	// That third row is new and is the point: the failure is now recorded
+	// rather than invisible, so the next run refuses instead of applying
+	// more SQL over a schema in an unknown state.
+	if len(entries) != 3 {
+		t.Fatalf("ledger has %d entries, want 2 applied + 1 applying (got %+v)", len(entries), entries)
 	}
 	for _, e := range entries {
+		if e.Version == 3 {
+			if e.Status != ledger.StatusApplying {
+				t.Errorf("entry %+v: the failed migration should be left applying", e)
+			}
+			continue
+		}
 		if e.Status != ledger.StatusApplied {
 			t.Errorf("entry %+v: want applied", e)
 		}
@@ -80,25 +87,23 @@ func TestRun_RecordsPartiallyAppliedMigrationsOnFailure(t *testing.T) {
 
 	// The failed migration must NOT be recorded as applied.
 	for _, e := range entries {
-		if e.Version == 3 {
+		if e.Version == 3 && e.Status == ledger.StatusApplied {
 			t.Fatalf("failed migration 3 was recorded as applied: %+v", e)
 		}
 	}
 
-	// Fix the bad migration. The dirty cursor (a failed apply at version 3)
-	// must block a blind re-run — the ledger refuses to backfill over a
-	// dirty cursor (C3), forcing an explicit repair decision. This is the
-	// protection: the failed migration can never silently become "applied".
+	// Fix the bad migration. The surviving applying row for version 3 must
+	// still block a blind re-run, forcing an explicit repair decision:
+	// fixing the file says nothing about what the failed run already did
+	// to the schema.
 	os.WriteFile(filepath.Join(dir, "3_bad.up.sql"), []byte("CREATE TABLE migrate_c (id INTEGER PRIMARY KEY);"), 0o644)
 	_, err = Run(cfg, "local", "")
-	if err == nil || !strings.Contains(err.Error(), "dirty") {
-		t.Fatalf("Run() over a dirty cursor = %v, want a dirty-cursor error", err)
+	if err == nil || !strings.Contains(err.Error(), "started and never finished") {
+		t.Fatalf("Run() over a dirty cursor = %v, want the mid-apply refusal", err)
 	}
 
-	// After repair the failed migration stays reverted — the correct
-	// recovery is to add a new migration. A run applies it and records it
-	// with a hash. (repair.Run does both of these: ledger SetStatus
-	// reverted + Stamp past the dirty cursor.)
+	// Recovery is an explicit decision recorded in the ledger, after which
+	// a run proceeds normally.
 	eng, err = engine.ForTarget("", rawURL)
 	if err != nil {
 		t.Fatal(err)
@@ -108,16 +113,15 @@ func TestRun_RecordsPartiallyAppliedMigrationsOnFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err := eng.Ledger().SetStatus(db, 3, ledger.StatusReverted, "repair: previously failed", "dbtools_migration_history"); err != nil {
-		t.Fatalf("marking 3 reverted: %v", err)
-	}
-	m, err := migratorOpen(rawURL, dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer m.Close()
-	if err := m.Stamp(3); err != nil {
-		t.Fatalf("stamp version 3 clean: %v", err)
+	// The operator inspects the database, finds version 3's changes really
+	// are present, and records that. With the version derived from the
+	// ledger, this single write is the whole repair — there is no cursor
+	// to stamp alongside it, and no way for the two to disagree.
+	//
+	// Marking it *reverted* instead would legitimately make 3 pending
+	// again, since the ledger would then say it was never applied.
+	if err := eng.Ledger().SetStatus(db, 3, ledger.StatusApplied, "repair: verified applied", "dbtools_migration_history"); err != nil {
+		t.Fatalf("marking 3 applied: %v", err)
 	}
 	os.WriteFile(filepath.Join(dir, "4_create_c.up.sql"), []byte("CREATE TABLE migrate_c (id INTEGER PRIMARY KEY);"), 0o644)
 	if _, err := Run(cfg, "local", ""); err != nil {
@@ -128,7 +132,7 @@ func TestRun_RecordsPartiallyAppliedMigrationsOnFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 4 {
-		t.Fatalf("after repair+run: ledger has %d entries, want 4 (v1, v2 applied; v3 reverted; v4 applied)", len(entries))
+		t.Fatalf("after repair+run: ledger has %d entries, want 4 (v1-v4 applied)", len(entries))
 	}
 	var found bool
 	for _, e := range entries {
@@ -142,8 +146,12 @@ func TestRun_RecordsPartiallyAppliedMigrationsOnFailure(t *testing.T) {
 			}
 		}
 		if e.Version == 3 {
-			if e.Status != ledger.StatusReverted {
-				t.Fatalf("repaired migration 3 status = %s, want reverted: %+v", e.Status, e)
+			// Recorded applied by the repair above: the operator verified
+			// its changes really are present. What matters is that the
+			// applying row is gone — the decision was made explicitly, not
+			// by a re-run guessing.
+			if e.Status == ledger.StatusApplying {
+				t.Fatalf("migration 3 is still applying after repair: %+v", e)
 			}
 		}
 	}

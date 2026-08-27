@@ -28,7 +28,7 @@ type Result struct {
 // applied when its migration's objects don't exist unless force is set),
 // applies all pairs, and recomputes db's cursor as the highest remaining
 // applied version.
-func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir, upSuffix, table string, pairs []Pair, force bool) (*Result, error) {
+func Run(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table string, pairs []Pair, force bool) (*Result, error) {
 	migrationsDir, upSuffix, table = config.ResolveDefaults(migrationsDir, upSuffix, table)
 	if err := eng.Ledger().EnsureSchema(db, table); err != nil {
 		return nil, err
@@ -95,10 +95,9 @@ func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir, upS
 	if len(applied) == 0 {
 		return result, nil
 	}
+	// No cursor to stamp: the version is derived from the rows this
+	// function just wrote, so recording them IS the stamp.
 	newCursor := applied[len(applied)-1]
-	if err := m.Stamp(newCursor); err != nil {
-		return nil, err
-	}
 	result.NewCursor = newCursor
 	result.HasCursor = true
 	return result, nil

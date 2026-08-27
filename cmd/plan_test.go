@@ -10,7 +10,6 @@ import (
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // TestPlanJSONPreview exercises `plan` against a real temp-file SQLite DB:
@@ -282,15 +281,9 @@ func TestBuildPlanEntries_NoLedgerSetsLedgerSkippedNotDrift(t *testing.T) {
 	}
 	db.Close()
 
-	m, err := migrator.Open(dbURL, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Stamp(20260817000001); err != nil {
-		m.Close()
-		t.Fatal(err)
-	}
-	m.Close()
+	// Schema present, no dbtools ledger — the shape of a database another
+	// tool migrated. There is no cursor to stamp; plan must report the
+	// ledger as skipped rather than inventing drift from its absence.
 
 	planTarget = "local"
 	defer func() { planTarget = "" }()

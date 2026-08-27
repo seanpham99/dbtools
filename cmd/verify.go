@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/engine"
-	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/verify"
 	"github.com/spf13/cobra"
 )
@@ -57,36 +57,33 @@ func runVerify(targetName string) error {
 	}
 	defer db.Close()
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	ledgerExists, err := engine.TableExists(eng, db, cfg.LedgerTableName())
 	if err != nil {
 		return err
 	}
-	defer m.Close()
-
-	ledgerExists, err := engine.TableExists(eng, db, cfg.Ledger.Table)
-	if err != nil {
-		return err
-	}
-	if !ledgerExists {
-		version, dirty, _, err := m.Version()
+	if ledgerExists {
+		// A migration left mid-apply makes every other finding
+		// untrustworthy: the schema is in a state no migration file
+		// describes.
+		state, err := eng.Ledger().State(db, cfg.LedgerTableName())
 		if err != nil {
 			return err
 		}
-		if dirty {
-			return fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, version, targetName)
+		if state.Dirty {
+			return &ledger.DirtyError{Version: state.Applying, Table: cfg.LedgerTableName()}
 		}
 	}
 	if !ledgerExists && verifyInitLedger {
 		if err := requireUnprotected(cfg, targetName); err != nil {
 			return err
 		}
-		if err := eng.Ledger().EnsureSchema(db, cfg.Ledger.Table); err != nil {
+		if err := eng.Ledger().EnsureSchema(db, cfg.LedgerTableName()); err != nil {
 			return err
 		}
 		ledgerExists = true
 	}
 	if ledgerExists {
-		entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
+		entries, err := eng.Ledger().List(db, cfg.LedgerTableName())
 		if err != nil {
 			return err
 		}
@@ -97,13 +94,13 @@ func runVerify(targetName string) error {
 			if err := requireUnprotected(cfg, targetName); err != nil {
 				return err
 			}
-			if err := eng.Ledger().EnsureSchema(db, cfg.Ledger.Table); err != nil {
+			if err := eng.Ledger().EnsureSchema(db, cfg.LedgerTableName()); err != nil {
 				return err
 			}
 		}
 	}
 
-	report, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, targetName)
+	report, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), targetName)
 	if err != nil {
 		return err
 	}

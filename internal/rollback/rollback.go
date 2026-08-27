@@ -6,7 +6,6 @@ import (
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // Result summarizes what rollback.Run executed.
@@ -31,13 +30,7 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	migrationsDir, _, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
-
-	m, err := migrator.Open(url, migrationsDir)
-	if err != nil {
-		return nil, err
-	}
-	defer m.Close()
+	_, _, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 
 	db, err := eng.Open(url)
 	if err != nil {
@@ -100,10 +93,8 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	}
 
 	if len(remaining) > 0 {
+		// Derived from the ledger rows above, not stamped separately.
 		newCursor := remaining[len(remaining)-1]
-		if err := m.Stamp(newCursor); err != nil {
-			return nil, err
-		}
 		result.NewCursor = newCursor
 		result.HasCursor = true
 	}

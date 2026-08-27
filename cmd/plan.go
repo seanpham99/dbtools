@@ -110,7 +110,10 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 			Dirty:          s.Dirty,
 			Pending:        s.Pending,
 		}
-		if s.HasVersion {
+		// Not gated on HasVersion: with the cursor gone, a missing ledger
+		// is precisely why there is no version, and that is the case
+		// LedgerSkipped exists to report.
+		{
 			override := ""
 			if planTarget != "" {
 				override = planURL
@@ -118,7 +121,7 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 			url, _ := cfg.ResolveURLOrFlag(r.Target, override)
 			eng, err := engine.ForTarget(cfg.EngineName(r.Target), url)
 			if err == nil {
-				e.Drift, e.LedgerSkipped = planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, r.Target)
+				e.Drift, e.LedgerSkipped = planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), r.Target)
 			}
 		}
 		entries = append(entries, e)

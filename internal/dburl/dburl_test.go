@@ -27,16 +27,3 @@ func TestStripCustomParams_LeavesUnparseableUnchanged(t *testing.T) {
 		t.Errorf("StripCustomParams(%q) = %q, want it unchanged", in, got)
 	}
 }
-
-func TestWithParamRoundTrips(t *testing.T) {
-	got := WithParam("postgres://h/db?sslmode=disable", "x-migrations-table", "dbtools_schema_version")
-	if v := Param(got, "x-migrations-table"); v != "dbtools_schema_version" {
-		t.Errorf("Param after WithParam = %q, want %q", v, "dbtools_schema_version")
-	}
-	if v := Param(got, "sslmode"); v != "disable" {
-		t.Errorf("WithParam dropped an existing parameter: sslmode = %q", v)
-	}
-	if got := StripCustomParams(got); Param(got, "x-migrations-table") != "" {
-		t.Errorf("StripCustomParams did not remove the parameter WithParam added: %q", got)
-	}
-}

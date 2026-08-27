@@ -1,17 +1,17 @@
 // Package dburl manipulates database connection URLs around
 // golang-migrate's custom "x-" query parameters.
 //
-// golang-migrate reads its own options (x-migrations-table,
-// x-statement-timeout, ...) from the connection URL's query string.
-// Database drivers do not know those options and reject them:
-// lib/pq fails a connection carrying x-migrations-table with
+// Connection URLs sometimes carry migration-tool options in their query
+// string — x-migrations-table and friends, a golang-migrate convention that
+// predates dbtools owning its own runner. Database drivers do not know
+// those options and reject them outright:
 //
 //	pq: unrecognized configuration parameter "x-migrations-table"
 //
-// so any code path that opens its own connection from a URL that
-// golang-migrate also consumes has to strip them first. That is every
-// dbtools engine Open, and it is why the parameter cannot simply be
-// documented as a user-supplied workaround.
+// dbtools no longer produces them, but a URL held in a CI secret or a vault
+// may still contain one, and failing a connection over a parameter dbtools
+// itself ignores would be a poor upgrade. So they are stripped before the
+// URL reaches a driver.
 package dburl
 
 import (
@@ -49,25 +49,22 @@ func StripCustomParams(rawURL string) string {
 	return u.String()
 }
 
-// WithParam returns rawURL with key=value set in its query string,
-// replacing any existing value. A URL that cannot be parsed is returned
-// unchanged rather than corrupted.
-func WithParam(rawURL, key, value string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return rawURL
+// SchemeOf returns rawURL's scheme. It first tries a plain string cut on
+// "://" because several dbtools connection strings are not valid net/url
+// URLs — MySQL's mysql://user:pass@tcp(host:port)/db, for instance, makes
+// url.Parse fail outright ("invalid port") on the tcp(...) host syntax.
+// Falls back to url.Parse for anything that isn't scheme-prefixed that way,
+// returning "" if neither yields a scheme.
+//
+// This lives here rather than in internal/migrator so that engine
+// resolution does not depend on the migration runner: the runner needs to
+// call into engines, and the reverse edge would make that a cycle.
+func SchemeOf(rawURL string) string {
+	if idx := strings.Index(rawURL, "://"); idx > 0 {
+		return rawURL[:idx]
 	}
-	q := u.Query()
-	q.Set(key, value)
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-// Param returns the value of key in rawURL's query string, or "".
-func Param(rawURL, key string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return ""
+	if u, err := url.Parse(rawURL); err == nil {
+		return u.Scheme
 	}
-	return u.Query().Get(key)
+	return ""
 }

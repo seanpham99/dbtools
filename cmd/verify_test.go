@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
+	"github.com/seanpham99/dbtools/internal/ledger"
 )
 
 // TestVerifyCommand_MissingTargetStillPrintsUsage guards against RunE's
@@ -84,7 +85,7 @@ engine = "sqlite"
 	}
 }
 
-func TestVerifyCommand_DirtyCursorWithoutLedgerExitsOne(t *testing.T) {
+func TestVerifyCommand_DirtyLedgerExitsOne(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "1_create_widgets.up.sql"),
 		[]byte("CREATE TABLE widgets (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
@@ -108,11 +109,14 @@ engine = "sqlite"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, dirty BOOLEAN NOT NULL)`); err != nil {
+	// Leave a migration mid-apply in the ledger. The separate dirty cursor
+	// is gone; an "applying" row is what records the same situation, and it
+	// names the migration that died.
+	if err := eng.Ledger().EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO schema_migrations (version, dirty) VALUES (1, 1)`); err != nil {
+	if err := eng.Ledger().SetStatus(db, 1, ledger.StatusApplying, "died mid-apply", "dbtools_migration_history"); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -142,8 +146,8 @@ engine = "sqlite"
 	if exitErr.ExitCode() != 1 {
 		t.Fatalf("dbtools verify exit code = %d, want 1; output:\n%s", exitErr.ExitCode(), output)
 	}
-	if !strings.Contains(string(output), "migration cursor is dirty at version 1") {
-		t.Fatalf("dbtools verify output = %q, want dirty-cursor diagnostic", output)
+	if !strings.Contains(string(output), "migration 1 started and never finished") {
+		t.Fatalf("dbtools verify output = %q, want the mid-apply diagnostic", output)
 	}
 }
 

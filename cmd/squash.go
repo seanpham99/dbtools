@@ -54,7 +54,7 @@ func runSquash(targetName string) error {
 		return err
 	}
 
-	migrationsDir, upSuffix, _ := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	migrationsDir, upSuffix, _ := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return err

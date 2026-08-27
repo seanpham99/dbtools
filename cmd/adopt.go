@@ -64,7 +64,7 @@ func runAdopt(targetName string) error {
 	}
 	defer db.Close()
 
-	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 
 	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
@@ -130,12 +130,6 @@ func runAdopt(targetName string) error {
 		return err
 	}
 
-	m, err := migrator.Open(url, migrationsDir)
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
 	// EnsureSchema only, never Sync: Sync also backfills a row for every
 	// version the golang-migrate cursor already considers applied, tagged
 	// with the normal (non-adopted) hash source — exactly the "hash now,
@@ -152,12 +146,11 @@ func runAdopt(targetName string) error {
 		}
 	}
 
-	if len(plan.Matched) > 0 {
-		highest := plan.Matched[len(plan.Matched)-1]
-		if err := m.Stamp(highest); err != nil {
-			return err
-		}
-	}
+	// #79: adopt used to stamp a separate version cursor here, after the
+	// ledger rows were already written. That second write is what made the
+	// command non-atomic — and on a database whose ledger table was named
+	// schema_migrations, it was also the write that failed. With the
+	// version derived from the rows, importing them is the whole job.
 
 	logger.Infof("adopted %d version(s) from %s", len(plan.Matched), table)
 	return nil

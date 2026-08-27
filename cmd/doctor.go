@@ -177,7 +177,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 		Message: fmt.Sprintf("connected to database (%s)", eng.Name()),
 	})
 
-	ledgerTableExists, err := engine.TableExists(eng, db, cfg.Ledger.Table)
+	ledgerTableExists, err := engine.TableExists(eng, db, cfg.LedgerTableName())
 	if err != nil {
 		report.Healthy = false
 		report.Exit = 1
@@ -198,7 +198,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 			Message: "no ledger — run `dbtools adopt` to enable",
 		})
 	} else {
-		entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
+		entries, err := eng.Ledger().List(db, cfg.LedgerTableName())
 		if err != nil {
 			report.Checks = append(report.Checks, CheckResult{
 				Name:    "ledger-integrity",
@@ -255,19 +255,25 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 	}
 
 	// 4. Version sync & pending check
-	m, err := migrator.Open(rawURL, cfg.MigrationsDir)
 	var currentVer uint64
 	var isDirty bool
 	var hasVer bool
-	if err != nil {
+	if !ledgerTableExists {
+		// Without a ledger dbtools has no record of what has been applied,
+		// and there is no longer a separate cursor to fall back on. Saying
+		// "N pending" would be a guess presented as a finding — a database
+		// an incumbent tool already migrated looks identical to an empty
+		// one from here. Skip, and point at the command that fixes it.
 		report.Checks = append(report.Checks, CheckResult{
 			Name:    "version-sync",
-			Status:  "fail",
-			Message: fmt.Sprintf("migrator error: %v", err),
+			Status:  "skipped",
+			Message: "no ledger — run `dbtools adopt` to enable",
 		})
 	} else {
-		defer m.Close()
-		v, dirty, hv, vErr := m.Version()
+		var state ledger.State
+		var vErr error
+		state, vErr = eng.Ledger().State(db, cfg.LedgerTableName())
+		v, dirty, hv := state.Version, state.Dirty, state.HasVersion
 		if vErr != nil {
 			report.Checks = append(report.Checks, CheckResult{
 				Name:    "version-sync",
@@ -316,7 +322,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 
 	// 5. Drift summary
 	if !ledgerTableExists {
-		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, targetName)
+		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), targetName)
 		if err != nil {
 			report.Checks = append(report.Checks, CheckResult{
 				Name:    "drift-summary",
@@ -345,7 +351,7 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 			}
 		}
 	} else if len(ledgerEntries) > 0 {
-		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, targetName)
+		vReport, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), targetName)
 		if err != nil {
 			report.Checks = append(report.Checks, CheckResult{
 				Name:    "drift-summary",

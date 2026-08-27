@@ -3,6 +3,7 @@
 package postgresengine
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,22 +43,22 @@ CREATE OR REPLACE FUNCTION pg_it_touch() RETURNS trigger AS $fn1$ BEGIN RETURN N
 	}
 	t.Cleanup(func() { db.Exec(`DROP FUNCTION IF EXISTS pg_it_touch`) })
 
-	m, err := migrator.Open(rawURL, dir)
+	d, err := migrator.ReadDir(dir, ".up.sql")
 	if err != nil {
-		t.Fatalf("migrator.Open() returned error: %v", err)
+		t.Fatal(err)
 	}
-	defer m.Close()
+	runner := migrator.NewRunner(Postgres{}, db, d, "dbtools_pg_migrate_it_history")
 
-	applied, err := m.Up()
+	n, err := runner.Up(context.Background())
 	if err != nil {
 		t.Fatalf("Up() returned error: %v", err)
 	}
-	if !applied {
-		t.Fatal("Up() = false, want an applied migration")
+	if n == 0 {
+		t.Fatal("Up() applied 0 migrations, want at least one")
 	}
-	version, dirty, hasVersion, err := m.Version()
-	if err != nil || dirty || !hasVersion || version != 20260817000001 {
-		t.Fatalf("Version() = %d dirty=%v has=%v err=%v", version, dirty, hasVersion, err)
+	state, err := runner.State(context.Background())
+	if err != nil || state.Dirty || !state.HasVersion || state.Version != 20260817000001 {
+		t.Fatalf("State() = %+v err=%v", state, err)
 	}
 
 	// Seed through the engine seam from a temp working directory.

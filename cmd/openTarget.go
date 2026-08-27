@@ -10,15 +10,15 @@ import (
 )
 
 // OpenTarget resolves a target's connection string (or --url override),
-// validates its engine, and opens both the database connection and the
-// migrate cursor. It is the single shared preamble for every command that
+// validates its engine, opens the database connection, and builds the
+// migration runner. It is the single shared preamble for every command that
 // acts on one named target — verify, repair, push, generate, apply.
 //
-// The caller owns closing db and m. The returned url is what the caller
-// should pass to apply.Run/statusinfo.Collect etc. so the same resolution
-// logic is never duplicated with drift (the guards in this file are only
-// as trustworthy as the one code path that feeds them).
-func OpenTarget(cfg *config.Config, targetName, urlOverride string) (eng engine.Engine, db *sql.DB, m *migrator.Migrator, url string, err error) {
+// The caller owns closing db. The returned url is what the caller should
+// pass to apply.Run/statusinfo.Collect etc. so the same resolution logic is
+// never duplicated with drift (the guards in this file are only as
+// trustworthy as the one code path that feeds them).
+func OpenTarget(cfg *config.Config, targetName, urlOverride string) (eng engine.Engine, db *sql.DB, r *migrator.Runner, url string, err error) {
 	url, err = cfg.ResolveURLOrFlag(targetName, urlOverride)
 	if err != nil {
 		return nil, nil, nil, "", err
@@ -36,12 +36,13 @@ func OpenTarget(cfg *config.Config, targetName, urlOverride string) (eng engine.
 	if err != nil {
 		return nil, nil, nil, "", err
 	}
-	m, err = migrator.Open(url, cfg.MigrationsDir)
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		db.Close()
 		return nil, nil, nil, "", err
 	}
-	return eng, db, m, url, nil
+	return eng, db, migrator.NewRunner(eng, db, dir, ledgerTable), url, nil
 }
 
 // requireUnprotected refuses commands that mutate a protected target

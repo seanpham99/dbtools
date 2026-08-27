@@ -105,7 +105,7 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("replaying migrations into scratch database: %w", err)
 	}
 
-	_, _, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	_, _, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 	excludeTables := []string{"schema_migrations", "dbtools_migration_history", ledgerTable}
 	// Dump from inside the replay container when the image ships the tool,
 	// so the dump tool's version always matches the server it dumps.

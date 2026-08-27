@@ -15,14 +15,15 @@
 package engine
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"sort"
 
+	"github.com/seanpham99/dbtools/internal/dburl"
 	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/generate"
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // Engine is one pluggable database engine implementation.
@@ -43,6 +44,13 @@ type Engine interface {
 	// Ledger is the engine's migration-ledger store (the
 	// dbtools_migration_history table's DDL/DML in this dialect).
 	Ledger() LedgerStore
+
+	// ExecMigration runs one migration file's SQL on conn.
+	//
+	// A whole run shares one connection, so engines that need per-file
+	// session hygiene (Postgres) or batch splitting (SQL Server's GO) do
+	// it here rather than leaking those concerns into the runner.
+	ExecMigration(ctx context.Context, conn *sql.Conn, sqlText string) error
 
 	// Introspect reads the live schema and returns one TableSchema per
 	// base table (plus any engine-specific extras), for `generate`. The
@@ -142,7 +150,7 @@ func normalizeScheme(scheme string) string {
 
 // ForURL resolves the engine for rawURL by its scheme.
 func ForURL(rawURL string) (Engine, error) {
-	scheme := migrator.SchemeOf(rawURL)
+	scheme := dburl.SchemeOf(rawURL)
 	if scheme == "" {
 		return nil, fmt.Errorf("connection URL has no scheme (want one of %v, e.g. mssql://...)", Names())
 	}

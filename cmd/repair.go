@@ -9,7 +9,6 @@ import (
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/logger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/seanpham99/dbtools/internal/repair"
 	"github.com/spf13/cobra"
 )
@@ -98,13 +97,7 @@ func runRepair(targetName string, pairs []repair.Pair) error {
 	}
 	defer db.Close()
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
-	result, err := repair.Run(db, eng, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, pairs, repairForce)
+	result, err := repair.Run(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), pairs, repairForce)
 	if err != nil {
 		return err
 	}

@@ -129,7 +129,11 @@ func runStatus(targetNames ...string) error {
 
 	noLedgers := make(map[string]bool)
 	for _, r := range results {
-		if r.Status != nil && r.Status.HasVersion {
+		// Checked regardless of whether a version was reported. With the
+		// cursor gone, "no ledger" is exactly why there is no version — so
+		// gating this on HasVersion would hide it in the one case it
+		// matters most.
+		if r.Status != nil {
 			override := ""
 			if target != "" {
 				override = statusURL
@@ -137,7 +141,7 @@ func runStatus(targetNames ...string) error {
 			if url, uerr := cfg.ResolveURLOrFlag(r.Target, override); uerr == nil {
 				if eng, eerr := engine.ForTarget(cfg.EngineName(r.Target), url); eerr == nil {
 					if db, derr := eng.Open(url); derr == nil {
-						exists, existsErr := engine.TableExists(eng, db, cfg.Ledger.Table)
+						exists, existsErr := engine.TableExists(eng, db, cfg.LedgerTableName())
 						if existsErr == nil && !exists {
 							noLedgers[r.Target] = true
 						}

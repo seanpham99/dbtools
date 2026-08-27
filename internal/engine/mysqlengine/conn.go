@@ -25,6 +25,13 @@ func dsnFromURL(rawURL string) (string, error) {
 		return "", fmt.Errorf("parsing mysql DSN: %w", err)
 	}
 	cfg.ParseTime = true
+	// MultiStatements is forced for the same reason ParseTime is: without
+	// it, MySQL runs only the first statement of a multi-statement
+	// migration file and reports success, so the ledger records a version
+	// that was never fully applied. That silent drift is what dbtools
+	// exists to prevent, and it must not depend on a caller remembering a
+	// query parameter.
+	cfg.MultiStatements = true
 	return cfg.FormatDSN(), nil
 }
 

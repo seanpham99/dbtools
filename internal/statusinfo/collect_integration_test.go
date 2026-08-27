@@ -30,7 +30,7 @@ func TestCollect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status, err := Collect(url, dir, ".up.sql", "local")
+	status, err := Collect(url, "", dir, ".up.sql", "dbtools_migration_history", "local")
 	if err != nil {
 		t.Fatalf("Collect() before any Up() returned error: %v", err)
 	}
