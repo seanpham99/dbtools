@@ -76,7 +76,7 @@ jobs:
           - db: mssql
             version: "2022"
           - db: sqlite
-            version: ""
+            version: "3"
     services:
       mssql:
         image: mcr.microsoft.com/mssql/server:${{ matrix.db == 'mssql' && matrix.version || '2022' }}-latest
