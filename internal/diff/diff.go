@@ -2,12 +2,11 @@ package diff
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/config"
-	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/scratchdb"
 )
 
 // Run provisions a scratch database (or uses againstURL if non-empty,
@@ -24,27 +23,9 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 		return nil, nil, err
 	}
 
-	scratchURL := againstURL
-	var cleanup func() error
-	if scratchURL == "" {
-		if eng.Name() == "sqlite" {
-			f, err := os.CreateTemp("", "dbtools-diff-scratch-*.db")
-			if err != nil {
-				return nil, nil, fmt.Errorf("creating scratch file: %w", err)
-			}
-			path := f.Name()
-			f.Close()
-			os.Remove(path) // sqlite creates it fresh on first open
-			scratchURL = "sqlite://" + path
-			cleanup = func() error { return os.Remove(path) }
-		} else {
-			url, c, err := container.StartScratch(eng.Name())
-			if err != nil {
-				return nil, nil, fmt.Errorf("provisioning scratch database: %w", err)
-			}
-			scratchURL = url
-			cleanup = c
-		}
+	scratchURL, cleanup, err := scratchdb.Provision(eng, againstURL)
+	if err != nil {
+		return nil, nil, err
 	}
 	if cleanup != nil {
 		defer func() {

@@ -17,6 +17,7 @@ nuance than a table row can hold, read the matching file before using them:
 |---|---|
 | `dbtools adopt` — importing incumbent migration ledgers (Flyway/EF/Knex/Alembic) | `adopt.md` |
 | `dbtools diff` — replaying migrations into scratch DB and checking live structural drift | `diff.md` |
+| `dbtools squash` — collapsing migration history into a verified baseline | `squash.md` |
 | `dbtools clone` masking rules, `[clone.mask]` config, `--where`/`--limit` | `clone.md` |
 | `dbtools doctor` — all 6 checks, exit-code meaning per check | `doctor.md` |
 | Exit-code contract (`plan`/`verify`/`up`/`down`) and CI/agent loop pattern | `ci-gate.md` |
@@ -51,6 +52,9 @@ dbtools new <migration_name>
 
 # Import existing migration history from another runner
 dbtools adopt <target_name> [--yes] [--force] [--from-table X --version-column Y]
+
+# Collapse migration history into a verified baseline (dry-run by default)
+dbtools squash <target_name> [--upto <version>] [--out <file>] [--yes]
 
 # Apply pending migrations to target (default: local)
 dbtools up [--target local]
