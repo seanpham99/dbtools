@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	toml "github.com/pelletier/go-toml/v2"
+	"github.com/seanpham99/dbtools/internal/dburl"
 	"github.com/seanpham99/dbtools/internal/ledger"
 )
 
@@ -83,6 +84,19 @@ type LedgerConfig struct {
 	// incumbent migration tool's table (e.g. "schema_migrations") instead
 	// of dbtools' own "dbtools_migration_history".
 	Table string `toml:"table"`
+
+	// CursorTable overrides the *version cursor* table — golang-migrate's
+	// single-row (version, dirty) table, which is a different thing from
+	// Table above and defaults to golang-migrate's own "schema_migrations".
+	//
+	// Set this when an incumbent tool already owns a table of that name.
+	// "schema_migrations" is what golang-migrate, Rails, Supabase and many
+	// hand-rolled runners all call their ledger, and those tables are not
+	// shaped like golang-migrate's — a text version column and no "dirty"
+	// column is the common case. Pointing the cursor elsewhere
+	// (cursor_table = "dbtools_schema_version") lets dbtools coexist with
+	// the incumbent rather than colliding with it.
+	CursorTable string `toml:"cursor_table"`
 }
 
 // MigrationsConfig configures how migration files on disk are recognized.
@@ -98,6 +112,19 @@ const (
 	DefaultMigrationsDir = "migrations"
 	DefaultUpSuffix      = ".up.sql"
 	DefaultLedgerTable   = "dbtools_migration_history"
+
+	// DefaultCursorTable is golang-migrate's own default version-cursor
+	// table name. It is deliberately left as-is rather than namespaced:
+	// every database dbtools has already migrated keeps its cursor here,
+	// and silently moving it would make dbtools believe nothing had been
+	// applied and try to replay the entire history. Users who collide with
+	// an incumbent table of the same name set [ledger] cursor_table.
+	DefaultCursorTable = "schema_migrations"
+
+	// FallbackCursorTable is where the cursor moves when the ledger has
+	// been pointed at DefaultCursorTable, so the two never share a name.
+	// It is also the value the collision diagnostic suggests.
+	FallbackCursorTable = "dbtools_schema_version"
 )
 
 // ResolveDefaults fills in the standard default for any of migrationsDir,
@@ -145,6 +172,26 @@ func Load(path string) (*Config, error) {
 	if err := ledger.ValidateTableName(cfg.Ledger.Table); err != nil {
 		return nil, fmt.Errorf("dbtools.toml: %w", err)
 	}
+	if cfg.Ledger.CursorTable == "" {
+		// An unset cursor_table normally keeps golang-migrate's default.
+		// The exception is a config that points the *ledger* at that same
+		// name — the documented way to coexist with an incumbent tool. Two
+		// differently-shaped tables cannot share one name, so move the
+		// cursor aside rather than making the user discover the conflict
+		// through a driver error about a missing "dirty" column.
+		if cfg.Ledger.Table == DefaultCursorTable {
+			cfg.Ledger.CursorTable = FallbackCursorTable
+		} else {
+			cfg.Ledger.CursorTable = DefaultCursorTable
+		}
+	}
+	if err := ledger.ValidateTableName(cfg.Ledger.CursorTable); err != nil {
+		return nil, fmt.Errorf("dbtools.toml: cursor_table: %w", err)
+	}
+	if cfg.Ledger.CursorTable == cfg.Ledger.Table {
+		return nil, fmt.Errorf("dbtools.toml: [ledger] table and cursor_table are both %q — "+
+			"they are two different tables with incompatible shapes and cannot share a name", cfg.Ledger.Table)
+	}
 	// Default exclude list to internal tool tables unless the key was set at all
 	// (including explicitly to an empty list, which means "exclude nothing").
 	if cfg.Generate.Exclude == nil {
@@ -152,9 +199,21 @@ func Load(path string) (*Config, error) {
 		if cfg.Ledger.Table != DefaultLedgerTable {
 			exclude = append(exclude, cfg.Ledger.Table)
 		}
+		if cfg.Ledger.CursorTable != DefaultCursorTable {
+			exclude = append(exclude, cfg.Ledger.CursorTable)
+		}
 		cfg.Generate.Exclude = exclude
 	}
 	return cfg, nil
+}
+
+// CursorTableName returns the configured version-cursor table, defaulting
+// for a Config that was built in memory rather than through Load.
+func (c *Config) CursorTableName() string {
+	if c.Ledger.CursorTable == "" {
+		return DefaultCursorTable
+	}
+	return c.Ledger.CursorTable
 }
 
 // ResolveURL returns the connection string for targetName by reading the
@@ -169,7 +228,7 @@ func (c *Config) ResolveURL(targetName string) (string, error) {
 	if url == "" {
 		return "", &UnsetEnvError{Target: targetName, URLEnv: t.URLEnv}
 	}
-	return url, nil
+	return c.withCursorTable(url), nil
 }
 
 // ResolveURLOrFlag returns the connection string for targetName, preferring
@@ -179,9 +238,27 @@ func (c *Config) ResolveURL(targetName string) (string, error) {
 // pass them straight through as flags).
 func (c *Config) ResolveURLOrFlag(targetName, urlFlag string) (string, error) {
 	if urlFlag != "" {
-		return urlFlag, nil
+		return c.withCursorTable(urlFlag), nil
 	}
 	return c.ResolveURL(targetName)
+}
+
+// withCursorTable annotates rawURL with golang-migrate's
+// x-migrations-table parameter when a non-default cursor table is
+// configured. golang-migrate reads it to decide which table holds the
+// version cursor; every other consumer of the URL must strip it first
+// (see dburl.StripCustomParams), because it is not a real connection
+// parameter and drivers reject it.
+//
+// Carrying it on the URL rather than threading a parameter through the
+// dozen call sites of migrator.Open keeps one source of truth for "which
+// cursor table", at the cost of that stripping discipline.
+func (c *Config) withCursorTable(rawURL string) string {
+	cursor := c.CursorTableName()
+	if cursor == DefaultCursorTable || rawURL == "" {
+		return rawURL
+	}
+	return dburl.WithParam(rawURL, "x-migrations-table", cursor)
 }
 
 // EngineName returns the engine configured for targetName, or "" when

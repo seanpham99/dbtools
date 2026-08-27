@@ -32,7 +32,14 @@ type Plan struct {
 // structure via a second scratch database and diff.Compare, and returns
 // the result. Never writes to migrationsDir or to any named target —
 // every database it touches is scratch/throwaway.
-func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix string, uptoVersion uint64) (plan *Plan, err error) {
+//
+// targetMajor pins both scratch databases to the target's server major
+// version; pass "" to accept the engine's default image. It matters twice
+// over: the dump tool's output has to be accepted by the target that will
+// eventually replay the committed baseline, and the verification comparison
+// has to be free of the cross-version rendering differences described in
+// container.ScratchImageFor.
+func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix string, uptoVersion uint64, targetMajor string) (plan *Plan, err error) {
 	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, err
@@ -47,7 +54,7 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("no migration versions at or below %d found in %s", uptoVersion, migrationsDir)
 	}
 
-	url1, cleanup1, err := scratchdb.Provision(eng, "")
+	url1, cleanup1, err := scratchdb.ProvisionMajor(eng, "", targetMajor)
 	if err != nil {
 		return nil, fmt.Errorf("provisioning replay scratch database: %w", err)
 	}
@@ -101,7 +108,7 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("dumping scratch database schema: %w", err)
 	}
 
-	url2, cleanup2, err := scratchdb.Provision(eng, "")
+	url2, cleanup2, err := scratchdb.ProvisionMajor(eng, "", targetMajor)
 	if err != nil {
 		return nil, fmt.Errorf("provisioning verification scratch database: %w", err)
 	}

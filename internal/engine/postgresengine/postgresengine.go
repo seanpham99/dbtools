@@ -9,6 +9,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/seanpham99/dbtools/internal/dburl"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/generate"
 )
@@ -24,8 +25,12 @@ func (Postgres) Name() string { return "postgres" }
 
 // Open opens a raw database/sql connection via lib/pq, which accepts
 // postgres:// URLs natively — no scheme rewriting needed.
+//
+// golang-migrate's x- parameters are stripped first: lib/pq validates
+// unknown query parameters as server settings and fails the connection
+// with `unrecognized configuration parameter "x-migrations-table"`.
 func (Postgres) Open(rawURL string) (*sql.DB, error) {
-	return sql.Open("postgres", rawURL)
+	return sql.Open("postgres", dburl.StripCustomParams(rawURL))
 }
 
 func (Postgres) DDL() engine.DDLDialect { return ddl{} }

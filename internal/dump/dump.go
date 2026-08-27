@@ -163,18 +163,124 @@ var (
 	pgSetConfigSearchPathRE = regexp.MustCompile(`(?m)^SELECT pg_catalog\.set_config\('search_path', '', false\);\n?`)
 	pgClientMinMessagesRE   = regexp.MustCompile(`(?m)^SET client_min_messages = warning;\n?`)
 	mssqlUseRE              = regexp.MustCompile(`(?im)^\s*USE\s+\[?[^;\n]+\]?\s*;?\s*(\r?\n)?`)
+
+	// pg_dump's preamble sets four timeout GUCs. They tune the restore
+	// session and say nothing about the schema, but they are not all
+	// present in every server version — transaction_timeout arrived in
+	// Postgres 17, so a dump taken with pg_dump 17+ fails to apply to a
+	// 16 server with `unrecognized configuration parameter`. pg_dump is
+	// explicitly supported dumping older servers, so this mismatch is a
+	// normal setup (a newer client package on the developer's machine),
+	// not a misconfiguration.
+	//
+	// Deliberately narrow: the other preamble SETs are kept, because some
+	// change behaviour that matters to a restore. check_function_bodies =
+	// false in particular is what lets a function referencing a
+	// not-yet-created object be defined at all.
+	pgTimeoutGUCRE = regexp.MustCompile(`(?m)^SET (statement_timeout|lock_timeout|idle_in_transaction_session_timeout|transaction_timeout) = [^;\n]*;\n?`)
 )
 
-// StripPostgresSessionState removes the two session-state lines pg_dump
-// emits by default that poison every later migration replayed through
-// the same connection: a search_path reset (breaks unqualified name
-// resolution) and a client_min_messages override (silently swallows
-// RAISE NOTICE for the rest of the session). See the design spec's
-// "Native schema dump" section.
+// StripPostgresSessionState removes the pg_dump output that a baseline
+// applied over the wire protocol cannot survive:
+//
+//   - a search_path reset (breaks unqualified name resolution for every
+//     later migration replayed through the same connection),
+//   - a client_min_messages override (silently swallows RAISE NOTICE for
+//     the rest of the session),
+//   - psql meta-commands (see StripPsqlMetaCommands),
+//   - the timeout GUCs, which are not present in every server version.
+//
+// See the design spec's "Native schema dump" section.
 func StripPostgresSessionState(sqlText string) string {
 	sqlText = pgSetConfigSearchPathRE.ReplaceAllString(sqlText, "")
 	sqlText = pgClientMinMessagesRE.ReplaceAllString(sqlText, "")
+	sqlText = pgTimeoutGUCRE.ReplaceAllString(sqlText, "")
+	sqlText = StripPsqlMetaCommands(sqlText)
 	return sqlText
+}
+
+// StripPsqlMetaCommands removes backslash meta-commands from dump output.
+//
+// These are psql client directives, not SQL: the wire protocol rejects them
+// outright ("syntax error at or near \"\\\""). pg_dump emits \restrict and
+// \unrestrict by default on 16.10+, 17.6+ and 18.x — a security hardening
+// measure — so on any current point release an unstripped baseline fails to
+// apply, both to squash's own verification database and later to any target
+// replaying the committed file.
+//
+// Only lines whose first non-whitespace character is a backslash are dropped,
+// and only outside dollar-quoted bodies: a function body is free to contain
+// backslash-led lines that are ordinary text, and removing those would
+// silently corrupt the routine rather than fail loudly.
+func StripPsqlMetaCommands(sqlText string) string {
+	if !strings.Contains(sqlText, `\`) {
+		return sqlText
+	}
+	lines := strings.Split(sqlText, "\n")
+	kept := make([]string, 0, len(lines))
+	dollarTag := "" // non-empty while inside a dollar-quoted body
+	for _, line := range lines {
+		if dollarTag == "" && strings.HasPrefix(strings.TrimLeft(line, " \t"), `\`) {
+			continue
+		}
+		dollarTag = trackDollarQuote(line, dollarTag)
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
+}
+
+// trackDollarQuote returns the dollar-quote tag still open at the end of
+// line, given the tag open at its start ("" for none). Scanning is
+// tag-aware: a body opened by $func$ ends only at $func$, so a bare $$
+// inside it does not close it.
+func trackDollarQuote(line, open string) string {
+	for i := 0; i < len(line); {
+		if open != "" {
+			idx := strings.Index(line[i:], open)
+			if idx < 0 {
+				return open
+			}
+			i += idx + len(open)
+			open = ""
+			continue
+		}
+		idx := strings.IndexByte(line[i:], '$')
+		if idx < 0 {
+			return ""
+		}
+		i += idx
+		tag := dollarTagAt(line[i:])
+		if tag == "" {
+			i++
+			continue
+		}
+		open = tag
+		i += len(tag)
+	}
+	return open
+}
+
+// dollarTagAt returns the dollar-quote tag starting at s ("$$" or "$name$"),
+// or "" if s does not start one. Tag bodies follow Postgres's identifier
+// rules: letters, underscores, and digits after the first character.
+func dollarTagAt(s string) string {
+	if len(s) == 0 || s[0] != '$' {
+		return ""
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if c == '$' {
+			return s[:i+1]
+		}
+		isIdent := c == '_' ||
+			(c >= 'a' && c <= 'z') ||
+			(c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9' && i > 1)
+		if !isIdent {
+			return ""
+		}
+	}
+	return ""
 }
 
 // StripMSSQLUseStatement removes any generated USE [database] commands

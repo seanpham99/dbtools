@@ -37,7 +37,7 @@ func TestBuildPlan_CleanHistoryVerifies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := squash.BuildPlan(cfg, eng, dir, ".up.sql", 2)
+	plan, err := squash.BuildPlan(cfg, eng, dir, ".up.sql", 2, "")
 	if err != nil {
 		t.Fatalf("BuildPlan() returned error: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestBuildPlan_PartialUptoReplaysOnlyCollapsed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := squash.BuildPlan(cfg, eng, dir, ".up.sql", 1)
+	plan, err := squash.BuildPlan(cfg, eng, dir, ".up.sql", 1, "")
 	if err != nil {
 		t.Fatalf("BuildPlan() returned error: %v", err)
 	}
