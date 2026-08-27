@@ -10,21 +10,42 @@ import (
 	"strings"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/engine"
 )
 
-// Schema returns the DDL that reproduces eng's schema at scratchURL, via
-// the engine's native dump tool (pg_dump/mysqldump/mssql-scripter on the
-// host, connecting to scratchURL's published port) or, for SQLite, a
-// direct catalog query — no external tool needed. Any tables in excludeTables
-// (e.g. migration tracking tables) are omitted from the dump.
-func Schema(eng engine.Engine, scratchURL string, excludeTables ...string) (string, error) {
+// Options controls where Schema runs the engine's dump tool.
+type Options struct {
+	// ExecIn names a Docker container hosting the database being dumped.
+	// When set, and the engine's image ships the tool, the dump runs inside
+	// that container so the tool's version always matches the server's.
+	// Empty means "run the tool on the host".
+	ExecIn string
+	// UseHostTools forces the host binary even when ExecIn is available —
+	// the escape hatch for environments without Docker, or operators who
+	// know their client and server versions agree.
+	UseHostTools bool
+}
+
+// Schema returns the DDL that reproduces eng's schema at scratchURL, via the
+// engine's native dump tool (pg_dump/mysqldump/mssql-scripter) or, for
+// SQLite, a direct catalog query — no external tool needed. Any tables in
+// excludeTables (e.g. migration tracking tables) are omitted.
+//
+// The tool runs inside opts.ExecIn when it can (see Options), because a dump
+// tool newer than the server it dumps emits statements that server cannot
+// execute — pg_dump 17+ writes `SET transaction_timeout`, which Postgres 16
+// rejects. The output is committed as a baseline, so a mismatch does not stay
+// contained: it resurfaces whenever that baseline is applied.
+func Schema(eng engine.Engine, scratchURL string, opts Options, excludeTables ...string) (string, error) {
 	switch eng.Name() {
 	case "postgres":
-		return dumpPostgres(scratchURL, excludeTables)
+		return dumpPostgres(scratchURL, opts, excludeTables)
 	case "mysql":
-		return dumpMySQL(scratchURL, excludeTables)
+		return dumpMySQL(scratchURL, opts, excludeTables)
 	case "mssql":
+		// mssql-scripter is a separate Python package, not part of the
+		// SQL Server image, so this one always runs on the host.
 		return dumpMSSQL(scratchURL, excludeTables)
 	case "sqlite":
 		db, err := eng.Open(scratchURL)
@@ -38,35 +59,74 @@ func Schema(eng engine.Engine, scratchURL string, excludeTables ...string) (stri
 	}
 }
 
-func dumpPostgres(scratchURL string, excludeTables []string) (string, error) {
+func dumpPostgres(scratchURL string, opts Options, excludeTables []string) (string, error) {
 	const toolName = "pg_dump"
-	if _, err := exec.LookPath(toolName); err != nil {
-		return "", fmt.Errorf("%s not found on PATH — install postgresql-client to use squash with postgres: %w", toolName, err)
-	}
 	args := []string{"--no-owner", "--schema-only"}
 	for _, tbl := range excludeTables {
 		if tbl != "" {
 			args = append(args, "-T", tbl, "-T", "*."+tbl)
 		}
 	}
-	args = append(args, scratchURL)
+	connURL, inContainer, err := dumpTarget("postgres", scratchURL, opts)
+	if err != nil {
+		return "", err
+	}
+	out, err := runDumpTool(toolName, append(args, connURL), opts, inContainer,
+		"install postgresql-client to use squash with postgres")
+	if err != nil {
+		return "", err
+	}
+	return StripPostgresSessionState(out), nil
+}
+
+// dumpTarget decides where the dump tool will run and which connection URL
+// it should use. Inside the container the engine listens on its own fixed
+// port, so the host port mapping does not apply.
+func dumpTarget(engineName, hostURL string, opts Options) (connURL string, inContainer bool, err error) {
+	if opts.ExecIn == "" || opts.UseHostTools || !container.SupportsInContainerDump(engineName) {
+		return hostURL, false, nil
+	}
+	inURL, err := container.InContainerURL(engineName)
+	if err != nil {
+		return "", false, err
+	}
+	return inURL, true, nil
+}
+
+// runDumpTool executes toolName with args, either inside opts.ExecIn or on
+// the host. args must already carry the connection details — the engines
+// differ on whether that is a trailing URL or a set of flags. hostHint tells
+// the user how to install the tool when the host path is taken and it is
+// missing.
+func runDumpTool(toolName string, args []string, opts Options, inContainer bool, hostHint string) (string, error) {
+	if inContainer {
+		out, err := container.Exec(opts.ExecIn, append([]string{toolName}, args...)...)
+		if err != nil {
+			return "", err
+		}
+		return string(out), nil
+	}
+	if _, err := exec.LookPath(toolName); err != nil {
+		return "", fmt.Errorf("%s not found on PATH — %s: %w", toolName, hostHint, err)
+	}
 	out, err := exec.Command(toolName, args...).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("%s failed: %w: %s", toolName, err, strings.TrimSpace(string(out)))
 	}
-	return StripPostgresSessionState(string(out)), nil
+	return string(out), nil
 }
 
-func dumpMySQL(scratchURL string, excludeTables []string) (string, error) {
+func dumpMySQL(scratchURL string, opts Options, excludeTables []string) (string, error) {
 	const toolName = "mysqldump"
-	if _, err := exec.LookPath(toolName); err != nil {
-		return "", fmt.Errorf("%s not found on PATH — install mysql-client or mariadb-client to use squash with mysql: %w", toolName, err)
+	connURL, inContainer, err := dumpTarget("mysql", scratchURL, opts)
+	if err != nil {
+		return "", err
 	}
 
 	args := []string{"--no-tablespaces", "--skip-comments", "--no-data"}
-	raw := strings.TrimPrefix(scratchURL, "mysql://")
-	cfg, err := mysql.ParseDSN(raw)
-	if err == nil && cfg != nil {
+	raw := strings.TrimPrefix(connURL, "mysql://")
+	cfg, parseErr := mysql.ParseDSN(raw)
+	if parseErr == nil && cfg != nil {
 		if cfg.Addr != "" {
 			host, port, splitErr := net.SplitHostPort(cfg.Addr)
 			if splitErr == nil {
@@ -94,14 +154,11 @@ func dumpMySQL(scratchURL string, excludeTables []string) (string, error) {
 			args = append(args, cfg.DBName)
 		}
 	} else {
-		args = append(args, scratchURL)
+		args = append(args, connURL)
 	}
 
-	out, err := exec.Command(toolName, args...).CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("%s failed: %w: %s", toolName, err, strings.TrimSpace(string(out)))
-	}
-	return string(out), nil
+	return runDumpTool(toolName, args, opts, inContainer,
+		"install mysql-client or mariadb-client to use squash with mysql")
 }
 
 func dumpMSSQL(scratchURL string, excludeTables []string) (string, error) {
@@ -168,10 +225,13 @@ var (
 	// session and say nothing about the schema, but they are not all
 	// present in every server version — transaction_timeout arrived in
 	// Postgres 17, so a dump taken with pg_dump 17+ fails to apply to a
-	// 16 server with `unrecognized configuration parameter`. pg_dump is
-	// explicitly supported dumping older servers, so this mismatch is a
-	// normal setup (a newer client package on the developer's machine),
-	// not a misconfiguration.
+	// 16 server with `unrecognized configuration parameter`.
+	//
+	// Running the dump tool inside the server's own container removes the
+	// mismatch at the source, so this is now only reachable on the
+	// --use-host-tools path, where the operator has taken responsibility
+	// for matching versions. Kept because that path still exists and
+	// because stripping restore-tuning settings costs nothing.
 	//
 	// Deliberately narrow: the other preamble SETs are kept, because some
 	// change behaviour that matters to a restore. check_function_bodies =

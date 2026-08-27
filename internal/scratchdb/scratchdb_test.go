@@ -14,15 +14,15 @@ func TestProvision_AgainstSkipsProvisioning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	url, cleanup, err := scratchdb.Provision(eng, "sqlite:///already/there.db")
+	sc, err := scratchdb.Provision(eng, "sqlite:///already/there.db")
 	if err != nil {
 		t.Fatalf("Provision() returned error: %v", err)
 	}
-	if url != "sqlite:///already/there.db" {
-		t.Errorf("url = %q, want the against value unchanged", url)
+	if sc.URL != "sqlite:///already/there.db" {
+		t.Errorf("url = %q, want the against value unchanged", sc.URL)
 	}
-	if cleanup != nil {
-		t.Error("cleanup should be nil when against skips provisioning — nothing to tear down")
+	if sc.Cleanup != nil {
+		t.Error("sc.Cleanup should be nil when against skips provisioning — nothing to tear down")
 	}
 }
 
@@ -31,14 +31,14 @@ func TestProvision_SQLiteCreatesAndCleansUpTempfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	url, cleanup, err := scratchdb.Provision(eng, "")
+	sc, err := scratchdb.Provision(eng, "")
 	if err != nil {
 		t.Fatalf("Provision() returned error: %v", err)
 	}
-	path := sqliteengine.PathFromURL(url)
-	db, err := eng.Open(url)
+	path := sqliteengine.PathFromURL(sc.URL)
+	db, err := eng.Open(sc.URL)
 	if err != nil {
-		t.Fatalf("eng.Open(%q): %v", url, err)
+		t.Fatalf("eng.Open(%q): %v", sc.URL, err)
 	}
 	if err := db.Ping(); err != nil {
 		t.Fatalf("db.Ping(): %v", err)
@@ -47,13 +47,13 @@ func TestProvision_SQLiteCreatesAndCleansUpTempfile(t *testing.T) {
 	if _, statErr := os.Stat(path); statErr != nil {
 		t.Fatalf("expected scratch file to exist at %s: %v", path, statErr)
 	}
-	if cleanup == nil {
-		t.Fatal("cleanup should not be nil for a provisioned sqlite scratch file")
+	if sc.Cleanup == nil {
+		t.Fatal("sc.Cleanup should not be nil for a provisioned sqlite scratch file")
 	}
-	if err := cleanup(); err != nil {
-		t.Errorf("cleanup() returned error: %v", err)
+	if err := sc.Cleanup(); err != nil {
+		t.Errorf("sc.Cleanup() returned error: %v", err)
 	}
 	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
-		t.Errorf("scratch file still exists after cleanup: statErr = %v", statErr)
+		t.Errorf("scratch file still exists after sc.Cleanup: statErr = %v", statErr)
 	}
 }

@@ -38,7 +38,11 @@ type Plan struct {
 // eventually replay the committed baseline, and the verification comparison
 // has to be free of the cross-version rendering differences described in
 // container.ScratchImageFor and scratchdb.ServerSeries.
-func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix string, uptoVersion uint64, targetSeries string) (plan *Plan, err error) {
+//
+// useHostTools forces the host's dump binary instead of running the engine's
+// own inside the scratch container — the escape hatch for environments
+// without Docker.
+func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix string, uptoVersion uint64, targetSeries string, useHostTools bool) (plan *Plan, err error) {
 	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, err
@@ -53,11 +57,12 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("no migration versions at or below %d found in %s", uptoVersion, migrationsDir)
 	}
 
-	url1, cleanup1, err := scratchdb.ProvisionSeries(eng, "", targetSeries)
+	replay, err := scratchdb.ProvisionSeries(eng, "", targetSeries)
 	if err != nil {
 		return nil, fmt.Errorf("provisioning replay scratch database: %w", err)
 	}
-	if cleanup1 != nil {
+	url1 := replay.URL
+	if cleanup1 := replay.Cleanup; cleanup1 != nil {
 		defer func() {
 			if cerr := cleanup1(); cerr != nil && err == nil {
 				err = fmt.Errorf("scratch database cleanup failed: %w", cerr)
@@ -102,16 +107,22 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 
 	_, _, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
 	excludeTables := []string{"schema_migrations", "dbtools_migration_history", ledgerTable}
-	baselineSQL, err := dump.Schema(eng, url1, excludeTables...)
+	// Dump from inside the replay container when the image ships the tool,
+	// so the dump tool's version always matches the server it dumps.
+	baselineSQL, err := dump.Schema(eng, url1, dump.Options{
+		ExecIn:       replay.Container,
+		UseHostTools: useHostTools,
+	}, excludeTables...)
 	if err != nil {
 		return nil, fmt.Errorf("dumping scratch database schema: %w", err)
 	}
 
-	url2, cleanup2, err := scratchdb.ProvisionSeries(eng, "", targetSeries)
+	verify, err := scratchdb.ProvisionSeries(eng, "", targetSeries)
 	if err != nil {
 		return nil, fmt.Errorf("provisioning verification scratch database: %w", err)
 	}
-	if cleanup2 != nil {
+	url2 := verify.URL
+	if cleanup2 := verify.Cleanup; cleanup2 != nil {
 		defer func() {
 			if cerr := cleanup2(); cerr != nil && err == nil {
 				err = fmt.Errorf("verification database cleanup failed: %w", cerr)
