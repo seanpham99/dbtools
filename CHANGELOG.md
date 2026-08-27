@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.1](https://github.com/seanpham99/dbtools/compare/v0.7.0...v0.7.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **npm:** publish the wrapper with the binary version it actually fetches ([#94](https://github.com/seanpham99/dbtools/issues/94)) ([da462ed](https://github.com/seanpham99/dbtools/commit/da462ede7ab581aef2ef4308908ea0e1a0b823bb))
+
 ## [0.7.0](https://github.com/seanpham99/dbtools/compare/v0.6.0...v0.7.0) (2026-08-27)
 
 
