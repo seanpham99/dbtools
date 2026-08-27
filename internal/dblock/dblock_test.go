@@ -9,8 +9,12 @@ func TestKeyFor_ScopesToDatabase(t *testing.T) {
 	if KeyFor("app") == KeyFor("other") {
 		t.Error("different databases must not share a lock key — unrelated runs would serialise")
 	}
-	if KeyFor("app") != KeyFor("app") {
-		t.Error("KeyFor must be stable: two runs against one database must agree on the key")
+	// Assigned first: comparing the two calls inline reads as a tautology
+	// to staticcheck, but the property under test is that the function is
+	// deterministic — two dbtools processes derive the key independently.
+	first, second := KeyFor("app"), KeyFor("app")
+	if first != second {
+		t.Errorf("KeyFor is not stable (%q vs %q): two runs against one database must agree on the key", first, second)
 	}
 	if KeyFor("") == "" {
 		t.Error("an unknown database name still needs a usable key")
@@ -18,8 +22,9 @@ func TestKeyFor_ScopesToDatabase(t *testing.T) {
 }
 
 func TestNumericKey_StableAndDistinct(t *testing.T) {
-	if NumericKey("dbtools-app") != NumericKey("dbtools-app") {
-		t.Fatal("NumericKey must be stable across calls, or two runs would take different locks")
+	first, second := NumericKey("dbtools-app"), NumericKey("dbtools-app")
+	if first != second {
+		t.Fatalf("NumericKey is not stable (%d vs %d): two runs would take different locks", first, second)
 	}
 	if NumericKey("dbtools-app") == NumericKey("dbtools-other") {
 		t.Error("distinct keys collided; unrelated databases would serialise")
