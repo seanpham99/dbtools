@@ -34,16 +34,39 @@ func TestRun_EnvVarNotSet(t *testing.T) {
 // dir.PendingAfter report files as pending that m.Step() can never find —
 // applying silently nothing while looking like success. Run must refuse
 // instead of no-op'ing.
-func TestRun_RefusesCustomUpSuffix(t *testing.T) {
-	cfg := &config.Config{
-		MigrationsDir: "migrations",
-		Migrations:    config.MigrationsConfig{UpSuffix: ".sql"},
-		Targets:       map[string]config.Target{"staging": {URLEnv: "DBTOOLS_APPLY_TEST_UNSET_SUFFIX"}},
+// up/push used to refuse a non-default up_suffix, because golang-migrate's
+// file source could only ever look for ".up.sql" — so the read-only
+// commands honoured the setting and the write commands did not. Owning the
+// runner removes that split: dbtools reads the directory itself, and every
+// command now honours the same configuration.
+func TestRun_AppliesWithCustomUpSuffix(t *testing.T) {
+	tmpDir := t.TempDir()
+	migDir := filepath.Join(tmpDir, "migrations")
+	if err := os.MkdirAll(migDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("DBTOOLS_APPLY_TEST_UNSET_SUFFIX", "sqlite://"+filepath.Join(t.TempDir(), "test.db"))
-	_, err := Run(cfg, "staging", "")
-	if err == nil {
-		t.Fatal("Run() with custom up_suffix: want error, got nil")
+	// Flat "<version>_<name>.sql" layout — no .up.sql anywhere.
+	if err := os.WriteFile(filepath.Join(migDir, "20260101120000_create_users.sql"),
+		[]byte("CREATE TABLE users (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("DBTOOLS_APPLY_TEST_SUFFIX_URL", "sqlite://"+filepath.Join(tmpDir, "test.db"))
+	cfg := &config.Config{
+		MigrationsDir: migDir,
+		Migrations:    config.MigrationsConfig{UpSuffix: ".sql"},
+		Targets:       map[string]config.Target{"staging": {URLEnv: "DBTOOLS_APPLY_TEST_SUFFIX_URL"}},
+	}
+
+	status, err := Run(cfg, "staging", "")
+	if err != nil {
+		t.Fatalf("Run() with custom up_suffix returned error: %v", err)
+	}
+	if !status.HasVersion || status.CurrentVersion != 20260101120000 {
+		t.Errorf("status = %+v, want version 20260101120000 applied", status)
+	}
+	if len(status.Pending) != 0 {
+		t.Errorf("status.Pending = %v, want none", status.Pending)
 	}
 }
 

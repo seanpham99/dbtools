@@ -228,16 +228,12 @@ func TestLedgerRoundTrip(t *testing.T) {
 	if err := store.SetStatus(db, 200, ledger.StatusApplied, "second", table); err != nil {
 		t.Fatalf("SetStatus() returned error: %v", err)
 	}
-	if err := store.backfill(db, 300, true, []uint64{100, 200, 300, 400}, table); err != nil {
-		t.Fatalf("backfill() returned error: %v", err)
-	}
-
 	entries, err := store.List(db, table)
 	if err != nil {
 		t.Fatalf("List() returned error: %v", err)
 	}
-	if len(entries) != 3 {
-		t.Fatalf("List() returned %d entries, want 3", len(entries))
+	if len(entries) != 2 {
+		t.Fatalf("List() returned %d entries, want 2", len(entries))
 	}
 	if entries[0].Version != 100 || entries[0].Status != ledger.StatusReverted || entries[0].Note != "rolled back" {
 		t.Errorf("entry[0] = %+v, want reverted 100", entries[0])
@@ -245,16 +241,16 @@ func TestLedgerRoundTrip(t *testing.T) {
 	if entries[0].RecordedAt == nil || time.Since(*entries[0].RecordedAt) > time.Minute {
 		t.Errorf("entry[0].RecordedAt = %v, want a recent timestamp", entries[0].RecordedAt)
 	}
-	if entries[2].Version != 300 || entries[2].RecordedAt != nil || !strings.Contains(entries[2].Note, "backfilled") {
-		t.Errorf("entry[2] = %+v, want backfilled 300 with nil RecordedAt", entries[2])
+	if entries[1].Version != 200 || entries[1].Status != ledger.StatusApplied || entries[1].Note != "second" {
+		t.Errorf("entry[1] = %+v, want applied 200", entries[1])
 	}
 
 	applied, err := store.AppliedVersions(db, table)
 	if err != nil {
 		t.Fatalf("AppliedVersions() returned error: %v", err)
 	}
-	if len(applied) != 2 || applied[0] != 200 || applied[1] != 300 {
-		t.Errorf("AppliedVersions() = %v, want [200 300]", applied)
+	if len(applied) != 1 || applied[0] != 200 {
+		t.Errorf("AppliedVersions() = %v, want [200]", applied)
 	}
 }
 
@@ -319,9 +315,6 @@ func TestLedgerStore_SetStatusAdopted(t *testing.T) {
 func TestLedgerRejectsVersionsAboveIntegerRange(t *testing.T) {
 	if err := (ledgerStore{}).SetStatus(nil, math.MaxInt64+1, ledger.StatusApplied, "", "dbtools_migration_history"); err == nil || !strings.Contains(err.Error(), "INTEGER range") {
 		t.Errorf("SetStatus(MaxInt64+1) err = %v, want INTEGER range error", err)
-	}
-	if err := (ledgerStore{}).backfill(nil, math.MaxUint64, true, []uint64{math.MaxInt64 + 1}, "dbtools_migration_history"); err == nil || !strings.Contains(err.Error(), "INTEGER range") {
-		t.Errorf("backfill(MaxInt64+1) err = %v, want INTEGER range error", err)
 	}
 }
 

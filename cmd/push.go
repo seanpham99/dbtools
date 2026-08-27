@@ -49,7 +49,7 @@ func runPush(targetName string) (err error) {
 	if _, err := engine.ForTarget(cfg.EngineName(targetName), url); err != nil {
 		return err
 	}
-	preview, err := statusinfo.Collect(url, cfg.MigrationsDir, cfg.Migrations.UpSuffix, targetName)
+	preview, err := statusinfo.Collect(url, cfg.EngineName(targetName), cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), targetName)
 	if err != nil {
 		return err
 	}

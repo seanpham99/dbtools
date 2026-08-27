@@ -8,6 +8,14 @@ import (
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/testdb"
+
+	// Collect resolves the engine from the registry, which only has
+	// entries for engine packages that have been imported. cmd pulls them
+	// in for the real binary; a test binary has to say so itself.
+	_ "github.com/seanpham99/dbtools/internal/engine/mssqlengine"
+	_ "github.com/seanpham99/dbtools/internal/engine/mysqlengine"
+	_ "github.com/seanpham99/dbtools/internal/engine/postgresengine"
+	_ "github.com/seanpham99/dbtools/internal/engine/sqliteengine"
 )
 
 func TestCollect(t *testing.T) {
@@ -30,7 +38,7 @@ func TestCollect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status, err := Collect(url, dir, ".up.sql", "local")
+	status, err := Collect(url, "", dir, ".up.sql", "dbtools_migration_history", "local")
 	if err != nil {
 		t.Fatalf("Collect() before any Up() returned error: %v", err)
 	}

@@ -303,3 +303,12 @@ func FindMigrationFile(migrationsDir, upSuffix string, version uint64) (string, 
 	}
 	return f.Filename, nil
 }
+
+// Read returns the file's SQL text.
+func (f File) Read() (string, error) {
+	b, err := os.ReadFile(f.Path)
+	if err != nil {
+		return "", fmt.Errorf("reading migration %s: %w", f.Filename, err)
+	}
+	return string(b), nil
+}

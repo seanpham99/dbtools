@@ -97,7 +97,8 @@ dbtools down <target_name> [N] [--preview] [--yes]
 # Ledger-only soft-revert (marks 'reverted', never data-destroying) — safe prod verb
 dbtools rollback <target_name> [--yes]
 
-# Force tracking version cursor and clear dirty state without executing SQL
+# Record a version as applied without executing its SQL, clearing a stuck
+# "applying" row (the escape hatch after inspecting a failed migration)
 dbtools force <version> [--target target] [--yes]
 
 # Repair ledger status (replaces old 'stamp' command)
@@ -128,9 +129,12 @@ migrations_dir = "migrations"
 
 [ledger]
 table = "dbtools_migration_history" # optional; custom ledger table name
+                                    # this is the ONLY migration state dbtools keeps:
+                                    # the current version is derived from its rows
 
 [migrations]
 up_suffix = ".up.sql"               # optional; override to ".sql" for flat layouts
+                                    # honoured by every command, including up/push
 
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"

@@ -1,6 +1,7 @@
 package squash_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -184,27 +185,28 @@ func TestApplyPlan_FullyAppliedTargetRestamps(t *testing.T) {
 		t.Fatalf("TargetState = %v, want %v", res.TargetState, squash.TargetRestamped)
 	}
 
-	// Verify target cursor is stamped to version 0
-	m, err := migrator.Open(targetURL, dir)
+	// The ledger now derives the version, so "re-stamped to the baseline"
+	// means the collapsed versions are marked reverted and only version 0
+	// remains applied.
+	eng2, err := engine.ForURL(targetURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ver, dirty, hasVer, err := m.Version()
-	m.Close()
-	if err != nil {
-		t.Fatalf("reading target version: %v", err)
+	db, err2 := eng2.Open(targetURL)
+	if err2 != nil {
+		t.Fatal(err2)
 	}
-	if !hasVer || dirty || ver != 0 {
-		t.Errorf("cursor: hasVersion=%v, dirty=%v, version=%d, want true, false, 0", hasVer, dirty, ver)
+	defer db.Close()
+	state, err := eng2.Ledger().State(db, "dbtools_migration_history")
+	if err != nil {
+		t.Fatalf("reading target state: %v", err)
+	}
+	if !state.HasVersion || state.Dirty || state.Version != 0 {
+		t.Errorf("state = %+v, want version 0, applied, not dirty", state)
 	}
 
 	// Verify ledger contains version 0 applied row
-	db, err := eng.Open(targetURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	entries, err := eng.Ledger().List(db, config.DefaultLedgerTable)
+	entries, err := eng2.Ledger().List(db, config.DefaultLedgerTable)
 	if err != nil {
 		t.Fatalf("Ledger.List: %v", err)
 	}
@@ -270,15 +272,19 @@ func TestApplyPlan_PartiallyAppliedTargetRefuses(t *testing.T) {
 	}
 
 	// Apply only file 1
-	m, err := migrator.Open(targetURL, dir)
+	d0, err := migrator.ReadDir(dir, ".up.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Step(); err != nil {
-		m.Close()
+	tdb, err := eng.Open(targetURL)
+	if err != nil {
 		t.Fatal(err)
 	}
-	m.Close()
+	if _, err := migrator.NewRunner(eng, tdb, d0, config.DefaultLedgerTable).Step(context.Background(), 1); err != nil {
+		tdb.Close()
+		t.Fatal(err)
+	}
+	tdb.Close()
 
 	d, err := migrator.ReadDir(dir, ".up.sql")
 	if err != nil {
@@ -372,18 +378,23 @@ func TestApplyPlan_TargetCursorAboveUptoPreserved(t *testing.T) {
 		t.Fatalf("TargetState = %v, want %v", res.TargetState, squash.TargetRestamped)
 	}
 
-	// Verify target cursor remained at version 3 (not reset to 0)
-	m, err := migrator.Open(targetURL, dir)
+	// Version 3 stays applied: it is above --upto, so the squash must not
+	// collapse or revert it.
+	engV, err := engine.ForURL(targetURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ver, dirty, hasVer, err := m.Version()
-	m.Close()
+	vdb, err := engV.Open(targetURL)
 	if err != nil {
-		t.Fatalf("reading target version: %v", err)
+		t.Fatal(err)
 	}
-	if !hasVer || dirty || ver != 3 {
-		t.Errorf("cursor: hasVersion=%v, dirty=%v, version=%d, want true, false, 3", hasVer, dirty, ver)
+	defer vdb.Close()
+	state, err := engV.Ledger().State(vdb, config.DefaultLedgerTable)
+	if err != nil {
+		t.Fatalf("reading target state: %v", err)
+	}
+	if !state.HasVersion || state.Dirty || state.Version != 3 {
+		t.Errorf("state = %+v, want version 3, applied, not dirty", state)
 	}
 
 	// Verify file 3 remains in migrationsDir, and files 1 & 2 are in archiveDir

@@ -8,7 +8,8 @@
 # Preview adoption plan (dry run, default)
 dbtools adopt <target>
 
-# Write imported records to the dbtools ledger and stamp cursor
+# Write imported records to the dbtools ledger. There is no separate cursor
+# to stamp: the current version is derived from the rows this imports.
 dbtools adopt <target> --yes
 
 # Proceed even if orphan records exist (source table rows with no matching file)

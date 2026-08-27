@@ -1,4 +1,4 @@
-package migrator
+package postgresengine
 
 import (
 	"context"
@@ -44,7 +44,7 @@ func FormatPermissionReport(report PermissionReport) string {
 // or fallback if the query fails or returns NULL/empty. Diagnostic
 // queries must never let a failure here mask the original migration
 // error, so errors are swallowed rather than propagated.
-func queryOptionalString(ctx context.Context, db *sql.DB, fallback, query string, args ...any) string {
+func queryOptionalString(ctx context.Context, db Queryer, fallback, query string, args ...any) string {
 	var s sql.NullString
 	if err := db.QueryRowContext(ctx, query, args...).Scan(&s); err != nil || !s.Valid || s.String == "" {
 		return fallback
@@ -55,7 +55,7 @@ func queryOptionalString(ctx context.Context, db *sql.DB, fallback, query string
 // queryOptionalBool runs a single-column boolean query and returns its
 // value, or false if the query fails. Same swallow-errors rationale as
 // queryOptionalString.
-func queryOptionalBool(ctx context.Context, db *sql.DB, query string, args ...any) bool {
+func queryOptionalBool(ctx context.Context, db Queryer, query string, args ...any) bool {
 	var b sql.NullBool
 	_ = db.QueryRowContext(ctx, query, args...).Scan(&b)
 	return b.Bool
@@ -64,8 +64,33 @@ func queryOptionalBool(ctx context.Context, db *sql.DB, query string, args ...an
 // RunPermissionDiagnostic inspects the database connection and queries permission
 // metadata if the given error is a PostgreSQL SQLSTATE 42501 error.
 // It safely recovers from any query failures so diagnostic collection never panics or masks the original failure.
-func RunPermissionDiagnostic(ctx context.Context, db *sql.DB, pqErr *pq.Error) string {
-	if db == nil || pqErr == nil || pqErr.Code != "42501" {
+// Queryer is the read-only subset of a database handle the diagnostics
+// need. Both *sql.DB and *sql.Conn satisfy it, which matters: a permission
+// diagnostic run on a pooled handle can report a different session than the
+// one that failed, and "which role am I?" is the entire question.
+type Queryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// isNilQueryer reports whether db is unusable — either an unset interface
+// or a typed nil handle. A typed nil is not == nil as an interface, so
+// checking only the interface would panic on the first query.
+func isNilQueryer(db Queryer) bool {
+	if db == nil {
+		return true
+	}
+	switch v := db.(type) {
+	case *sql.DB:
+		return v == nil
+	case *sql.Conn:
+		return v == nil
+	default:
+		return false
+	}
+}
+
+func RunPermissionDiagnostic(ctx context.Context, db Queryer, pqErr *pq.Error) string {
+	if pqErr == nil || pqErr.Code != "42501" || isNilQueryer(db) {
 		return ""
 	}
 

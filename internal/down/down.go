@@ -1,11 +1,11 @@
 package down
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
-	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
@@ -30,13 +30,7 @@ func Preview(cfg *config.Config, targetName string, steps int, urlOverride strin
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
-
-	m, err := migrator.Open(url, migrationsDir)
-	if err != nil {
-		return nil, err
-	}
-	defer m.Close()
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 
 	db, err := eng.Open(url)
 	if err != nil {
@@ -44,7 +38,7 @@ func Preview(cfg *config.Config, targetName string, steps int, urlOverride strin
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
+	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
@@ -74,13 +68,7 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
-
-	m, err := migrator.Open(url, migrationsDir)
-	if err != nil {
-		return nil, err
-	}
-	defer m.Close()
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 
 	db, err := eng.Open(url)
 	if err != nil {
@@ -88,21 +76,13 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
+	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
 	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
-	}
-
-	versionBefore, dirty, _, err := m.Version()
-	if err != nil {
-		return nil, fmt.Errorf("target %q: %w", targetName, err)
-	}
-	if dirty {
-		return nil, fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, versionBefore, targetName)
 	}
 
 	applied, err := eng.Ledger().AppliedVersions(db, ledgerTable)
@@ -119,36 +99,21 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		}, nil
 	}
 
-	plan, err := dir.DownPlan(applied, steps)
+	// The runner holds the migration lock for the whole revert, refuses to
+	// start if a previous run left a migration mid-apply, and records each
+	// revert in the ledger before releasing the lock — so there is nothing
+	// to plan or write here.
+	runner := migrator.NewRunner(eng, db, dir, ledgerTable)
+	reverted, err := runner.Down(context.Background(), steps)
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	reverted := make([]uint64, 0, len(plan))
-	for _, f := range plan {
-		stepDone, err := m.StepDown()
-		if err != nil {
-			return nil, fmt.Errorf("target %q: reverting version %d (%s): %w", targetName, f.Version, f.Filename, err)
-		}
-		if !stepDone {
-			break
-		}
-
-		hash, err := dir.DownContentHash(f.Version)
-		if err != nil {
-			return nil, fmt.Errorf("target %q: %w", targetName, err)
-		}
-
-		if err := eng.Ledger().SetStatusWithHash(db, f.Version, ledger.StatusReverted, "reverted via down", hash, ledgerTable); err != nil {
-			return nil, fmt.Errorf("target %q: %w", targetName, err)
-		}
-		reverted = append(reverted, f.Version)
-	}
-
-	curVer, _, hasVer, err := m.Version()
+	state, err := runner.State(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
+	curVer, hasVer := state.Version, state.HasVersion
 
 	return &Result{
 		Target:           targetName,

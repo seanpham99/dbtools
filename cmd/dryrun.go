@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
@@ -28,28 +30,40 @@ func runDryRun(cfg *config.Config, targetName, urlOverride string) error {
 		return err
 	}
 
-	if _, err := engine.ForTarget(cfg.EngineName(targetName), url); err != nil {
-		return err
-	}
-
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	eng, err := engine.ForTarget(cfg.EngineName(targetName), url)
 	if err != nil {
 		return err
 	}
-	defer m.Close()
 
-	curVer, dirty, hasVer, err := m.Version()
+	// Deliberately not OpenTarget: it calls engine.EnsureDatabase for
+	// unprotected targets, so routing a preview through it could *create*
+	// the database it was asked to describe. A dry run must not be the
+	// thing that provisions anything.
+	//
+	// Opening url directly also keeps --url meaningful; OpenTarget would
+	// re-resolve the configured target and silently preview a different
+	// database than the one requested.
+	db, err := eng.Open(url)
 	if err != nil {
 		return err
 	}
-	if dirty {
-		return fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, curVer, targetName)
-	}
+	defer db.Close()
 
-	dir, err := migrator.ReadDir(cfg.MigrationsDir, cfg.Migrations.UpSuffix)
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
+	previewDir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
 		return err
 	}
+	state, err := migrator.NewRunner(eng, db, previewDir, ledgerTable).State(context.Background())
+	if err != nil {
+		return err
+	}
+	if state.Dirty {
+		return &ledger.DirtyError{Version: state.Applying, Table: ledgerTable}
+	}
+	curVer, hasVer := state.Version, state.HasVersion
+
+	dir := previewDir
 
 	pending := dir.PendingAfter(curVer, hasVer)
 

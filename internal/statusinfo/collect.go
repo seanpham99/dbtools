@@ -3,6 +3,7 @@ package statusinfo
 import (
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
@@ -23,18 +24,38 @@ type TargetResult struct {
 	Err          error
 }
 
-// Collect opens databaseURL, reads its current migration version, and
-// diffs it against every migration file in migrationsDir.
-func Collect(databaseURL, migrationsDir, upSuffix, targetName string) (*Status, error) {
-	m, err := migrator.Open(databaseURL, migrationsDir)
+// Collect opens databaseURL, reads its current migration state from the
+// ledger, and diffs it against every migration file in migrationsDir.
+//
+// Read-only: it never creates the ledger table. A database dbtools has
+// never touched reports "no version" rather than being written to by a
+// status query.
+func Collect(databaseURL, engineName, migrationsDir, upSuffix, ledgerTable, targetName string) (*Status, error) {
+	eng, err := engine.ForTarget(engineName, databaseURL)
 	if err != nil {
 		return nil, err
 	}
-	defer m.Close()
-
-	version, dirty, hasVersion, err := m.Version()
+	db, err := eng.Open(databaseURL)
 	if err != nil {
 		return nil, err
+	}
+	defer db.Close()
+
+	// Check for the table explicitly rather than treating any State error
+	// as "no ledger". A missing table genuinely means nothing has been
+	// applied; a dropped connection, a permission failure or a malformed
+	// ledger do not, and reporting those as "no version, everything
+	// pending" would hide the real fault behind a plausible answer.
+	var state ledger.State
+	exists, err := engine.TableExists(eng, db, ledgerTable)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		state, err = eng.Ledger().State(db, ledgerTable)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	d, err := migrator.ReadDir(migrationsDir, upSuffix)
@@ -44,10 +65,10 @@ func Collect(databaseURL, migrationsDir, upSuffix, targetName string) (*Status, 
 
 	return &Status{
 		Target:         targetName,
-		CurrentVersion: version,
-		HasVersion:     hasVersion,
-		Dirty:          dirty,
-		Pending:        d.PendingFilenames(version, hasVersion),
+		CurrentVersion: state.Version,
+		HasVersion:     state.HasVersion,
+		Dirty:          state.Dirty,
+		Pending:        d.PendingFilenames(state.Version, state.HasVersion),
 	}, nil
 }
 
@@ -79,7 +100,7 @@ func CollectAll(cfg *config.Config, targetFilter, urlOverride string) []TargetRe
 			results = append(results, TargetResult{Target: name, Err: err})
 			continue
 		}
-		s, err := Collect(url, cfg.MigrationsDir, cfg.Migrations.UpSuffix, name)
+		s, err := Collect(url, cfg.EngineName(name), cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), name)
 		if err != nil {
 			results = append(results, TargetResult{Target: name, Err: err})
 			continue

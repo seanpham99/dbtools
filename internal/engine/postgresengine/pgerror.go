@@ -1,8 +1,7 @@
-package migrator
+package postgresengine
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
@@ -110,9 +109,9 @@ func FormatPostgresError(err error, sqlText string, prefixLen int) error {
 // RunPermissionDiagnostic. Callers that just need line/column formatting
 // with no live connection to probe further should call
 // FormatPostgresError directly instead; this exists so a caller like
-// pgResetDriver.Run doesn't need to know pq.Error internals or SQLSTATE
-// codes itself, only that a migration failed.
-func DiagnosePostgresError(ctx context.Context, db *sql.DB, err error, sqlText string, prefixLen int) error {
+// the engine's ExecMigration doesn't need to know pq.Error internals or
+// SQLSTATE codes itself, only that a migration failed.
+func DiagnosePostgresError(ctx context.Context, db Queryer, err error, sqlText string, prefixLen int) error {
 	formatted := FormatPostgresError(err, sqlText, prefixLen)
 
 	var pqErr *pq.Error

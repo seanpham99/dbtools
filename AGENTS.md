@@ -49,7 +49,9 @@ Docker/DB — SQLite is file-based and serverless.
 | What `dbtools.toml` looks like, target resolution | `internal/config` |
 | Engine plugin interface (Open/DDL/Ledger/Introspect) | `internal/engine/engine.go` |
 | MSSQL/Postgres/SQLite dialect specifics | `internal/engine/{mssqlengine,postgresengine,sqliteengine}` |
-| golang-migrate wrapping, GO-batch splitting, pg session reset | `internal/migrator` |
+| Migration runner (apply/revert loop, lock, ledger writes) | `internal/migrator` |
+| Cross-process migration lock (advisory locks per engine) | `internal/dblock` |
+| Supported server-version window | `internal/support` |
 | The applied/reverted ledger + content-hash drift model | `internal/ledger`, ADR in `docs/adr/002-*.md` |
 | Drift detection logic (`verify`) | `internal/verify/collect.go` |
 | Local docker containers for dev (`start`/`stop`) | `internal/container` |
@@ -81,7 +83,7 @@ internal/
   generate/              pydantic/TS codegen
   ledger/                ledger types shared by all engines
   localenv/              .dbtools/local.env read/write (container-provisioned URL)
-  migrator/              golang-migrate wrapper, drivers, Dir (migration file index), Lint
+  migrator/              Runner (apply/revert loop), Dir (migration file index), Lint
   scaffold/ seed/         `new` filename generation, seed.sql runner
   statusinfo/ verify/     status collection, drift detection
   testdb/ testutil/       integration test helpers + classicmodels fixture corpus

@@ -1,6 +1,7 @@
 package rollback
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/config"
@@ -20,7 +21,11 @@ type Result struct {
 // Run performs a ledger-only soft-revert for targetName up to steps count.
 // It marks versions as StatusReverted in the ledger and recomputes the
 // migration cursor without executing any .down.sql files or dropping objects.
-func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (*Result, error) {
+func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (result *Result, err error) {
+	return runLocked(cfg, targetName, steps, urlOverride)
+}
+
+func runLocked(cfg *config.Config, targetName string, steps int, urlOverride string) (*Result, error) {
 	url, err := cfg.ResolveURLOrFlag(targetName, urlOverride)
 	if err != nil {
 		return nil, err
@@ -31,13 +36,7 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
-
-	m, err := migrator.Open(url, migrationsDir)
-	if err != nil {
-		return nil, err
-	}
-	defer m.Close()
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 
 	db, err := eng.Open(url)
 	if err != nil {
@@ -45,8 +44,31 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
+	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
+	}
+
+	// Rollback rewrites ledger rows without running SQL, so it takes the
+	// migration lock and refuses a mid-apply ledger for the same reason
+	// the runner does: marking a version reverted while its migration is
+	// still executing would erase the only record that it started.
+	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
+	if err != nil {
+		return nil, fmt.Errorf("target %q: %w", targetName, err)
+	}
+	runner := migrator.NewRunner(eng, db, dir, ledgerTable)
+	release, err := runner.LockForWrite(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("target %q: %w", targetName, err)
+	}
+	defer release()
+
+	state, err := eng.Ledger().State(db, ledgerTable)
+	if err != nil {
+		return nil, fmt.Errorf("target %q: %w", targetName, err)
+	}
+	if state.Dirty {
+		return nil, &ledger.DirtyError{Version: state.Applying, Table: ledgerTable}
 	}
 
 	applied, err := eng.Ledger().AppliedVersions(db, ledgerTable)
@@ -100,10 +122,8 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	}
 
 	if len(remaining) > 0 {
+		// Derived from the ledger rows above, not stamped separately.
 		newCursor := remaining[len(remaining)-1]
-		if err := m.Stamp(newCursor); err != nil {
-			return nil, err
-		}
 		result.NewCursor = newCursor
 		result.HasCursor = true
 	}

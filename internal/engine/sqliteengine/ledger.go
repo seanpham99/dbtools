@@ -4,10 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // ledgerStore is the SQLite dialect of the dbtools_migration_history
@@ -27,14 +27,14 @@ func checkVersionRange(version uint64) error {
 
 func (ledgerStore) ensureSchema(db ledger.DBTX, table string) error {
 	_, err := db.Exec(fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s (
+CREATE TABLE IF NOT EXISTS %[1]s (
     version         INTEGER NOT NULL PRIMARY KEY,
-    status          TEXT    NOT NULL CHECK (status IN ('applied', 'reverted')),
+    status          TEXT    NOT NULL CHECK (status IN (%[2]s)),
     recorded_at     TIMESTAMP NULL,
     note            TEXT    NULL,
     content_sha256  TEXT    NULL,
     hash_source     TEXT    NULL
-)`, table))
+)`, table, ledger.StatusList()))
 	if err != nil {
 		return fmt.Errorf("ensuring %s schema: %w", table, err)
 	}
@@ -43,8 +43,12 @@ CREATE TABLE IF NOT EXISTS %s (
 	if err != nil {
 		return fmt.Errorf("inspecting %s columns: %w", table, err)
 	}
-	defer cols.Close()
-	if !cols.Next() {
+	hasContentHash := cols.Next()
+	// Closed immediately rather than deferred: SQLite refuses schema
+	// changes while a read cursor is open on the same connection, and the
+	// constraint widen below rebuilds this table.
+	cols.Close()
+	if !hasContentHash {
 		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN content_sha256 TEXT NULL`, table)); err != nil {
 			return fmt.Errorf("adding content_sha256 to %s: %w", table, err)
 		}
@@ -54,32 +58,66 @@ CREATE TABLE IF NOT EXISTS %s (
 	if err != nil {
 		return fmt.Errorf("inspecting %s columns: %w", table, err)
 	}
-	defer srcCols.Close()
-	if !srcCols.Next() {
+	hasHashSource := srcCols.Next()
+	srcCols.Close()
+	if !hasHashSource {
 		if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN hash_source TEXT NULL`, table)); err != nil {
 			return fmt.Errorf("adding hash_source to %s: %w", table, err)
 		}
 	}
-	return nil
+	return widenStatusConstraint(db, table)
 }
 
-func (ledgerStore) backfill(db ledger.DBTX, currentVersion uint64, hasVersion bool, allVersions []uint64, table string) error {
-	if !hasVersion {
-		return nil
+// widenStatusConstraint replaces a pre-v0.7 two-value status CHECK with one
+// covering every current status.
+//
+// A ledger created before v0.7 rejects "applying", so the first migration
+// run against an upgraded database would fail on its own bookkeeping.
+// SQLite cannot ALTER a CHECK constraint, so the table is rebuilt — the
+// documented approach, and cheap here because a ledger holds one row per
+// migration.
+//
+// Detection is on the stored DDL rather than a trial insert: a failed
+// insert would have to be rolled back, and doing that inside a caller's
+// transaction is not something this function can assume it may do.
+func widenStatusConstraint(db ledger.DBTX, table string) error {
+	var ddl string
+	err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&ddl)
+	if err != nil {
+		return fmt.Errorf("reading %s definition: %w", table, err)
 	}
-	for _, v := range allVersions {
-		if v > currentVersion {
-			continue
-		}
-		if err := checkVersionRange(v); err != nil {
-			return err
-		}
-		_, err := db.Exec(fmt.Sprintf(`
-INSERT INTO %s (version, status, recorded_at, note)
-VALUES (?, 'applied', NULL, 'backfilled: applied before ledger existed')
-ON CONFLICT (version) DO NOTHING`, table), int64(v))
-		if err != nil {
-			return fmt.Errorf("backfilling version %d: %w", v, err)
+	if !strings.Contains(ddl, "CHECK (status IN") || strings.Contains(ddl, string(ledger.StatusApplying)) {
+		return nil // no constraint to widen, or already current
+	}
+
+	// One transaction for the whole rebuild. Run as separate autocommit
+	// statements, a crash between DROP and RENAME would leave the ledger
+	// gone and only a temporary table behind — losing the migration
+	// history during the upgrade that was supposed to preserve it.
+	tmp := table + "_v07_migration"
+	stmts := []string{
+		`BEGIN IMMEDIATE`,
+		fmt.Sprintf(`DROP TABLE IF EXISTS %s`, tmp),
+		fmt.Sprintf(`CREATE TABLE %[1]s (
+    version         INTEGER NOT NULL PRIMARY KEY,
+    status          TEXT    NOT NULL CHECK (status IN (%[2]s)),
+    recorded_at     TIMESTAMP NULL,
+    note            TEXT    NULL,
+    content_sha256  TEXT    NULL,
+    hash_source     TEXT    NULL
+)`, tmp, ledger.StatusList()),
+		fmt.Sprintf(`INSERT INTO %[1]s (version, status, recorded_at, note, content_sha256, hash_source)
+SELECT version, status, recorded_at, note, content_sha256, hash_source FROM %[2]s`, tmp, table),
+		fmt.Sprintf(`DROP TABLE %s`, table),
+		fmt.Sprintf(`ALTER TABLE %s RENAME TO %s`, tmp, table),
+		`COMMIT`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(stmt); err != nil {
+			// Best-effort unwind; the failing statement has already
+			// aborted the transaction in most cases.
+			_, _ = db.Exec(`ROLLBACK`)
+			return fmt.Errorf("widening the status constraint on %s: %w", table, err)
 		}
 	}
 	return nil
@@ -197,20 +235,9 @@ func (s ledgerStore) EnsureSchema(db ledger.DBTX, table string) error {
 	return s.ensureSchema(db, table)
 }
 
-func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
-	if err := s.ensureSchema(db, table); err != nil {
-		return err
-	}
-	version, dirty, hasVersion, err := m.Version()
-	if err != nil {
-		return err
-	}
-	if dirty {
-		return fmt.Errorf("migration cursor is dirty (a previous apply failed partway through version %d); run `dbtools repair <target>` to resolve it before syncing the ledger", version)
-	}
-	allVersions, err := migrator.ListVersions(migrationsDir, upSuffix)
-	if err != nil {
-		return err
-	}
-	return s.backfill(db, version, hasVersion, allVersions, table)
+// State derives the migration state from the ledger's own rows. The SQL is
+// identical on every engine, so it lives in the ledger package rather than
+// as four copies that could drift.
+func (ledgerStore) State(db ledger.DBTX, table string) (ledger.State, error) {
+	return ledger.QueryState(db, table)
 }

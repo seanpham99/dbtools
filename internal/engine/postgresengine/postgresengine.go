@@ -7,11 +7,12 @@ package postgresengine
 import (
 	"database/sql"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/seanpham99/dbtools/internal/dburl"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/generate"
+	"github.com/seanpham99/dbtools/internal/logger"
 )
 
 func init() {
@@ -23,14 +24,30 @@ type Postgres struct{}
 
 func (Postgres) Name() string { return "postgres" }
 
-// Open opens a raw database/sql connection via lib/pq, which accepts
+// Open opens a database/sql connection via lib/pq, which accepts
 // postgres:// URLs natively — no scheme rewriting needed.
 //
-// golang-migrate's x- parameters are stripped first: lib/pq validates
-// unknown query parameters as server settings and fails the connection
-// with `unrecognized configuration parameter "x-migrations-table"`.
+// Migration-tool x- parameters are stripped first: lib/pq validates unknown
+// query parameters as server settings and fails the connection with
+// `unrecognized configuration parameter "x-migrations-table"`.
+//
+// A notice handler is installed so RAISE NOTICE from a migration reaches
+// the log. lib/pq discards notices unless something is listening, and
+// migrations use them to report what they found — which is the only
+// feedback available when dbtools runs as a private-network job whose
+// output is its log (#60).
 func (Postgres) Open(rawURL string) (*sql.DB, error) {
-	return sql.Open("postgres", dburl.StripCustomParams(rawURL))
+	clean := dburl.StripCustomParams(rawURL)
+	connector, err := pq.NewConnector(clean)
+	if err != nil {
+		// Fall back rather than fail: NewConnector is stricter than
+		// sql.Open about some DSN forms, and losing notices is better
+		// than refusing to connect at all.
+		return sql.Open("postgres", clean)
+	}
+	return sql.OpenDB(pq.ConnectorWithNoticeHandler(connector, func(n *pq.Error) {
+		logger.Infof("postgres: %s: %s", n.Severity, n.Message)
+	})), nil
 }
 
 func (Postgres) DDL() engine.DDLDialect { return ddl{} }

@@ -1,6 +1,7 @@
 package squash
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -43,7 +44,7 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 		return nil, fmt.Errorf("refusing to write: baseline did not verify (%d structural difference(s) found)", len(plan.Findings))
 	}
 
-	_, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	_, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 
 	upPat := regexp.MustCompile(`^(\d+)_.+` + regexp.QuoteMeta(upSuffix) + `$`)
 	mMatches := upPat.FindStringSubmatch(baselineFilename)
@@ -64,19 +65,32 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 	if err != nil {
 		return nil, err
 	}
-	m, err := migrator.Open(url, migrationsDir)
+	db, err := eng.Open(url)
 	if err != nil {
 		return nil, err
 	}
-	defer m.Close()
+	defer db.Close()
 
-	currentVer, dirty, hasVersion, err := m.Version()
+	// Squash rewrites the ledger — marking collapsed versions reverted and
+	// installing the baseline — while also moving files on disk. It holds
+	// the migration lock across all of it: a concurrent `up` executing one
+	// of those versions would otherwise have its row rewritten underneath
+	// it, corrupting the single source of truth.
+	runner := migrator.NewRunner(eng, db, dir, ledgerTable)
+	releaseLock, err := runner.LockForWrite(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	if dirty {
-		return nil, fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` first", targetName, currentVer, targetName)
+	defer releaseLock()
+
+	state0, err := runner.State(context.Background())
+	if err != nil {
+		return nil, err
 	}
+	if state0.Dirty {
+		return nil, &ledger.DirtyError{Version: state0.Applying, Table: ledgerTable}
+	}
+	currentVer, hasVersion := state0.Version, state0.HasVersion
 
 	var state TargetState
 	switch {
@@ -116,16 +130,18 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 	}
 
 	if state == TargetRestamped {
-		if currentVer == plan.UptoVersion {
-			if err := m.Stamp(0); err != nil {
+		// The collapsed versions are replaced by baseline version 0. With
+		// one table there is no separate cursor to re-stamp alongside it:
+		// recording the baseline row IS the re-stamp.
+		for _, v := range plan.CollapsedVersions {
+			if v == 0 {
+				continue
+			}
+			if err := eng.Ledger().SetStatus(db, v, ledger.StatusReverted,
+				"collapsed into the squashed baseline", ledgerTable); err != nil {
 				return nil, err
 			}
 		}
-		db, err := eng.Open(url)
-		if err != nil {
-			return nil, err
-		}
-		defer db.Close()
 
 		sum := sha256.Sum256([]byte(plan.BaselineSQL))
 		hash := hex.EncodeToString(sum[:])

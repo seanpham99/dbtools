@@ -12,7 +12,6 @@ import (
 
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
-	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
@@ -127,15 +126,8 @@ func TestRunStatus_NoLedgerReportsNoLedgerTrue(t *testing.T) {
 	}
 	db.Close()
 
-	m, err := migrator.Open(dbURL, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Stamp(20260817000001); err != nil {
-		m.Close()
-		t.Fatal(err)
-	}
-	m.Close()
+	// Schema present, no dbtools ledger — status must say so rather than
+	// report a version it has no record of.
 
 	// JSON mode check: NoLedger is true.
 	origJSONOutput := jsonOutput

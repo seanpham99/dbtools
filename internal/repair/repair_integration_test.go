@@ -3,6 +3,7 @@
 package repair
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,12 +34,6 @@ func TestRun_RefusesWithoutForceWhenObjectMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m, err := migrator.Open(url, dir)
-	if err != nil {
-		t.Fatalf("migrator.Open() returned error: %v", err)
-	}
-	defer m.Close()
-
 	db, err := mssqlengine.Open(url)
 	if err != nil {
 		t.Fatalf("dbconn.Open() returned error: %v", err)
@@ -48,11 +43,11 @@ func TestRun_RefusesWithoutForceWhenObjectMissing(t *testing.T) {
 	// The table was never actually created (reproducing the real
 	// incident) — repair must refuse to mark it applied without --force.
 	pairs := []Pair{{Version: 20260101000000, Status: ledger.StatusApplied}}
-	if _, err := Run(db, mssqlengine.MSSQL{}, m, dir, ".up.sql", "dbtools_migration_history", pairs, false); err == nil {
+	if _, err := Run(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", pairs, false); err == nil {
 		t.Fatal("expected Run() to refuse marking applied when object is missing, got nil error")
 	}
 
-	if _, err := Run(db, mssqlengine.MSSQL{}, m, dir, ".up.sql", "dbtools_migration_history", pairs, true); err != nil {
+	if _, err := Run(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", pairs, true); err != nil {
 		t.Fatalf("Run() with force=true returned error: %v", err)
 	}
 
@@ -76,25 +71,25 @@ func TestRun_RecomputesCursor(t *testing.T) {
 		}
 	}
 
-	m, err := migrator.Open(url, dir)
-	if err != nil {
-		t.Fatalf("migrator.Open() returned error: %v", err)
-	}
-	defer m.Close()
-	if _, err := m.Up(); err != nil {
-		t.Fatalf("Up() returned error: %v", err)
-	}
-
 	db, err := mssqlengine.Open(url)
 	if err != nil {
 		t.Fatalf("dbconn.Open() returned error: %v", err)
 	}
 	defer db.Close()
 
+	d, err := migrator.ReadDir(dir, ".up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := mssqlengine.MSSQL{}
+	if _, err := migrator.NewRunner(eng, db, d, "dbtools_migration_history").Up(context.Background()); err != nil {
+		t.Fatalf("Up() returned error: %v", err)
+	}
+
 	// Mark the later version reverted — cursor should recompute down to
 	// the earlier still-applied version.
 	pairs := []Pair{{Version: 20260102000000, Status: ledger.StatusReverted}}
-	result, err := Run(db, mssqlengine.MSSQL{}, m, dir, ".up.sql", "dbtools_migration_history", pairs, false)
+	result, err := Run(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", pairs, false)
 	if err != nil {
 		t.Fatalf("Run() returned error: %v", err)
 	}
@@ -102,23 +97,17 @@ func TestRun_RecomputesCursor(t *testing.T) {
 		t.Fatalf("Run() result = %+v, want cursor recomputed to 20260101000000", result)
 	}
 
-	version, dirty, hasVersion, err := m.Version()
+	state, err := eng.Ledger().State(db, "dbtools_migration_history")
 	if err != nil {
-		t.Fatalf("Version() returned error: %v", err)
+		t.Fatalf("State() returned error: %v", err)
 	}
-	if !hasVersion || dirty || version != 20260101000000 {
-		t.Errorf("Version() = (version=%d, dirty=%v, hasVersion=%v), want (20260101000000, false, true)", version, dirty, hasVersion)
+	if !state.HasVersion || state.Dirty || state.Version != 20260101000000 {
+		t.Errorf("State() = %+v, want version 20260101000000, applied, not dirty", state)
 	}
 }
 
 func TestRun_RevertsWithoutFilePresent(t *testing.T) {
 	dir, url := setupTest(t)
-
-	m, err := migrator.Open(url, dir)
-	if err != nil {
-		t.Fatalf("migrator.Open() returned error: %v", err)
-	}
-	defer m.Close()
 
 	db, err := mssqlengine.Open(url)
 	if err != nil {
@@ -131,7 +120,7 @@ func TestRun_RevertsWithoutFilePresent(t *testing.T) {
 	// not require finding a file, since there's nothing to check for a
 	// reverted version.
 	pairs := []Pair{{Version: 20260101000000, Status: ledger.StatusReverted}}
-	if _, err := Run(db, mssqlengine.MSSQL{}, m, dir, ".up.sql", "dbtools_migration_history", pairs, false); err != nil {
+	if _, err := Run(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", pairs, false); err != nil {
 		t.Fatalf("Run() marking reverted with no file present returned error: %v", err)
 	}
 
@@ -146,11 +135,6 @@ func TestRun_RevertsWithoutFilePresent(t *testing.T) {
 
 func TestRun_UnknownVersionRejected(t *testing.T) {
 	dir, url := setupTest(t)
-	m, err := migrator.Open(url, dir)
-	if err != nil {
-		t.Fatalf("migrator.Open() returned error: %v", err)
-	}
-	defer m.Close()
 	db, err := mssqlengine.Open(url)
 	if err != nil {
 		t.Fatalf("dbconn.Open() returned error: %v", err)
@@ -158,7 +142,7 @@ func TestRun_UnknownVersionRejected(t *testing.T) {
 	defer db.Close()
 
 	pairs := []Pair{{Version: 99999999999999, Status: ledger.StatusApplied}}
-	if _, err := Run(db, mssqlengine.MSSQL{}, m, dir, ".up.sql", "dbtools_migration_history", pairs, true); err == nil {
+	if _, err := Run(db, mssqlengine.MSSQL{}, dir, ".up.sql", "dbtools_migration_history", pairs, true); err == nil {
 		t.Fatal("expected error for a version with no matching migration file, got nil")
 	}
 }

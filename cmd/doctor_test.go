@@ -12,7 +12,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
-	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/ledger"
 )
 
 func setupTestDoctorEnv(t *testing.T) (string, string, *config.Config) {
@@ -186,14 +186,16 @@ func TestDoctorDirtyLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Artificially mark dirty in schema_migrations
+	// Leave a migration mid-apply. An "applying" row is what replaces
+	// golang-migrate's dirty cursor flag, and unlike a boolean it names
+	// which migration died.
 	eng := sqliteengine.SQLite{}
 	db, err := eng.Open(rawURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`UPDATE schema_migrations SET dirty = 1`); err != nil {
+	if err := eng.Ledger().SetStatus(db, 99999999999999, ledger.StatusApplying, "died mid-apply", "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -409,15 +411,9 @@ func TestEvaluateTarget_NoLedgerReportsSkippedNotWarn(t *testing.T) {
 	}
 	db.Close()
 
-	m, err := migrator.Open(rawURL, "migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Stamp(20260822000001); err != nil {
-		m.Close()
-		t.Fatal(err)
-	}
-	m.Close()
+	// The schema exists but dbtools has no ledger for it — the shape of a
+	// database an incumbent tool migrated. There is no cursor to stamp any
+	// more, and that absence is exactly what the checks below assert.
 
 	report := evaluateTarget(cfg, "testdb")
 	if !report.Healthy {
@@ -446,9 +442,12 @@ func TestEvaluateTarget_NoLedgerReportsSkippedNotWarn(t *testing.T) {
 		t.Errorf("drift-summary = %+v, want status 'ok' mentioning 'no ledger'", driftSummary)
 	}
 
+	// Without a ledger there is no record of what has been applied and no
+	// separate cursor to fall back on, so reporting a version — or a
+	// pending count — would be a guess dressed up as a finding.
 	versionSync := findCheck("version-sync")
-	if versionSync == nil || versionSync.Status != "ok" || !strings.Contains(versionSync.Message, "no dbtools ledger") {
-		t.Errorf("version-sync = %+v, want status 'ok' mentioning '(no dbtools ledger)'", versionSync)
+	if versionSync == nil || versionSync.Status != "skipped" || !strings.Contains(versionSync.Message, "no ledger") {
+		t.Errorf("version-sync = %+v, want status 'skipped' mentioning 'no ledger'", versionSync)
 	}
 }
 

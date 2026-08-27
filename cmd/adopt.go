@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -64,7 +65,7 @@ func runAdopt(targetName string) error {
 	}
 	defer db.Close()
 
-	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName())
 
 	dir, err := migrator.ReadDir(migrationsDir, upSuffix)
 	if err != nil {
@@ -130,34 +131,35 @@ func runAdopt(targetName string) error {
 		return err
 	}
 
-	m, err := migrator.Open(url, migrationsDir)
-	if err != nil {
-		return err
-	}
-	defer m.Close()
-
-	// EnsureSchema only, never Sync: Sync also backfills a row for every
-	// version the golang-migrate cursor already considers applied, tagged
-	// with the normal (non-adopted) hash source — exactly the "hash now,
-	// treat as verified" outcome adopt's hash_source design exists to
-	// avoid. adopt writes only the matched set below, all tagged adopted.
-	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
-		return err
-	}
-
-	for _, v := range plan.Matched {
-		hash, _ := dir.ContentHash(v)
-		if err := eng.Ledger().SetStatusAdopted(db, v, "adopted from "+table, hash, ledgerTable); err != nil {
+	// Adopt writes only the matched set, all tagged adopted — never a row
+	// for a version it did not find in the source table, which would be
+	// the "hash now, treat as verified" outcome hash_source exists to
+	// avoid.
+	//
+	// The whole write phase holds the migration lock: these rows are the
+	// ledger the runner reads, and importing over a live migration could
+	// overwrite an "applying" marker for SQL that is still executing.
+	runner := migrator.NewRunner(eng, db, dir, ledgerTable)
+	if err := runner.WithLock(context.Background(), func() error {
+		if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 			return err
 		}
+		for _, v := range plan.Matched {
+			hash, _ := dir.ContentHash(v)
+			if err := eng.Ledger().SetStatusAdopted(db, v, "adopted from "+table, hash, ledgerTable); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
-	if len(plan.Matched) > 0 {
-		highest := plan.Matched[len(plan.Matched)-1]
-		if err := m.Stamp(highest); err != nil {
-			return err
-		}
-	}
+	// #79: adopt used to stamp a separate version cursor here, after the
+	// ledger rows were already written. That second write is what made the
+	// command non-atomic — and on a database whose ledger table was named
+	// schema_migrations, it was also the write that failed. With the
+	// version derived from the rows, importing them is the whole job.
 
 	logger.Infof("adopted %d version(s) from %s", len(plan.Matched), table)
 	return nil

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/engine"
-	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/verify"
 	"github.com/spf13/cobra"
 )
@@ -29,10 +29,7 @@ var verifyCmd = &cobra.Command{
 	},
 }
 
-var verifyInitLedger bool
-
 func init() {
-	verifyCmd.Flags().BoolVar(&verifyInitLedger, "init-ledger", false, "create the ledger table and backfill rows for already-applied migrations (default: verify is read-only and reports an uninitialised ledger)")
 	rootCmd.AddCommand(verifyCmd)
 }
 
@@ -57,53 +54,42 @@ func runVerify(targetName string) error {
 	}
 	defer db.Close()
 
-	m, err := migrator.Open(url, cfg.MigrationsDir)
+	ledgerExists, err := engine.TableExists(eng, db, cfg.LedgerTableName())
 	if err != nil {
 		return err
-	}
-	defer m.Close()
-
-	ledgerExists, err := engine.TableExists(eng, db, cfg.Ledger.Table)
-	if err != nil {
-		return err
-	}
-	if !ledgerExists {
-		version, dirty, _, err := m.Version()
-		if err != nil {
-			return err
-		}
-		if dirty {
-			return fmt.Errorf("target %q: migration cursor is dirty at version %d; run `dbtools repair %s` to resolve it", targetName, version, targetName)
-		}
-	}
-	if !ledgerExists && verifyInitLedger {
-		if err := requireUnprotected(cfg, targetName); err != nil {
-			return err
-		}
-		if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
-			return err
-		}
-		ledgerExists = true
 	}
 	if ledgerExists {
-		entries, err := eng.Ledger().List(db, cfg.Ledger.Table)
+		// A migration left mid-apply makes every other finding
+		// untrustworthy: the schema is in a state no migration file
+		// describes.
+		state, err := eng.Ledger().State(db, cfg.LedgerTableName())
 		if err != nil {
 			return err
 		}
-		if len(entries) == 0 && !verifyInitLedger {
-			return fmt.Errorf("ledger for %q is empty — refusing to create it on a read-only check; pass --init-ledger to create and backfill it", targetName)
+		if state.Dirty {
+			return &ledger.DirtyError{Version: state.Applying, Table: cfg.LedgerTableName()}
 		}
+	}
+	if ledgerExists {
+		entries, err := eng.Ledger().List(db, cfg.LedgerTableName())
+		if err != nil {
+			return err
+		}
+		// An empty ledger is not a verified database. Creating one here
+		// would make verify.Collect find nothing to check and report a
+		// clean bill of health for a schema it never looked at — the
+		// failure mode `--init-ledger` used to have once its backfill
+		// went away with ledger Sync.
 		if len(entries) == 0 {
-			if err := requireUnprotected(cfg, targetName); err != nil {
-				return err
-			}
-			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
-				return err
-			}
+			return fmt.Errorf(
+				"ledger for %q exists but is empty, so there is nothing to verify against. "+
+					"Import the existing history with `dbtools adopt %s`, which records where each "+
+					"version came from instead of assuming it was applied",
+				targetName, targetName)
 		}
 	}
 
-	report, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table, targetName)
+	report, err := verify.Collect(db, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), targetName)
 	if err != nil {
 		return err
 	}

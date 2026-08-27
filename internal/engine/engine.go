@@ -15,14 +15,15 @@
 package engine
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"sort"
 
+	"github.com/seanpham99/dbtools/internal/dburl"
 	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/generate"
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // Engine is one pluggable database engine implementation.
@@ -44,6 +45,13 @@ type Engine interface {
 	// dbtools_migration_history table's DDL/DML in this dialect).
 	Ledger() LedgerStore
 
+	// ExecMigration runs one migration file's SQL on conn.
+	//
+	// A whole run shares one connection, so engines that need per-file
+	// session hygiene (Postgres) or batch splitting (SQL Server's GO) do
+	// it here rather than leaking those concerns into the runner.
+	ExecMigration(ctx context.Context, conn *sql.Conn, sqlText string) error
+
 	// Introspect reads the live schema and returns one TableSchema per
 	// base table (plus any engine-specific extras), for `generate`. The
 	// second return value lists columns whose type had no Python mapping.
@@ -62,15 +70,14 @@ type DDLDialect interface {
 // LedgerStore is the engine-dialect implementation of the migration
 // ledger (see internal/ledger for the semantics each method must keep).
 type LedgerStore interface {
-	// Sync ensures the ledger table exists and backfills a row for every
-	// version the migrate cursor already considers applied. Refuses to
-	// backfill when the cursor is dirty.
-	Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error
+	// State derives where the database is — highest applied version, and
+	// whether a migration is stuck mid-apply — from the ledger's own rows.
+	// It replaces golang-migrate's separate (version, dirty) cursor: one
+	// table, so there is no second value that can disagree with the
+	// history it summarises.
+	State(db ledger.DBTX, table string) (ledger.State, error)
 	// EnsureSchema creates table if it doesn't already exist (idempotent),
-	// without touching any row. Callers that must not backfill —
-	// `dbtools adopt`, so a pre-existing migrate cursor never gets
-	// silently recorded with an unverified hash — call this instead of
-	// Sync.
+	// without touching any row.
 	EnsureSchema(db ledger.DBTX, table string) error
 	// SetStatus upserts version's ledger row, preserving content_sha256
 	// when the row already exists.
@@ -143,7 +150,7 @@ func normalizeScheme(scheme string) string {
 
 // ForURL resolves the engine for rawURL by its scheme.
 func ForURL(rawURL string) (Engine, error) {
-	scheme := migrator.SchemeOf(rawURL)
+	scheme := dburl.SchemeOf(rawURL)
 	if scheme == "" {
 		return nil, fmt.Errorf("connection URL has no scheme (want one of %v, e.g. mssql://...)", Names())
 	}

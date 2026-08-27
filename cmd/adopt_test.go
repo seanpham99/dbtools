@@ -12,7 +12,6 @@ import (
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine/sqliteengine"
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 func setupAdoptTestEnv(t *testing.T) (string, string, *config.Config) {
@@ -187,15 +186,18 @@ func TestAdoptCommand_WritesMatchedWithYes(t *testing.T) {
 		t.Errorf("entry = %+v, want version 20260822000001, applied, hash_source=adopted", e)
 	}
 
-	// Verify migrator cursor is stamped
-	m, err := migrator.Open(rawURL, cfg.MigrationsDir)
+	// The version is derived from the rows adopt just imported — there is
+	// no separate cursor to stamp, which is what made adopt non-atomic
+	// (and, on a schema_migrations-named ledger, what made it fail) in #79.
+	state, err := eng.Ledger().State(db, cfg.LedgerTableName())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("reading state: %v", err)
 	}
-	defer m.Close()
-	curVer, _, hasVer, err := m.Version()
-	if err != nil || !hasVer || curVer != 20260822000001 {
-		t.Errorf("migrator cursor = (%d, %v), want (20260822000001, true)", curVer, hasVer)
+	if !state.HasVersion || state.Version != 20260822000001 {
+		t.Errorf("state = %+v, want version 20260822000001", state)
+	}
+	if state.Dirty {
+		t.Errorf("state.Dirty = true after adopt, want false")
 	}
 }
 
@@ -209,7 +211,7 @@ func TestAdoptCommand_WritesMatchedWithYes(t *testing.T) {
 // exactly what hash_source="adopted" exists to prevent. adopt must use
 // EnsureSchema (create the table only) instead of Sync (create + backfill).
 func TestAdoptCommand_DoesNotBackfillVersionsOutsideSourceTable(t *testing.T) {
-	dir, rawURL, cfg := setupAdoptTestEnv(t)
+	dir, rawURL, _ := setupAdoptTestEnv(t)
 	wd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -244,17 +246,10 @@ func TestAdoptCommand_DoesNotBackfillVersionsOutsideSourceTable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Stamp the migrate cursor past version 2, which the source table
-	// above never recorded — this is what Sync's backfill would have
-	// picked up.
-	m, err := migrator.Open(rawURL, cfg.MigrationsDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Stamp(20260822000002); err != nil {
-		t.Fatal(err)
-	}
-	m.Close()
+	// Version 2 exists on disk but the source table never recorded it, so
+	// adopt must not import it. (This used to also guard against Sync
+	// backfilling it from a separate cursor; with one table there is no
+	// second place for a version to come from.)
 
 	adoptYes = true
 	adoptForce = false

@@ -8,6 +8,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/scratchdb"
+	"github.com/seanpham99/dbtools/internal/support"
 )
 
 // Run provisions a scratch database (or uses againstURL if non-empty,
@@ -44,6 +45,9 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 		if err := verifyAgainstParity(eng, againstURL, targetSeries); err != nil {
 			return nil, nil, err
 		}
+	}
+	if ok, msg := support.Check(eng.Name(), targetSeries); !ok {
+		notes = append(notes, msg)
 	}
 	if targetSeries == "" && container.PinsVersion(eng.Name()) {
 		notes = append(notes, fmt.Sprintf(
