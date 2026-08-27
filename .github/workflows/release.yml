@@ -103,6 +103,11 @@ jobs:
           npm pkg set name="@${GITHUB_REPOSITORY_OWNER,,}/dbtools-cli"
           npm pkg set version="$VERSION"
           npm pkg set publishConfig.registry="https://npm.pkg.github.com"
+          # setup-node wrote an .npmrc pointing at npmjs for the provenance
+          # publish above, so npm has no credential for GitHub's registry and
+          # fails with ENEEDAUTH. Write the mapping next to the package being
+          # published rather than editing the shared one.
+          printf '//npm.pkg.github.com/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > .npmrc
           npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
