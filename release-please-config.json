@@ -3,14 +3,22 @@
   "packages": {
     ".": {
       "release-type": "go",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false
     },
     "npm": {
       "release-type": "node",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        { "type": "json", "path": "package.json", "jsonpath": "$.binaryVersion" }
-      ]
+        {
+          "type": "json",
+          "path": "package.json",
+          "jsonpath": "$.binaryVersion"
+        }
+      ],
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": false
     }
   }
 }
