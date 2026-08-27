@@ -90,9 +90,14 @@ jobs:
           npm install -g npm@latest
           VERSION="${{ steps.release_tag.outputs.version }}"
           cd npm
-          if [ "$(node -p "require('./package.json').version")" != "$VERSION" ]; then
-            npm version "$VERSION" --no-git-tag-version
-          fi
+          # Both fields, always. This wrapper is a thin downloader of the Go
+          # binary for the same release, so its own version and the version
+          # it fetches are the same number by definition — and 0.7.0 shipped
+          # broken because only `version` was set: the package called itself
+          # 0.7.0 while binaryVersion still said 0.4.0, so `npx dbtools-cli`
+          # tried to download a v0.4.0 asset that does not exist.
+          npm pkg set version="$VERSION"
+          npm pkg set binaryVersion="$VERSION"
           npm publish --access public --provenance
 
       - name: Publish to GitHub Packages
@@ -102,6 +107,7 @@ jobs:
           cd /tmp/gh-pkg
           npm pkg set name="@${GITHUB_REPOSITORY_OWNER,,}/dbtools-cli"
           npm pkg set version="$VERSION"
+          npm pkg set binaryVersion="$VERSION"
           npm pkg set publishConfig.registry="https://npm.pkg.github.com"
           # setup-node wrote an .npmrc pointing at npmjs for the provenance
           # publish above, so npm has no credential for GitHub's registry and

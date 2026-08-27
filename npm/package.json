@@ -1,7 +1,7 @@
 {
   "name": "dbtools-cli",
-  "version": "0.4.0",
-  "binaryVersion": "0.4.0",
+  "version": "0.7.0",
+  "binaryVersion": "0.7.0",
   "description": "Fast schema migrations and dev databases for MSSQL, Postgres, and SQLite",
   "bin": {
     "dbtools": "bin/dbtools.js"
