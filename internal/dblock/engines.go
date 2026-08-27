@@ -134,3 +134,32 @@ func mssqlKey(key string) string {
 	}
 	return key[:maxResourceName]
 }
+
+// DatabaseName asks the server which database this connection is on.
+//
+// Deriving it from the connection URL instead would be a correctness hole:
+// the same database reached through two URL forms (postgres:// vs
+// postgresql://, 127.0.0.1 vs localhost, MySQL's tcp(host:port)) would
+// produce two different lock keys, and two runs that must exclude each
+// other would not. One round trip removes the whole class.
+//
+// Returns "" when it cannot be determined, which KeyFor turns into a
+// global key — less concurrency, never less safety.
+func DatabaseName(ctx context.Context, db *sql.DB, engineName string) string {
+	var query string
+	switch engineName {
+	case "postgres":
+		query = "SELECT current_database()"
+	case "mysql":
+		query = "SELECT DATABASE()"
+	case "mssql":
+		query = "SELECT DB_NAME()"
+	default:
+		return ""
+	}
+	var name sql.NullString
+	if err := db.QueryRowContext(ctx, query).Scan(&name); err != nil || !name.Valid {
+		return ""
+	}
+	return name.String
+}
