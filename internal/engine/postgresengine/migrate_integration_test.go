@@ -26,10 +26,17 @@ func TestLiveMigrateUpAndSeed(t *testing.T) {
 		t.Fatalf("Open() returned error: %v", err)
 	}
 	defer db.Close()
+	// Reset both the schema this test creates and the ledger that records
+	// it. Before v0.7 the second line dropped golang-migrate's cursor
+	// table; the ledger is now the only record, so it is what has to go —
+	// otherwise a re-run finds the migration already applied and applies
+	// nothing.
 	t.Cleanup(func() {
 		db.Exec(`DROP TABLE IF EXISTS pg_it_widgets`)
-		db.Exec(`DROP TABLE IF EXISTS schema_migrations`)
+		db.Exec(`DROP TABLE IF EXISTS dbtools_pg_migrate_it_history`)
 	})
+	db.Exec(`DROP TABLE IF EXISTS pg_it_widgets`)
+	db.Exec(`DROP TABLE IF EXISTS dbtools_pg_migrate_it_history`)
 
 	dir := t.TempDir()
 	up := `CREATE TABLE pg_it_widgets (id bigint PRIMARY KEY, label text NOT NULL);
