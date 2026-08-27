@@ -31,7 +31,7 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
-	migrationsDir, upSuffix, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
+	migrationsDir, _, ledgerTable := config.ResolveDefaults(cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table)
 
 	m, err := migrator.Open(url, migrationsDir)
 	if err != nil {
@@ -45,7 +45,7 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
+	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 

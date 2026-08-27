@@ -5,11 +5,9 @@ package mssqlengine
 import (
 	"database/sql"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/seanpham99/dbtools/internal/testdb"
 )
 
@@ -38,51 +36,6 @@ func TestEnsureSchema_Idempotent(t *testing.T) {
 	}
 	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("second EnsureSchema() returned error: %v", err)
-	}
-}
-
-func TestBackfillAndList(t *testing.T) {
-	db := openTestDB(t)
-	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := Backfill(db, 20260102000000, true, []uint64{20260101000000, 20260102000000, 20260103000000}, "dbtools_migration_history"); err != nil {
-		t.Fatalf("Backfill() returned error: %v", err)
-	}
-
-	entries, err := List(db, "dbtools_migration_history")
-	if err != nil {
-		t.Fatalf("List() returned error: %v", err)
-	}
-	if len(entries) != 2 {
-		t.Fatalf("List() returned %d entries, want 2 (versions <= current only)", len(entries))
-	}
-	if entries[0].Version != 20260101000000 || entries[0].Status != ledger.StatusApplied {
-		t.Errorf("entries[0] = %+v, want version=20260101000000 status=applied", entries[0])
-	}
-	if entries[0].RecordedAt != nil {
-		t.Errorf("entries[0].RecordedAt = %v, want nil for a backfilled row", entries[0].RecordedAt)
-	}
-	if entries[1].Version != 20260102000000 {
-		t.Errorf("entries[1].Version = %d, want 20260102000000", entries[1].Version)
-	}
-}
-
-func TestBackfill_NoVersionYet(t *testing.T) {
-	db := openTestDB(t)
-	if err := EnsureSchema(db, "dbtools_migration_history"); err != nil {
-		t.Fatal(err)
-	}
-	if err := Backfill(db, 0, false, []uint64{20260101000000}, "dbtools_migration_history"); err != nil {
-		t.Fatalf("Backfill() returned error: %v", err)
-	}
-	entries, err := List(db, "dbtools_migration_history")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 0 {
-		t.Errorf("List() = %+v, want empty when hasVersion=false", entries)
 	}
 }
 
@@ -137,58 +90,6 @@ func TestAppliedVersions(t *testing.T) {
 	want := []uint64{20260101000000, 20260103000000}
 	if len(versions) != len(want) || versions[0] != want[0] || versions[1] != want[1] {
 		t.Errorf("AppliedVersions() = %v, want %v", versions, want)
-	}
-}
-
-func TestSync(t *testing.T) {
-	url := os.Getenv("DBTOOLS_TEST_MSSQL_URL")
-	if url == "" {
-		t.Skip("DBTOOLS_TEST_MSSQL_URL not set, skipping integration test")
-	}
-	if err := testdb.ResetTracking(url); err != nil {
-		t.Fatal(err)
-	}
-
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "20260101000000_create_widgets.up.sql"),
-		[]byte("CREATE TABLE dbtools_test_ledger_sync (id INT PRIMARY KEY);"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "20260102000000_add_more.up.sql"),
-		[]byte("CREATE TABLE dbtools_test_ledger_sync_2 (id INT PRIMARY KEY);"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	m, err := migrator.Open(url, dir)
-	if err != nil {
-		t.Fatalf("migrator.Open() returned error: %v", err)
-	}
-	defer m.Close()
-	if _, err := m.Up(); err != nil {
-		t.Fatalf("Up() returned error: %v", err)
-	}
-
-	db, err := Open(url)
-	if err != nil {
-		t.Fatalf("Open() returned error: %v", err)
-	}
-	defer db.Close()
-
-	if err := Sync(db, m, dir, ".up.sql", "dbtools_migration_history"); err != nil {
-		t.Fatalf("Sync() returned error: %v", err)
-	}
-
-	entries, err := List(db, "dbtools_migration_history")
-	if err != nil {
-		t.Fatalf("List() returned error: %v", err)
-	}
-	if len(entries) != 2 {
-		t.Fatalf("List() returned %d entries, want 2", len(entries))
-	}
-	for _, e := range entries {
-		if e.Status != ledger.StatusApplied {
-			t.Errorf("entry %+v: want status applied", e)
-		}
 	}
 }
 

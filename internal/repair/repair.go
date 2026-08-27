@@ -30,7 +30,7 @@ type Result struct {
 // applied version.
 func Run(db *sql.DB, eng engine.Engine, m *migrator.Migrator, migrationsDir, upSuffix, table string, pairs []Pair, force bool) (*Result, error) {
 	migrationsDir, upSuffix, table = config.ResolveDefaults(migrationsDir, upSuffix, table)
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, table); err != nil {
+	if err := eng.Ledger().EnsureSchema(db, table); err != nil {
 		return nil, err
 	}
 

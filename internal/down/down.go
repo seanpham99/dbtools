@@ -44,7 +44,7 @@ func Preview(cfg *config.Config, targetName string, steps int, urlOverride strin
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
+	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 
@@ -88,7 +88,7 @@ func Run(cfg *config.Config, targetName string, steps int, urlOverride string) (
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
+	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 

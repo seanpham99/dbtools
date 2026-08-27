@@ -62,15 +62,14 @@ type DDLDialect interface {
 // LedgerStore is the engine-dialect implementation of the migration
 // ledger (see internal/ledger for the semantics each method must keep).
 type LedgerStore interface {
-	// Sync ensures the ledger table exists and backfills a row for every
-	// version the migrate cursor already considers applied. Refuses to
-	// backfill when the cursor is dirty.
-	Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error
+	// State derives where the database is — highest applied version, and
+	// whether a migration is stuck mid-apply — from the ledger's own rows.
+	// It replaces golang-migrate's separate (version, dirty) cursor: one
+	// table, so there is no second value that can disagree with the
+	// history it summarises.
+	State(db ledger.DBTX, table string) (ledger.State, error)
 	// EnsureSchema creates table if it doesn't already exist (idempotent),
-	// without touching any row. Callers that must not backfill —
-	// `dbtools adopt`, so a pre-existing migrate cursor never gets
-	// silently recorded with an unverified hash — call this instead of
-	// Sync.
+	// without touching any row.
 	EnsureSchema(db ledger.DBTX, table string) error
 	// SetStatus upserts version's ledger row, preserving content_sha256
 	// when the row already exists.

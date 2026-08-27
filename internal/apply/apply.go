@@ -58,7 +58,7 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 	}
 	defer db.Close()
 
-	if err := eng.Ledger().Sync(db, m, migrationsDir, upSuffix, ledgerTable); err != nil {
+	if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
 		return nil, fmt.Errorf("target %q: %w", targetName, err)
 	}
 

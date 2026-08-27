@@ -54,16 +54,39 @@ func TestLiveLedgerDDLAndIntrospection(t *testing.T) {
 	if entries[0].RecordedAt == nil {
 		t.Fatal("List() row RecordedAt = nil, want a timestamp")
 	}
-	if err := store.backfill(db, 100, true, []uint64{42, 99, 150}, "dbtools_migration_history"); err != nil {
-		t.Fatalf("backfill() returned error: %v", err)
+	if err := store.SetStatus(db, 99, ledger.StatusApplied, "third", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatus() returned error: %v", err)
 	}
 	applied, err := store.AppliedVersions(db, "dbtools_migration_history")
 	if err != nil {
 		t.Fatalf("AppliedVersions() returned error: %v", err)
 	}
-	// 42 stays reverted (ON CONFLICT DO NOTHING), 99 backfilled, 150 above cursor.
+	// 42 stays reverted, so only 99 is applied.
 	if len(applied) != 1 || applied[0] != 99 {
 		t.Fatalf("AppliedVersions() = %v, want [99]", applied)
+	}
+
+	// State derives the cursor from these rows, replacing golang-migrate's
+	// separate (version, dirty) table.
+	st, err := store.State(db, "dbtools_migration_history")
+	if err != nil {
+		t.Fatalf("State() returned error: %v", err)
+	}
+	if !st.HasVersion || st.Version != 99 {
+		t.Errorf("State() = %+v, want version 99", st)
+	}
+	if st.Dirty {
+		t.Errorf("State().Dirty = true with no applying row, want false")
+	}
+	if err := store.SetStatus(db, 150, ledger.StatusApplying, "interrupted", "dbtools_migration_history"); err != nil {
+		t.Fatalf("SetStatus(applying) returned error: %v", err)
+	}
+	st, err = store.State(db, "dbtools_migration_history")
+	if err != nil {
+		t.Fatalf("State() after applying row: %v", err)
+	}
+	if !st.Dirty || st.Applying != 150 {
+		t.Errorf("State() = %+v, want dirty at 150 — an applying row is what replaces the dirty flag", st)
 	}
 
 	// DDL existence + introspection.

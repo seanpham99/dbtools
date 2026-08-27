@@ -6,7 +6,6 @@ import (
 	"math"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // ledgerStore is the Postgres dialect of the dbtools_migration_history
@@ -16,14 +15,14 @@ type ledgerStore struct{}
 
 func (ledgerStore) ensureSchema(db ledger.DBTX, table string) error {
 	_, err := db.Exec(fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s (
+CREATE TABLE IF NOT EXISTS %[1]s (
     version         BIGINT       NOT NULL PRIMARY KEY,
-    status          VARCHAR(10)  NOT NULL CHECK (status IN ('applied', 'reverted')),
+    status          VARCHAR(10)  NOT NULL CHECK (status IN (%[2]s)),
     recorded_at     TIMESTAMPTZ  NULL,
     note            VARCHAR(400) NULL,
     content_sha256  CHAR(64)     NULL,
     hash_source     VARCHAR(20)  NULL
-)`, table))
+)`, table, ledger.StatusList()))
 	if err != nil {
 		return fmt.Errorf("ensuring %s schema: %w", table, err)
 	}
@@ -46,28 +45,6 @@ CREATE TABLE IF NOT EXISTS %s (
 func checkVersionRange(version uint64) error {
 	if version > math.MaxInt64 {
 		return fmt.Errorf("migration version %d exceeds the ledger's BIGINT range", version)
-	}
-	return nil
-}
-
-func (ledgerStore) backfill(db ledger.DBTX, currentVersion uint64, hasVersion bool, allVersions []uint64, table string) error {
-	if !hasVersion {
-		return nil
-	}
-	for _, v := range allVersions {
-		if v > currentVersion {
-			continue
-		}
-		if err := checkVersionRange(v); err != nil {
-			return err
-		}
-		_, err := db.Exec(fmt.Sprintf(`
-INSERT INTO %s (version, status, recorded_at, note)
-VALUES ($1, 'applied', NULL, 'backfilled: applied before ledger existed')
-ON CONFLICT (version) DO NOTHING`, table), int64(v))
-		if err != nil {
-			return fmt.Errorf("backfilling version %d: %w", v, err)
-		}
 	}
 	return nil
 }
@@ -183,20 +160,9 @@ func (s ledgerStore) EnsureSchema(db ledger.DBTX, table string) error {
 	return s.ensureSchema(db, table)
 }
 
-func (s ledgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
-	if err := s.ensureSchema(db, table); err != nil {
-		return err
-	}
-	version, dirty, hasVersion, err := m.Version()
-	if err != nil {
-		return err
-	}
-	if dirty {
-		return fmt.Errorf("migration cursor is dirty (a previous apply failed partway through version %d); run `dbtools repair <target>` to resolve it before syncing the ledger", version)
-	}
-	allVersions, err := migrator.ListVersions(migrationsDir, upSuffix)
-	if err != nil {
-		return err
-	}
-	return s.backfill(db, version, hasVersion, allVersions, table)
+// State derives the migration state from the ledger's own rows. The SQL is
+// identical on every engine, so it lives in the ledger package rather than
+// as four copies that could drift.
+func (ledgerStore) State(db ledger.DBTX, table string) (ledger.State, error) {
+	return ledger.QueryState(db, table)
 }

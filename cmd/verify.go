@@ -80,7 +80,7 @@ func runVerify(targetName string) error {
 		if err := requireUnprotected(cfg, targetName); err != nil {
 			return err
 		}
-		if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
+		if err := eng.Ledger().EnsureSchema(db, cfg.Ledger.Table); err != nil {
 			return err
 		}
 		ledgerExists = true
@@ -97,7 +97,7 @@ func runVerify(targetName string) error {
 			if err := requireUnprotected(cfg, targetName); err != nil {
 				return err
 			}
-			if err := eng.Ledger().Sync(db, m, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.Ledger.Table); err != nil {
+			if err := eng.Ledger().EnsureSchema(db, cfg.Ledger.Table); err != nil {
 				return err
 			}
 		}

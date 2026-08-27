@@ -6,17 +6,16 @@ import (
 
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
-	"github.com/seanpham99/dbtools/internal/migrator"
 )
 
 // EnsureSchema creates table if it doesn't already exist.
 func EnsureSchema(db ledger.DBTX, table string) error {
 	_, err := db.Exec(fmt.Sprintf(`
-IF OBJECT_ID(N'%s', N'U') IS NULL
+IF OBJECT_ID(N'%[1]s', N'U') IS NULL
 BEGIN
-    CREATE TABLE %s (
+    CREATE TABLE %[1]s (
         version         BIGINT        NOT NULL PRIMARY KEY,
-        status          VARCHAR(10)   NOT NULL CHECK (status IN ('applied', 'reverted')),
+        status          VARCHAR(10)   NOT NULL CHECK (status IN (%[2]s)),
         recorded_at     DATETIME2(0)  NULL,
         note            NVARCHAR(400) NULL,
         content_sha256  CHAR(64)      NULL,
@@ -25,15 +24,15 @@ BEGIN
 END;
 ELSE
 BEGIN
-    IF COL_LENGTH(N'%s', N'content_sha256') IS NULL
+    IF COL_LENGTH(N'%[1]s', N'content_sha256') IS NULL
     BEGIN
-        ALTER TABLE %s ADD content_sha256 CHAR(64) NULL;
+        ALTER TABLE %[1]s ADD content_sha256 CHAR(64) NULL;
     END;
-    IF COL_LENGTH(N'%s', N'hash_source') IS NULL
+    IF COL_LENGTH(N'%[1]s', N'hash_source') IS NULL
     BEGIN
-        ALTER TABLE %s ADD hash_source VARCHAR(20) NULL;
+        ALTER TABLE %[1]s ADD hash_source VARCHAR(20) NULL;
     END;
-END;`, table, table, table, table, table, table))
+END;`, table, ledger.StatusList()))
 	if err != nil {
 		return fmt.Errorf("ensuring %s schema: %w", table, err)
 	}
@@ -43,29 +42,6 @@ END;`, table, table, table, table, table, table))
 func checkVersionRange(version uint64) error {
 	if version > 1<<63-1 {
 		return fmt.Errorf("migration version %d exceeds the ledger's BIGINT range", version)
-	}
-	return nil
-}
-
-// Backfill inserts an "applied" row for every version <= currentVersion.
-func Backfill(db ledger.DBTX, currentVersion uint64, hasVersion bool, allVersions []uint64, table string) error {
-	if !hasVersion {
-		return nil
-	}
-	for _, v := range allVersions {
-		if v > currentVersion {
-			continue
-		}
-		if err := checkVersionRange(v); err != nil {
-			return err
-		}
-		_, err := db.Exec(fmt.Sprintf(`
-IF NOT EXISTS (SELECT 1 FROM %s WHERE version = @p1)
-INSERT INTO %s (version, status, recorded_at, note)
-VALUES (@p1, 'applied', NULL, 'backfilled: applied before ledger existed');`, table, table), int64(v))
-		if err != nil {
-			return fmt.Errorf("backfilling version %d: %w", v, err)
-		}
 	}
 	return nil
 }
@@ -177,33 +153,10 @@ func AppliedVersions(db ledger.DBTX, table string) ([]uint64, error) {
 	return versions, nil
 }
 
-// Sync ensures MSSQL db's ledger table exists and is backfilled.
-func Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
-	if err := EnsureSchema(db, table); err != nil {
-		return err
-	}
-	version, dirty, hasVersion, err := m.Version()
-	if err != nil {
-		return err
-	}
-	if dirty {
-		return fmt.Errorf("migration cursor is dirty (a previous apply failed partway through version %d); run `dbtools repair %s` to resolve it before syncing the ledger", version, "target")
-	}
-	allVersions, err := migrator.ListVersions(migrationsDir, upSuffix)
-	if err != nil {
-		return err
-	}
-	return Backfill(db, version, hasVersion, allVersions, table)
-}
-
 type mssqlLedgerStore struct{}
 
 func (mssqlLedgerStore) EnsureSchema(db ledger.DBTX, table string) error {
 	return EnsureSchema(db, table)
-}
-
-func (mssqlLedgerStore) Sync(db *sql.DB, m *migrator.Migrator, migrationsDir, upSuffix, table string) error {
-	return Sync(db, m, migrationsDir, upSuffix, table)
 }
 
 func (mssqlLedgerStore) SetStatus(db ledger.DBTX, version uint64, status ledger.Status, note, table string) error {
@@ -227,3 +180,10 @@ func (mssqlLedgerStore) AppliedVersions(db ledger.DBTX, table string) ([]uint64,
 }
 
 var _ engine.LedgerStore = mssqlLedgerStore{}
+
+// State derives the migration state from the ledger's own rows. The SQL is
+// identical on every engine, so it lives in the ledger package rather than
+// as four copies that could drift.
+func (mssqlLedgerStore) State(db ledger.DBTX, table string) (ledger.State, error) {
+	return ledger.QueryState(db, table)
+}
