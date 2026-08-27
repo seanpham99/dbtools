@@ -14,10 +14,11 @@ import (
 )
 
 var (
-	squashUpto   uint64
-	squashOut    string
-	squashYes    bool
-	squashDryRun bool
+	squashUseHostTools bool
+	squashUpto         uint64
+	squashOut          string
+	squashYes          bool
+	squashDryRun       bool
 )
 
 var squashCmd = &cobra.Command{
@@ -30,6 +31,8 @@ var squashCmd = &cobra.Command{
 }
 
 func init() {
+	squashCmd.Flags().BoolVar(&squashUseHostTools, "use-host-tools", false,
+		"run the dump tool from PATH instead of inside the scratch container (no Docker, or you know your client and server versions agree)")
 	squashCmd.Flags().Uint64Var(&squashUpto, "upto", 0, "highest version to collapse (default: highest version on disk)")
 	squashCmd.Flags().StringVar(&squashOut, "out", "", "baseline filename override (default: 0000000000000_squashed_baseline.up.sql)")
 	squashCmd.Flags().BoolVar(&squashYes, "yes", false, "write the baseline, archive collapsed files, and re-stamp the target (omit to only print the plan)")
@@ -74,7 +77,7 @@ func runSquash(targetName string) error {
 		targetDB.Close()
 	}
 
-	plan, err := squash.BuildPlan(cfg, eng, migrationsDir, upSuffix, upto, targetSeries)
+	plan, err := squash.BuildPlan(cfg, eng, migrationsDir, upSuffix, upto, targetSeries, squashUseHostTools)
 	if err != nil {
 		return err
 	}
