@@ -1,25 +1,10 @@
 package config_test
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/config"
 )
-
-func loadCfg(t *testing.T, body string) *config.Config {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "dbtools.toml")
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := config.Load(path)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	return cfg
-}
 
 // Load applies the ledger-table default, but a Config built as a struct
 // literal does not go through Load — so every caller reads the table
