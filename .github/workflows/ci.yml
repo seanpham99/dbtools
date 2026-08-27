@@ -52,15 +52,34 @@ jobs:
         run: go test -tags=integration -p 1 ./internal/container/... -count=1
 
   integration:
-    name: Integration (${{ matrix.db }})
+    name: Integration (${{ matrix.db }} ${{ matrix.version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Oldest and newest of each supported version window
+      # (docs/adr/003-v0.7-native-runner.md). Catalog rendering and DDL
+      # behaviour are not stable across majors, and the differences cluster
+      # at the boundaries — testing one version in the middle is what let
+      # #78 and #84 ship.
       matrix:
-        db: [mssql, postgres, sqlite, mysql]
+        include:
+          - db: postgres
+            version: "15"
+          - db: postgres
+            version: "18"
+          - db: mysql
+            version: "8.0"
+          - db: mysql
+            version: "8.4"
+          - db: mssql
+            version: "2019"
+          - db: mssql
+            version: "2022"
+          - db: sqlite
+            version: ""
     services:
       mssql:
-        image: mcr.microsoft.com/mssql/server:2022-latest
+        image: mcr.microsoft.com/mssql/server:${{ matrix.db == 'mssql' && matrix.version || '2022' }}-latest
         env:
           ACCEPT_EULA: "Y"
           MSSQL_SA_PASSWORD: ${{ secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD }}
@@ -77,7 +96,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       postgres:
-        image: postgres:17-alpine
+        image: postgres:${{ matrix.db == 'postgres' && matrix.version || '17' }}-alpine
         env:
           POSTGRES_USER: dbtools
           POSTGRES_PASSWORD: dbtools
@@ -90,7 +109,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       mysql:
-        image: mysql:8.0
+        image: mysql:${{ matrix.db == 'mysql' && matrix.version || '8.0' }}
         env:
           MYSQL_ROOT_PASSWORD: dbtools
           MYSQL_DATABASE: dbtools_test
@@ -114,13 +133,22 @@ jobs:
         env:
           MSSQL_SA_PASSWORD: ${{ secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD }}
         run: |
-          container_id=$(docker ps -q --filter "ancestor=mcr.microsoft.com/mssql/server:2022-latest" | head -1)
-          docker exec "$container_id" /opt/mssql-tools18/bin/sqlcmd \
-            -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -C \
+          image="mcr.microsoft.com/mssql/server:${{ matrix.version }}-latest"
+          container_id=$(docker ps -q --filter "ancestor=$image" | head -1)
+          # 2019 images ship sqlcmd under mssql-tools; 2022 under
+          # mssql-tools18, which also requires -C to trust the self-signed
+          # certificate.
+          if docker exec "$container_id" test -x /opt/mssql-tools18/bin/sqlcmd; then
+            sqlcmd="/opt/mssql-tools18/bin/sqlcmd"; trust="-C"
+          else
+            sqlcmd="/opt/mssql-tools/bin/sqlcmd"; trust=""
+          fi
+          docker exec "$container_id" "$sqlcmd" \
+            -S localhost -U sa -P "$MSSQL_SA_PASSWORD" $trust \
             -Q "IF DB_ID('dbtools') IS NULL CREATE DATABASE dbtools" -b
       - name: Integration tests
         env:
-          DBTOOLS_TEST_MSSQL_URL: ${{ matrix.db == 'mssql' && format('mssql://sa:{0}@localhost:1433?database=dbtools&TrustServerCertificate=true&x-migrations-table=schema_migrations', secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD) || '' }}
+          DBTOOLS_TEST_MSSQL_URL: ${{ matrix.db == 'mssql' && format('mssql://sa:{0}@localhost:1433?database=dbtools&TrustServerCertificate=true', secrets.DBTOOLS_TEST_MSSQL_SA_PASSWORD) || '' }}
           DBTOOLS_TEST_POSTGRES_URL: ${{ matrix.db == 'postgres' && 'postgres://dbtools:dbtools@localhost:5432/dbtools_test?sslmode=disable' || '' }}
           DBTOOLS_TEST_SQLITE_URL: ${{ matrix.db == 'sqlite' && 'sqlite:///tmp/dbtools-it.db' || '' }}
           DBTOOLS_TEST_MYSQL_URL: ${{ matrix.db == 'mysql' && 'mysql://root:dbtools@tcp(localhost:3306)/dbtools_test?parseTime=true&multiStatements=true' || '' }}
@@ -131,11 +159,12 @@ jobs:
               # exclude it here to avoid colliding with the service containers.
               go test -tags=integration -p 1 $(go list ./... | grep -v '/internal/container$') -count=1
               ;;
-            postgres)
-              go test -tags=integration -p 1 ./internal/engine/postgresengine/... ./internal/verify/... -count=1
-              ;;
-            sqlite)
-              go test -tags=integration ./internal/engine/sqliteengine/... -count=1
+            postgres|sqlite)
+              # Full sweep, not just this engine's package: diff, squash and
+              # the runner are where cross-version behaviour actually shows
+              # up, and running only the engine package is how #78 and #84
+              # reached a release.
+              go test -tags=integration -p 1 $(go list ./... | grep -v '/internal/container$') -count=1
               ;;
             mysql)
               go test -tags=integration ./internal/engine/mysqlengine/... -count=1

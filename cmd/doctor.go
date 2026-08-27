@@ -11,6 +11,8 @@ import (
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/scratchdb"
+	"github.com/seanpham99/dbtools/internal/support"
 	"github.com/seanpham99/dbtools/internal/verify"
 	"github.com/spf13/cobra"
 )
@@ -251,6 +253,26 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 					})
 				}
 			}
+		}
+	}
+
+	// Server version vs the tested window. Reported as its own check so a
+	// surprising result elsewhere is attributable, rather than the user
+	// discovering the mismatch only after distrusting a finding.
+	{
+		series := scratchdb.ServerSeries(db, eng.Name())
+		if ok, msg := support.Check(eng.Name(), series); !ok {
+			report.Checks = append(report.Checks, CheckResult{
+				Name:    "server-version",
+				Status:  "warn",
+				Message: msg,
+			})
+		} else if series != "" {
+			report.Checks = append(report.Checks, CheckResult{
+				Name:    "server-version",
+				Status:  "ok",
+				Message: fmt.Sprintf("%s %s is within the tested range", eng.Name(), series),
+			})
 		}
 	}
 
