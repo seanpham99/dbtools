@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0](https://github.com/seanpham99/dbtools/compare/v0.6.0...v0.7.0) (2026-08-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* own the migration runner, drop golang-migrate ([#90](https://github.com/seanpham99/dbtools/issues/90))
+
+### Features
+
+* **dblock:** own the migration lock, with the tests it never had ([#89](https://github.com/seanpham99/dbtools/issues/89)) ([dc237a4](https://github.com/seanpham99/dbtools/commit/dc237a45869589fde576d7f6022684f9f8c7b124))
+* own the migration runner, drop golang-migrate ([#90](https://github.com/seanpham99/dbtools/issues/90)) ([149bf68](https://github.com/seanpham99/dbtools/commit/149bf68051fdab47c221f765fa576026519cda7a))
+* **squash:** run the dump tool inside the server's own container ([#87](https://github.com/seanpham99/dbtools/issues/87)) ([#88](https://github.com/seanpham99/dbtools/issues/88)) ([3795357](https://github.com/seanpham99/dbtools/commit/3795357e9389612540e928c0222a0f233f3cbb7c))
+
+
+### Bug Fixes
+
+* cursor collision, diff false positives, squash dump portability, doctor usage ([#82](https://github.com/seanpham99/dbtools/issues/82)) ([99986b7](https://github.com/seanpham99/dbtools/commit/99986b7f2670bddcf7beeb26c35f0df21d95b619))
+* **diff:** guarantee scratch/target version parity, delete the normaliser ([#86](https://github.com/seanpham99/dbtools/issues/86)) ([160aad0](https://github.com/seanpham99/dbtools/commit/160aad057a08546583b965435a04976b4dc4147f))
+
 ## [0.6.0](https://github.com/seanpham99/dbtools/compare/v0.5.0...v0.6.0) (2026-08-27)
 
 
