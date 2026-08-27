@@ -5,16 +5,24 @@ import (
 	"strings"
 )
 
-// ServerMajor returns the major version of the server behind db, as a bare
-// string ("16", "17"), or "" when it cannot be determined.
+// ServerSeries returns the version component that identifies which image
+// series a scratch container has to run to render catalog metadata the same
+// way db does. It is not always the major version, because "same rendering"
+// does not always mean "same major":
 //
-// Callers use it to pin a scratch database to the same major version as the
-// target it will be compared against. It is deliberately best-effort: an
-// unknown version falls back to the default image, which is no worse than
-// the behaviour before it existed. It never returns an error, because
-// failing a read-only diff over a version probe would be a worse outcome
-// than comparing against a default-major scratch database.
-func ServerMajor(db *sql.DB, engineName string) string {
+//	postgres  major       "16"    image tags are major-only
+//	mysql     major.minor "8.0"   8.0 and 8.4 render differently and ship as
+//	                              separate tag series, so the major alone is
+//	                              not enough to pin
+//	mssql     major       "16"    mapped to a year tag by container.ScratchImageFor
+//	sqlite    ""                  no server, nothing to match
+//
+// Returns "" when the version cannot be determined. Deliberately
+// best-effort and error-free: callers fall back to the engine's default
+// image and warn, because failing a read-only command over a version probe
+// would be a worse outcome than comparing against a default-series scratch
+// database.
+func ServerSeries(db *sql.DB, engineName string) string {
 	switch engineName {
 	case "postgres":
 		// server_version_num is an integer like 160014 (16.14) or 90624
@@ -28,20 +36,46 @@ func ServerMajor(db *sql.DB, engineName string) string {
 		}
 		return itoa(num / 10000)
 	case "mysql":
-		// VERSION() is like "8.0.36" or "8.4.2"; the image tag that
-		// matters is the leading major.
+		// VERSION() is like "8.0.36" or "8.4.2". Both components matter:
+		// mysql:8.0 and mysql:8.4 are different images that render
+		// expression defaults and CHECK clauses differently.
 		var v string
 		if err := db.QueryRow("SELECT VERSION()").Scan(&v); err != nil {
 			return ""
 		}
-		if i := strings.IndexByte(v, '.'); i > 0 {
-			return v[:i]
+		return majorMinor(v)
+	case "mssql":
+		// ProductMajorVersion is 15 (2019), 16 (2022), 17 (2025). The
+		// image tag is a year, so container.ScratchImageFor maps it —
+		// this returns the major, not the tag.
+		var v string
+		if err := db.QueryRow("SELECT CONVERT(varchar, SERVERPROPERTY('ProductMajorVersion'))").Scan(&v); err != nil {
+			return ""
 		}
-		return ""
+		return strings.TrimSpace(v)
 	default:
-		// mssql and sqlite: no major-version-shaped image tag to pin to.
+		// sqlite: no server.
 		return ""
 	}
+}
+
+// majorMinor returns the first two dot-separated components of v ("8.0.36"
+// -> "8.0"), or "" if v does not have two.
+func majorMinor(v string) string {
+	first := strings.IndexByte(v, '.')
+	if first <= 0 {
+		return ""
+	}
+	rest := v[first+1:]
+	second := strings.IndexByte(rest, '.')
+	if second < 0 {
+		// "8.4" with no patch component is already major.minor.
+		if rest == "" {
+			return ""
+		}
+		return v
+	}
+	return v[:first+1+second]
 }
 
 // itoa avoids pulling strconv in for one small positive integer.

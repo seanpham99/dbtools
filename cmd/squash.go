@@ -65,16 +65,16 @@ func runSquash(targetName string) error {
 		upto = versions[len(versions)-1]
 	}
 
-	// Pin the scratch databases to the target's major version. Best-effort:
+	// Pin the scratch databases to the target's server version. Best-effort:
 	// if the target is unreachable we still build the plan, since squash
 	// itself only writes files and the scratch databases are throwaway.
-	targetMajor := ""
+	targetSeries := ""
 	if targetDB, derr := eng.Open(url); derr == nil {
-		targetMajor = scratchdb.ServerMajor(targetDB, eng.Name())
+		targetSeries = scratchdb.ServerSeries(targetDB, eng.Name())
 		targetDB.Close()
 	}
 
-	plan, err := squash.BuildPlan(cfg, eng, migrationsDir, upSuffix, upto, targetMajor)
+	plan, err := squash.BuildPlan(cfg, eng, migrationsDir, upSuffix, upto, targetSeries)
 	if err != nil {
 		return err
 	}
