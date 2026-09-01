@@ -53,11 +53,11 @@ type targetFailure struct {
 type statusJSONEntry struct {
 	Target         string   `json:"target"`
 	CurrentVersion uint64   `json:"current_version"`
-	HasVersion     bool     `json:"has_version,omitempty"`
-	Dirty          bool     `json:"dirty,omitempty"`
-	Pending        []string `json:"pending,omitempty"`
-	NoLedger       bool     `json:"no_ledger,omitempty"`
-	Unconfigured   bool     `json:"unconfigured,omitempty"`
+	HasVersion     bool     `json:"has_version"`
+	Dirty          bool     `json:"dirty"`
+	Pending        []string `json:"pending"`
+	NoLedger       bool     `json:"no_ledger"`
+	Unconfigured   bool     `json:"unconfigured"`
 	Error          string   `json:"error,omitempty"`
 }
 
@@ -158,20 +158,26 @@ func runStatus(targetNames ...string) error {
 			if r.Unconfigured {
 				entries = append(entries, statusJSONEntry{
 					Target:       r.Target,
+					Pending:      []string{},
 					Unconfigured: true,
 				})
 			} else if r.Err != nil {
 				entries = append(entries, statusJSONEntry{
-					Target: r.Target,
-					Error:  r.Err.Error(),
+					Target:  r.Target,
+					Pending: []string{},
+					Error:   r.Err.Error(),
 				})
 			} else if r.Status != nil {
+				pending := r.Status.Pending
+				if pending == nil {
+					pending = []string{}
+				}
 				entries = append(entries, statusJSONEntry{
 					Target:         r.Status.Target,
 					CurrentVersion: r.Status.CurrentVersion,
 					HasVersion:     r.Status.HasVersion,
 					Dirty:          r.Status.Dirty,
-					Pending:        r.Status.Pending,
+					Pending:        pending,
 					NoLedger:       noLedgers[r.Target],
 				})
 			}

@@ -3,6 +3,7 @@ package postgresengine
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -149,4 +150,20 @@ func RunPermissionDiagnostic(ctx context.Context, db Queryer, pqErr *pq.Error) s
 	}
 
 	return FormatPermissionReport(report)
+}
+
+// SSLDiagnostic returns a hint when a connection error is the classic
+// lib/pq SSL mismatch: dbtools requires SSL by default (sslmode=require)
+// whereas many Postgres clients default to no SSL, so a DATABASE_URL that
+// works elsewhere can fail here with "pq: SSL is not enabled on the server".
+func SSLDiagnostic(err error) string {
+	var pqErr *pq.Error
+	if !errors.As(err, &pqErr) || pqErr == nil {
+		return ""
+	}
+	msg := strings.ToLower(pqErr.Message)
+	if pqErr.Code == "08001" && strings.Contains(msg, "ssl") || strings.Contains(msg, "ssl is not enabled") {
+		return "dbtools connects with sslmode=require by default, unlike some other Postgres clients. If this server genuinely has no TLS (a local container, a CI service container), add ?sslmode=disable to the connection string."
+	}
+	return ""
 }

@@ -114,6 +114,10 @@ func FormatPostgresError(err error, sqlText string, prefixLen int) error {
 func DiagnosePostgresError(ctx context.Context, db Queryer, err error, sqlText string, prefixLen int) error {
 	formatted := FormatPostgresError(err, sqlText, prefixLen)
 
+	if sslHint := SSLDiagnostic(err); sslHint != "" {
+		return fmt.Errorf("%w\n\nHint: %s", formatted, sslHint)
+	}
+
 	var pqErr *pq.Error
 	if !errors.As(err, &pqErr) || pqErr == nil || pqErr.Code != "42501" {
 		return formatted

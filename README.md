@@ -332,7 +332,7 @@ drops and recreates the database via SQL (mssql/postgres targets only).
 
 - **Stable exit-code contract**: `0` clean, `1` error, `2` drift/pending changes. See [docs/exit-codes.md](docs/exit-codes.md).
 - **`--dry-run`**: preview SQL without applying (`dbtools up --dry-run`).
-- **Universal `--json`**: machine-readable output on stdout for `status`, `plan`, `verify`, and friends.
+- **Universal `--json`**: machine-readable output on stdout for `status`, `plan`, `verify`, and friends (see [docs/exit-codes.md](docs/exit-codes.md) for the JSON contract).
 - **`DBTOOLS_NO_PROMPT=1`**: never block on stdin; destructive ops fail closed. Also auto-enabled when stdout is not a TTY.
 - **Dirty-ledger refusal**: `up` refuses to apply when the ledger is dirty (a previous apply failed partway), surfacing the failure as exit `2` rather than silently continuing.
 

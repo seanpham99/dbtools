@@ -16,7 +16,18 @@ import (
 type ledgerStore struct{}
 
 func (ledgerStore) ensureSchema(db ledger.DBTX, table string) error {
-	_, err := db.Exec(fmt.Sprintf(`
+	// Steady-state calls emit no server notices: the table and column adds
+	// check the catalog first, so the IF NOT EXISTS forms below only fire
+	// on a genuine cold start or a concurrent-ensure race. Routine
+	// "already exists, skipping" NOTICEs on every command would either
+	// flood the log or force a global notice suppression that would also
+	// swallow a migration's own RAISE NOTICE saying the same thing.
+	var tableExists bool
+	if err := db.QueryRow(`SELECT to_regclass($1) IS NOT NULL`, table).Scan(&tableExists); err != nil {
+		return fmt.Errorf("checking %s existence: %w", table, err)
+	}
+	if !tableExists {
+		if _, err := db.Exec(fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS %[1]s (
     version         BIGINT       NOT NULL PRIMARY KEY,
     status          VARCHAR(10)  NOT NULL CHECK (status IN (%[2]s)),
@@ -24,20 +35,30 @@ CREATE TABLE IF NOT EXISTS %[1]s (
     note            VARCHAR(400) NULL,
     content_sha256  CHAR(64)     NULL,
     hash_source     VARCHAR(20)  NULL
-)`, table, ledger.StatusList()))
-	if err != nil {
-		return fmt.Errorf("ensuring %s schema: %w", table, err)
+)`, table, ledger.StatusList())); err != nil {
+			return fmt.Errorf("ensuring %s schema: %w", table, err)
+		}
 	}
-	// Column added by dbtools builds before content hashing existed —
-	// idempotent when already present.
-	_, err = db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS content_sha256 CHAR(64) NULL`, table))
-	if err != nil {
-		return fmt.Errorf("adding content_sha256 to %s: %w", table, err)
-	}
-	// Column added for adopt command.
-	_, err = db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS hash_source VARCHAR(20) NULL`, table))
-	if err != nil {
-		return fmt.Errorf("adding hash_source to %s: %w", table, err)
+	for _, col := range []struct{ name, ddl string }{
+		// Columns added by dbtools builds before content hashing / the
+		// adopt command existed.
+		{"content_sha256", fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS content_sha256 CHAR(64) NULL`, table)},
+		{"hash_source", fmt.Sprintf(`ALTER TABLE %s ADD COLUMN IF NOT EXISTS hash_source VARCHAR(20) NULL`, table)},
+	} {
+		var hasCol bool
+		if err := db.QueryRow(`
+SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2
+)`, table, col.name).Scan(&hasCol); err != nil {
+			return fmt.Errorf("inspecting %s columns: %w", table, err)
+		}
+		if hasCol {
+			continue
+		}
+		if _, err := db.Exec(col.ddl); err != nil {
+			return fmt.Errorf("adding %s to %s: %w", col.name, table, err)
+		}
 	}
 	return widenStatusConstraint(db, table)
 }

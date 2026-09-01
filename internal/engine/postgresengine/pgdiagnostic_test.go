@@ -86,6 +86,67 @@ func TestFormatPermissionReport(t *testing.T) {
 	})
 }
 
+func TestSSLDiagnostic(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantHint bool
+	}{
+		{
+			name:     "nil error",
+			err:      nil,
+			wantHint: false,
+		},
+		{
+			name:     "non-pq error",
+			err:      errors.New("some io error"),
+			wantHint: false,
+		},
+		{
+			name: "08001 with ssl message",
+			err: &pq.Error{
+				Code:    "08001",
+				Message: "SSL is not enabled on the server",
+			},
+			wantHint: true,
+		},
+		{
+			name: "error message containing ssl is not enabled without 08001",
+			err: &pq.Error{
+				Code:    "08P01",
+				Message: "server error: SSL is not enabled on the server",
+			},
+			wantHint: true,
+		},
+		{
+			name: "other pq error",
+			err: &pq.Error{
+				Code:    "42P01",
+				Message: "relation foo does not exist",
+			},
+			wantHint: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SSLDiagnostic(tt.err)
+			if tt.wantHint {
+				if got == "" {
+					t.Fatalf("SSLDiagnostic(%v) = empty, want hint", tt.err)
+				}
+				if !strings.Contains(got, "sslmode=disable") {
+					t.Errorf("SSLDiagnostic(%v) = %q, want it to contain sslmode=disable", tt.err, got)
+				}
+			} else {
+				if got != "" {
+					t.Fatalf("SSLDiagnostic(%v) = %q, want empty", tt.err, got)
+				}
+			}
+		})
+	}
+}
+
 // mockDriver implements a lightweight driver.Driver for testing RunPermissionDiagnostic.
 type mockDriver struct {
 	mu       sync.Mutex

@@ -36,6 +36,12 @@ func (Postgres) Name() string { return "postgres" }
 // migrations use them to report what they found — which is the only
 // feedback available when dbtools runs as a private-network job whose
 // output is its log (#60).
+//
+// Everything is logged, including routine schema-maintenance notices:
+// suppression here is global to the connection, so filtering (say)
+// "already exists, skipping" would also swallow a migration that raises
+// the same text on purpose. EnsureSchema instead avoids emitting routine
+// notices at all (see ledger.go).
 func (Postgres) Open(rawURL string) (*sql.DB, error) {
 	clean := dburl.StripCustomParams(rawURL)
 	connector, err := pq.NewConnector(clean)

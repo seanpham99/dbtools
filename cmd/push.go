@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/apply"
@@ -22,12 +23,17 @@ var pushCmd = &cobra.Command{
 	Short: "Apply pending migrations to a named remote target (version-sync only)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runPush(args[0])
+		cmd.SilenceUsage = false
+		err := runPush(args[0])
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 
 func runPush(targetName string) (err error) {
-	defer emitJobSummary(&err)
 	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
@@ -55,12 +61,18 @@ func runPush(targetName string) (err error) {
 	}
 	if len(preview.Pending) == 0 {
 		if jsonOutput {
-			b, err := json.Marshal(statusinfo.Status{
-				Target:         targetName,
-				CurrentVersion: preview.CurrentVersion,
-				HasVersion:     preview.HasVersion,
-				Dirty:          preview.Dirty,
-				Pending:        nil,
+			b, err := json.Marshal(struct {
+				statusinfo.Status
+				OK bool `json:"ok"`
+			}{
+				Status: statusinfo.Status{
+					Target:         targetName,
+					CurrentVersion: preview.CurrentVersion,
+					HasVersion:     preview.HasVersion,
+					Dirty:          preview.Dirty,
+					Pending:        []string{},
+				},
+				OK: true,
 			})
 			if err != nil {
 				return err
@@ -79,7 +91,7 @@ func runPush(targetName string) (err error) {
 				logger.Infof("  %s", f)
 			}
 		}
-		return fmt.Errorf("refusing to push migrations to %q without --yes", targetName)
+		return ExitCode(1, fmt.Sprintf("refusing to push migrations to %q without --yes", targetName))
 	}
 
 	status, err := apply.Run(cfg, targetName, pushURL)
@@ -88,7 +100,10 @@ func runPush(targetName string) (err error) {
 	}
 
 	if jsonOutput {
-		b, err := json.Marshal(status)
+		b, err := json.Marshal(struct {
+			statusinfo.Status
+			OK bool `json:"ok"`
+		}{Status: *status, OK: true})
 		if err != nil {
 			return err
 		}

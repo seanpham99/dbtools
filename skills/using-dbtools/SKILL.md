@@ -51,7 +51,7 @@ dbtools init
 dbtools new <migration_name>
 
 # Import existing migration history from another runner
-dbtools adopt <target_name> [--yes] [--force] [--from-table X --version-column Y]
+dbtools adopt <target_name> [--yes] [--force] [--allow-orphans-before <v>] [--from-table X --version-column Y]
 
 # Collapse migration history into a verified baseline (dry-run by default)
 dbtools squash <target_name> [--upto <version>] [--out <file>] [--yes]

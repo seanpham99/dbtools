@@ -300,3 +300,25 @@ func TestBuildPlanEntries_NoLedgerSetsLedgerSkippedNotDrift(t *testing.T) {
 		t.Errorf("plan Drift = %v, want empty (no drift detected)", e.Drift)
 	}
 }
+
+func TestPlanJSON_EmitFalseAndEmptyArrays(t *testing.T) {
+	entry := planJSONEntry{
+		Target:         "local",
+		CurrentVersion: 0,
+		HasVersion:     false,
+		Dirty:          false,
+		Pending:        []string{},
+		Drift:          []string{},
+		LedgerSkipped:  false,
+	}
+	b, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	for _, want := range []string{`"has_version":false`, `"dirty":false`, `"pending":[]`, `"drift":[]`, `"ledger_skipped":false`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("marshaled plan entry = %s, want it to contain %s", got, want)
+		}
+	}
+}

@@ -44,7 +44,7 @@ func TestRollback_Run(t *testing.T) {
 	if len(res.RevertedVersions) != 1 || res.RevertedVersions[0] != 20260102000000 {
 		t.Errorf("RevertedVersions = %v, want [20260102000000]", res.RevertedVersions)
 	}
-	if !res.HasCursor || res.NewCursor != 20260101000000 {
-		t.Errorf("NewCursor = %d (hasCursor=%v), want 20260101000000", res.NewCursor, res.HasCursor)
+	if !res.HasVersion || res.NewVersion != 20260101000000 {
+		t.Errorf("NewVersion = %d (hasVersion=%v), want 20260101000000", res.NewVersion, res.HasVersion)
 	}
 }

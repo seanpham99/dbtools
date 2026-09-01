@@ -15,6 +15,9 @@ dbtools adopt <target> --yes
 # Proceed even if orphan records exist (source table rows with no matching file)
 dbtools adopt <target> --yes --force
 
+# Allow squashed history orphans strictly before a given baseline version
+dbtools adopt <target> --yes --allow-orphans-before <version>
+
 # Adopt from a bespoke or non-standard table
 dbtools adopt <target> --from-table custom_history --version-column version_num [--applied-at-column applied_on] --yes
 ```
@@ -34,10 +37,10 @@ dbtools adopt <target> --from-table custom_history --version-column version_num 
    Compares source table records against local migration files in `migrations_dir`:
    - **Matched**: Version present in both database and local directory -> imported.
    - **Pending**: Migration file exists on disk, but not recorded in source table -> remains pending for future `dbtools up`/`push`.
-   - **Orphan**: Version recorded in source table, but no migration file on disk -> blocks adoption unless `--force` is passed.
+   - **Orphan**: Version recorded in source table, but no migration file on disk -> blocks adoption unless `--force` or `--allow-orphans-before` is passed.
 
 3. **Orphan Safety Gate**:
-   If orphan history rows are found, `dbtools adopt` exits with code `1` and writes nothing. Passing `--force` overrides the block and imports only the matched versions (orphans are skipped).
+   If orphan history rows are found, `dbtools adopt` exits with code `1` and writes nothing. Passing `--force` overrides the block unconditionally and imports only the matched versions. Passing `--allow-orphans-before <version>` allows orphans when every orphan version is strictly less than `<version>` (ideal when adopting a database whose earlier migrations were squashed into a baseline).
 
 4. **Hash Source (`adopted`)**:
    Imported records are stored in the ledger with `hash_source = 'adopted'`. `dbtools doctor` and `dbtools verify` recognize these rows and skip content hash comparison (since historical file content was never directly observed at original execution time).

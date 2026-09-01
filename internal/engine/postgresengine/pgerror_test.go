@@ -348,4 +348,16 @@ func TestDiagnosePostgresError(t *testing.T) {
 			t.Errorf("expected the permission diagnostic appended, got: %s", errMsg)
 		}
 	})
+
+	t.Run("ssl error: ssl diagnostic appended", func(t *testing.T) {
+		pqErr := &pq.Error{Code: "08001", Message: "SSL is not enabled on the server"}
+		got := DiagnosePostgresError(context.Background(), nil, pqErr, "", 0)
+		if got == nil {
+			t.Fatal("expected error, got nil")
+		}
+		errMsg := got.Error()
+		if !strings.Contains(errMsg, "sslmode=disable") {
+			t.Errorf("expected sslmode=disable in error message, got: %s", errMsg)
+		}
+	})
 }

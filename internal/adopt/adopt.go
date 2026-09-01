@@ -215,9 +215,9 @@ func BuildPlan(sourceTable string, sourceRows []SourceRow, dir *migrator.Dir) Pl
 		srcVersions[r.Version] = true
 	}
 
-	var matched []uint64
-	var pending []uint64
-	var orphan []uint64
+	matched := []uint64{}
+	pending := []uint64{}
+	orphan := []uint64{}
 
 	// Collect union of all versions
 	allVersionsMap := make(map[uint64]bool)
@@ -253,4 +253,16 @@ func BuildPlan(sourceTable string, sourceRows []SourceRow, dir *migrator.Dir) Pl
 		Pending:     pending,
 		Orphan:      orphan,
 	}
+}
+
+// OrphansBelow reports whether every orphan version is strictly below
+// the given version — i.e. this is a squashed-history import where the
+// orphans are pre-baseline rows and expected.
+func OrphansBelow(orphans []uint64, version uint64) bool {
+	for _, v := range orphans {
+		if v >= version {
+			return false
+		}
+	}
+	return true
 }

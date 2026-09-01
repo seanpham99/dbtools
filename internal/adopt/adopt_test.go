@@ -2,8 +2,10 @@ package adopt_test
 
 import (
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,5 +146,35 @@ func TestReadSourceRows_RejectsInvalidIdentifiers(t *testing.T) {
 	}
 	if _, err := adopt.ReadSourceRows(nil, "schema_migrations", "version", "bad applied; col"); err == nil {
 		t.Fatal("ReadSourceRows() with invalid applied_at column: want error, got nil")
+	}
+}
+
+func TestBuildPlan_EmptyPlanMarshalsAsEmptyArrays(t *testing.T) {
+	plan := adopt.BuildPlan("schema_migrations", nil, nil)
+	b, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	for _, want := range []string{`"matched":[]`, `"pending":[]`, `"orphan":[]`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("marshaled plan = %s, want it to contain %s", got, want)
+		}
+	}
+}
+
+func TestOrphansBelow(t *testing.T) {
+	orphans := []uint64{100, 200, 300}
+	if !adopt.OrphansBelow(orphans, 400) {
+		t.Errorf("OrphansBelow(%v, 400) = false, want true", orphans)
+	}
+	if adopt.OrphansBelow(orphans, 300) {
+		t.Errorf("OrphansBelow(%v, 300) = true, want false", orphans)
+	}
+	if adopt.OrphansBelow(orphans, 250) {
+		t.Errorf("OrphansBelow(%v, 250) = true, want false", orphans)
+	}
+	if !adopt.OrphansBelow([]uint64{}, 100) {
+		t.Errorf("OrphansBelow([], 100) = false, want true")
 	}
 }

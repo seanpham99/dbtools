@@ -42,11 +42,12 @@ CREATE TABLE dbtools_it_orders (
 		t.Fatalf("introspect() returned error: %v", err)
 	}
 
-	var orders, customers, textKeys, implicitFK *generate.TableSchema
+	ordersIdx := -1
+	var customers, textKeys, implicitFK *generate.TableSchema
 	for i := range tables {
 		switch tables[i].Name {
 		case "dbtools_it_orders":
-			orders = &tables[i]
+			ordersIdx = i
 		case "dbtools_it_customers":
 			customers = &tables[i]
 		case "dbtools_it_text_keys":
@@ -55,9 +56,12 @@ CREATE TABLE dbtools_it_orders (
 			implicitFK = &tables[i]
 		}
 	}
-	if orders == nil {
+	if ordersIdx < 0 {
 		t.Fatal("dbtools_it_orders table not found")
 	}
+	// Value copy: avoids carrying a possibly-nil pointer past the guard,
+	// which staticcheck SA5011 flags.
+	orders := tables[ordersIdx]
 
 	for _, c := range orders.Columns {
 		if c.Name == "id" && !c.IsPrimaryKey {

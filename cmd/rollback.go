@@ -77,8 +77,8 @@ func runRollback(targetName string, steps int) error {
 	for _, v := range res.RevertedVersions {
 		logger.Infof("  marked v%d reverted", v)
 	}
-	if res.HasCursor {
-		logger.Infof("%s: cursor recomputed to version %d", targetName, res.NewCursor)
+	if res.HasVersion {
+		logger.Infof("%s: now at version %d", targetName, res.NewVersion)
 	} else {
 		logger.Infof("%s: no applied migrations remaining", targetName)
 	}
