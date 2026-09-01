@@ -126,7 +126,10 @@ func recreateSQLiteFile(localURL string) error {
 			return fmt.Errorf("creating %s: %w", dir, err)
 		}
 	}
-	f, err := os.Create(path)
+	// O_EXCL makes the recreate race-safe: if a local process plants a
+	// symlink at path between the removal above and this create, the
+	// create fails instead of following the link.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("recreating %s: %w", path, err)
 	}

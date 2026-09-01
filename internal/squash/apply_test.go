@@ -54,6 +54,38 @@ func TestApplyPlan_RejectsExistingBaselineFile(t *testing.T) {
 	}
 }
 
+func TestApplyPlan_RejectsDanglingSymlinkBaseline(t *testing.T) {
+	dir := t.TempDir()
+	baselineName := "0000000000000_squashed_baseline.up.sql"
+	target := filepath.Join(t.TempDir(), "outside.sql")
+	if err := os.Symlink(target, filepath.Join(dir, baselineName)); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	plan := &squash.Plan{Verified: true}
+	cfg := &config.Config{MigrationsDir: dir}
+	// os.Stat misses a dangling symlink; the exclusive create must refuse
+	// it rather than follow it outside the migrations dir.
+	if _, err := squash.ApplyPlan(cfg, "local", nil, nil, dir, filepath.Join(dir, "_archived"), baselineName, plan); err == nil {
+		t.Fatal("ApplyPlan() with dangling-symlink baseline: want error, got nil")
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("symlink target was created: %v", err)
+	}
+}
+
+func TestApplyPlan_RejectsSeparatorInBaselineFilename(t *testing.T) {
+	plan := &squash.Plan{Verified: true}
+	cfg := &config.Config{MigrationsDir: t.TempDir()}
+	for _, name := range []string{"0000000000000_sub/baseline.up.sql", `0000000000000_sub\baseline.up.sql`} {
+		if _, err := squash.ApplyPlan(cfg, "local", nil, nil, cfg.MigrationsDir, filepath.Join(cfg.MigrationsDir, "_archived"), name, plan); err == nil {
+			t.Errorf("ApplyPlan() with separator in baseline filename %q: want error, got nil", name)
+		}
+	}
+	if entries, _ := os.ReadDir(cfg.MigrationsDir); len(entries) != 0 {
+		t.Errorf("migrations dir mutated despite rejection: %v", entries)
+	}
+}
+
 func TestApplyPlan_FreshTargetWritesFilesOnly(t *testing.T) {
 	dir := t.TempDir()
 	archiveDir := filepath.Join(dir, "_archived")

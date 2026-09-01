@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
@@ -55,14 +56,13 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 	if parseErr != nil || ver != 0 {
 		return nil, fmt.Errorf("invalid baseline filename %q: baseline version must be 0", baselineFilename)
 	}
-	if !filepath.IsLocal(baselineFilename) {
+	if !filepath.IsLocal(baselineFilename) || strings.ContainsAny(baselineFilename, `/\`) {
+		// IsLocal alone still accepts "0_name/baseline.up.sql", which would
+		// write below the migrations dir while ReadDir only indexes the root.
 		return nil, fmt.Errorf("invalid baseline filename %q: must be a plain filename inside the migrations dir", baselineFilename)
 	}
 
 	baselinePath := filepath.Join(migrationsDir, baselineFilename)
-	if _, statErr := os.Stat(baselinePath); statErr == nil {
-		return nil, fmt.Errorf("baseline file %s already exists in %s", baselineFilename, migrationsDir)
-	}
 
 	url, err := cfg.ResolveURLOrFlag(targetName, "")
 	if err != nil {
@@ -108,7 +108,22 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating archive directory: %w", err)
 	}
-	if err := os.WriteFile(baselinePath, []byte(plan.BaselineSQL), 0o644); err != nil {
+	// Exclusive create instead of stat-then-write: it refuses any existing
+	// entry — including a dangling symlink, which os.Stat misses and
+	// WriteFile would follow — and closes the replace-between-check-and-
+	// write race.
+	bf, err := os.OpenFile(baselinePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("baseline file %s already exists in %s", baselineFilename, migrationsDir)
+		}
+		return nil, fmt.Errorf("writing baseline file: %w", err)
+	}
+	if _, err := bf.WriteString(plan.BaselineSQL); err != nil {
+		bf.Close()
+		return nil, fmt.Errorf("writing baseline file: %w", err)
+	}
+	if err := bf.Close(); err != nil {
 		return nil, fmt.Errorf("writing baseline file: %w", err)
 	}
 

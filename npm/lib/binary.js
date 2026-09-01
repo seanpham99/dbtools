@@ -134,15 +134,21 @@ function extractTarGz(buffer, targetBinaryName) {
   throw new Error(`Binary ${targetBinaryName} not found in archive`);
 }
 
-// Atomic install: write to a temp file next to the target, then rename so a
-// partial download never becomes the cached executable.
+// Atomic install: write to a unique temp file next to the target (PID +
+// random suffix, so concurrent installs of the same version never share a
+// path), then rename so a partial download never becomes the cached
+// executable. The temp file is removed if anything before the rename fails.
 function installBinary(binData, cachedBin, platform) {
-  const tempBin = `${cachedBin}.tmp`;
-  fs.writeFileSync(tempBin, binData);
-  if (platform !== 'win32') {
-    fs.chmodSync(tempBin, 0o755);
+  const tempBin = `${cachedBin}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(tempBin, binData);
+    if (platform !== 'win32') {
+      fs.chmodSync(tempBin, 0o755);
+    }
+    fs.renameSync(tempBin, cachedBin);
+  } finally {
+    try { fs.unlinkSync(tempBin); } catch (_) {}
   }
-  fs.renameSync(tempBin, cachedBin);
 }
 
 async function getBinaryPath() {
@@ -176,16 +182,24 @@ async function getBinaryPath() {
     const binData = extractTarGz(archiveBuf, binName);
     installBinary(binData, cachedBin, platform);
   } else {
-    // Windows zip handling. Paths are embedded in a PowerShell command string;
-    // version validation and the fixed cache layout keep quotes out of them.
-    const tempZip = path.join(cacheDir, archiveName);
-    fs.writeFileSync(tempZip, archiveBuf);
-    execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-command',
-      `Expand-Archive -Path '${tempZip}' -DestinationPath '${cacheDir}' -Force`]);
-    try { fs.unlinkSync(tempZip); } catch (_) {}
-
-    const binData = fs.readFileSync(path.join(cacheDir, binName));
-    installBinary(binData, cachedBin, platform);
+    // Windows zip handling. Paths are interpolated into a PowerShell
+    // command string, so single quotes are doubled (PowerShell's escape)
+    // and -LiteralPath/-DestinationPath keep wildcards out; the archive is
+    // extracted into a private temp directory so an interrupted run never
+    // leaves a partial file at cachedBin, which the next run would trust.
+    const psQuote = (s) => s.replace(/'/g, "''");
+    const tempDir = path.join(cacheDir, `.extract-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+    const tempZip = path.join(tempDir, archiveName);
+    try {
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(tempZip, archiveBuf);
+      execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-command',
+        `Expand-Archive -LiteralPath '${psQuote(tempZip)}' -DestinationPath '${psQuote(tempDir)}' -Force`]);
+      const binData = fs.readFileSync(path.join(tempDir, binName));
+      installBinary(binData, cachedBin, platform);
+    } finally {
+      try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
+    }
   }
 
   return cachedBin;

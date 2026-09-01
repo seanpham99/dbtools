@@ -116,18 +116,18 @@ func copyTable(sourceDB, destDB *sql.DB, engineName string, tbl generate.TableSc
 	}
 	sort.Strings(tr.MaskedColumns)
 
-	selectSQL := buildSelectSQL(engineName, tbl.Name, opts.Limit, opts.Where)
+	selectSQL := buildSelectSQL(engineName, tbl.Schema, tbl.Name, opts.Limit, opts.Where)
 	rows, err := sourceDB.Query(selectSQL)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", tbl.Name, err)
 	}
 	defer rows.Close()
 
-	if _, err := destDB.Exec(fmt.Sprintf("DELETE FROM %s", quoteIdentifier(engineName, tbl.Name))); err != nil {
+	if _, err := destDB.Exec(fmt.Sprintf("DELETE FROM %s", quoteQualified(engineName, tbl.Schema, tbl.Name))); err != nil {
 		return nil, fmt.Errorf("clearing dest %s: %w", tbl.Name, err)
 	}
 
-	insertSQL := buildInsertSQL(engineName, tbl.Name, colNames)
+	insertSQL := buildInsertSQL(engineName, tbl.Schema, tbl.Name, colNames)
 	counters := map[string]int{}
 
 	for rows.Next() {

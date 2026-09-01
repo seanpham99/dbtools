@@ -142,6 +142,28 @@ func TestWrite_RejectsNewlineInValue(t *testing.T) {
 	}
 }
 
+func TestWrite_RejectsNewlineInKey(t *testing.T) {
+	chdirTemp(t)
+
+	// Keys come from config (target url_env): a key with an embedded
+	// newline would inject additional assignments into local.env.
+	err := Write(map[string]string{"X\nPATH=/attacker\nY": "1"})
+	if err == nil {
+		t.Fatal("Write() accepted a key containing a newline")
+	}
+	if _, statErr := os.Stat(Path()); !os.IsNotExist(statErr) {
+		t.Fatalf("Write() left a file behind despite rejecting the key: %v", statErr)
+	}
+}
+
+func TestWrite_RejectsEqualsInKey(t *testing.T) {
+	chdirTemp(t)
+
+	if err := Write(map[string]string{"A=B": "1"}); err == nil {
+		t.Fatal("Write() accepted a key containing '='")
+	}
+}
+
 func TestWrite_RefusesSymlinkedFile(t *testing.T) {
 	chdirTemp(t)
 

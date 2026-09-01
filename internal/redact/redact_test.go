@@ -17,6 +17,7 @@ func TestURL(t *testing.T) {
 		{"postgres with password", "postgres://user:secret@localhost:5432/db", "postgres://user:***@localhost:5432/db"},
 		{"mssql with password", "mssql://sa:P%40ss@localhost:1433?database=x", "mssql://sa:***@localhost:1433?database=x"},
 		{"mysql tcp DSN", "root:pw@tcp(localhost:3306)/db", "root:***@tcp(localhost:3306)/db"},
+		{"password containing colons", "postgres://user:part:secret@localhost:5432/db", "postgres://user:***@localhost:5432/db"},
 		{"no password", "postgres://user@localhost:5432/db", "postgres://user@localhost:5432/db"},
 		{"no userinfo", "postgres://localhost:5432/db", "postgres://localhost:5432/db"},
 		{"port not mistaken for password", "postgres://localhost:5432/db", "postgres://localhost:5432/db"},
