@@ -14,8 +14,8 @@ import (
 type Result struct {
 	Target           string   `json:"target"`
 	RevertedVersions []uint64 `json:"reverted_versions"`
-	NewCursor        uint64   `json:"new_cursor"`
-	HasCursor        bool     `json:"has_cursor"`
+	NewVersion       uint64   `json:"new_version"`
+	HasVersion       bool     `json:"has_version"`
 }
 
 // Run performs a ledger-only soft-revert for targetName up to steps count.
@@ -80,8 +80,8 @@ func runLocked(cfg *config.Config, targetName string, steps int, urlOverride str
 		return &Result{
 			Target:           targetName,
 			RevertedVersions: nil,
-			NewCursor:        0,
-			HasCursor:        false,
+			NewVersion:       0,
+			HasVersion:       false,
 		}, nil
 	}
 
@@ -123,9 +123,9 @@ func runLocked(cfg *config.Config, targetName string, steps int, urlOverride str
 
 	if len(remaining) > 0 {
 		// Derived from the ledger rows above, not stamped separately.
-		newCursor := remaining[len(remaining)-1]
-		result.NewCursor = newCursor
-		result.HasCursor = true
+		newVersion := remaining[len(remaining)-1]
+		result.NewVersion = newVersion
+		result.HasVersion = true
 	}
 
 	return result, nil

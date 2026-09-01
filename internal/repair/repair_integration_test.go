@@ -93,8 +93,8 @@ func TestRun_RecomputesCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() returned error: %v", err)
 	}
-	if !result.HasCursor || result.NewCursor != 20260101000000 {
-		t.Fatalf("Run() result = %+v, want cursor recomputed to 20260101000000", result)
+	if !result.HasVersion || result.NewVersion != 20260101000000 {
+		t.Fatalf("Run() result = %+v, want version recomputed to 20260101000000", result)
 	}
 
 	state, err := eng.Ledger().State(db, "dbtools_migration_history")

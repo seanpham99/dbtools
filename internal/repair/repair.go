@@ -20,9 +20,9 @@ type Pair struct {
 
 // Result summarizes what Run did.
 type Result struct {
-	Repaired  []Pair
-	NewCursor uint64
-	HasCursor bool // false if no version remains marked applied
+	Repaired   []Pair `json:"repaired"`
+	NewVersion uint64 `json:"new_version"`
+	HasVersion bool   `json:"has_version"` // false if no version remains marked applied
 }
 
 // Run syncs the ledger, validates every pair (refusing to mark a version
@@ -115,8 +115,8 @@ func run(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table string, p
 	}
 	// No cursor to stamp: the version is derived from the rows this
 	// function just wrote, so recording them IS the stamp.
-	newCursor := applied[len(applied)-1]
-	result.NewCursor = newCursor
-	result.HasCursor = true
+	newVersion := applied[len(applied)-1]
+	result.NewVersion = newVersion
+	result.HasVersion = true
 	return result, nil
 }

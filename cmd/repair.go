@@ -119,10 +119,10 @@ func runRepair(targetName string, pairs []repair.Pair) error {
 		return nil
 	}
 
-	if !result.HasCursor {
-		logger.Infof("%s: repaired %d version(s), no applied versions remain (cursor untouched)", targetName, len(result.Repaired))
+	if !result.HasVersion {
+		logger.Infof("%s: repaired %d version(s), no applied versions remain", targetName, len(result.Repaired))
 		return nil
 	}
-	logger.Infof("%s: repaired %d version(s), cursor now at %d", targetName, len(result.Repaired), result.NewCursor)
+	logger.Infof("%s: repaired %d version(s), now at version %d", targetName, len(result.Repaired), result.NewVersion)
 	return nil
 }
