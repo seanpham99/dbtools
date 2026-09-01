@@ -17,6 +17,8 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/microsoft/go-mssqldb"
+
+	"github.com/seanpham99/dbtools/internal/redact"
 )
 
 // DatabaseName is the local development database every engine's container
@@ -63,10 +65,10 @@ type spec struct {
 func standardURLPort(rawURL string) (host, port string, err error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return "", "", fmt.Errorf("parsing URL: %w", err)
+		return "", "", fmt.Errorf("parsing URL %q: %w", redact.URL(rawURL), redact.ParseError(err))
 	}
 	if u.Port() == "" {
-		return "", "", fmt.Errorf("URL %q has no port", rawURL)
+		return "", "", fmt.Errorf("URL %q has no port", redact.URL(rawURL))
 	}
 	return u.Hostname(), u.Port(), nil
 }
@@ -78,7 +80,7 @@ var mysqlTCPRE = regexp.MustCompile(`tcp\(([^:]*):(\d+)\)`)
 func mysqlURLPort(rawURL string) (host, port string, err error) {
 	m := mysqlTCPRE.FindStringSubmatch(rawURL)
 	if m == nil {
-		return "", "", fmt.Errorf("mysql URL %q missing tcp(host:port) syntax", rawURL)
+		return "", "", fmt.Errorf("mysql URL %q missing tcp(host:port) syntax", redact.URL(rawURL))
 	}
 	return m[1], m[2], nil
 }
@@ -299,7 +301,7 @@ func MaintenanceURLFor(engineName, localURL string) (string, error) {
 		return "", fmt.Errorf("reading host/port from local URL: %w", err)
 	}
 	if !isLoopbackHost(host) {
-		return "", fmt.Errorf("local target %q does not point at the tool-owned container (host %q is not loopback); dbtools reset only ever targets the local container, never a remote server", localURL, host)
+		return "", fmt.Errorf("local target %q does not point at the tool-owned container (host %q is not loopback); dbtools reset only ever targets the local container, never a remote server", redact.URL(localURL), host)
 	}
 	s.hostPort = port
 	return s.url(s, s.maintenanceDB), nil
