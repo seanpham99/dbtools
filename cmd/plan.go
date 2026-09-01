@@ -51,11 +51,11 @@ func init() {
 type planJSONEntry struct {
 	Target         string   `json:"target"`
 	CurrentVersion uint64   `json:"current_version"`
-	HasVersion     bool     `json:"has_version,omitempty"`
-	Dirty          bool     `json:"dirty,omitempty"`
-	Pending        []string `json:"pending,omitempty"`
-	Drift          []string `json:"drift,omitempty"`
-	LedgerSkipped  bool     `json:"ledger_skipped,omitempty"`
+	HasVersion     bool     `json:"has_version"`
+	Dirty          bool     `json:"dirty"`
+	Pending        []string `json:"pending"`
+	Drift          []string `json:"drift"`
+	LedgerSkipped  bool     `json:"ledger_skipped"`
 	Error          string   `json:"error,omitempty"`
 }
 
@@ -99,20 +99,21 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 
 	for _, r := range results {
 		if r.Err != nil {
-			entries = append(entries, planJSONEntry{Target: r.Target, Error: r.Err.Error()})
+			entries = append(entries, planJSONEntry{
+				Target:  r.Target,
+				Pending: []string{},
+				Drift:   []string{},
+				Error:   r.Err.Error(),
+			})
 			continue
 		}
 		s := r.Status
-		e := planJSONEntry{
-			Target:         r.Target,
-			CurrentVersion: s.CurrentVersion,
-			HasVersion:     s.HasVersion,
-			Dirty:          s.Dirty,
-			Pending:        s.Pending,
+		pending := s.Pending
+		if pending == nil {
+			pending = []string{}
 		}
-		// Not gated on HasVersion: with the cursor gone, a missing ledger
-		// is precisely why there is no version, and that is the case
-		// LedgerSkipped exists to report.
+		drift := []string{}
+		var ledgerSkipped bool
 		{
 			override := ""
 			if planTarget != "" {
@@ -121,8 +122,21 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 			url, _ := cfg.ResolveURLOrFlag(r.Target, override)
 			eng, err := engine.ForTarget(cfg.EngineName(r.Target), url)
 			if err == nil {
-				e.Drift, e.LedgerSkipped = planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), r.Target)
+				d, ls := planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), r.Target)
+				if d != nil {
+					drift = d
+				}
+				ledgerSkipped = ls
 			}
+		}
+		e := planJSONEntry{
+			Target:         r.Target,
+			CurrentVersion: s.CurrentVersion,
+			HasVersion:     s.HasVersion,
+			Dirty:          s.Dirty,
+			Pending:        pending,
+			Drift:          drift,
+			LedgerSkipped:  ledgerSkipped,
 		}
 		entries = append(entries, e)
 	}
@@ -150,7 +164,7 @@ func planDrift(url string, eng engine.Engine, migrationsDir, upSuffix, table, ta
 	if err != nil {
 		return []string{"verify: " + err.Error()}, ledgerSkipped
 	}
-	var drift []string
+	drift := []string{}
 	for _, e := range report.Entries {
 		if e.Status != "OK" {
 			drift = append(drift, fmt.Sprintf("v%d: %s", e.Version, e.Detail))

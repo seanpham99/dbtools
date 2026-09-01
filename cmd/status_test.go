@@ -177,3 +177,25 @@ func TestRunStatus_NoLedgerReportsNoLedgerTrue(t *testing.T) {
 		t.Errorf("text output = %q, want it to mention no dbtools ledger", bufText.String())
 	}
 }
+
+func TestStatusJSON_EmitFalseAndEmptyArrays(t *testing.T) {
+	entry := statusJSONEntry{
+		Target:         "local",
+		CurrentVersion: 0,
+		HasVersion:     false,
+		Dirty:          false,
+		Pending:        []string{},
+		NoLedger:       true,
+		Unconfigured:   false,
+	}
+	b, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	for _, want := range []string{`"has_version":false`, `"dirty":false`, `"pending":[]`, `"no_ledger":true`, `"unconfigured":false`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("marshaled status entry = %s, want it to contain %s", got, want)
+		}
+	}
+}
