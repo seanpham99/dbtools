@@ -87,3 +87,23 @@ func TestUpJSON_SingleDocument(t *testing.T) {
 		t.Errorf("parsed current_version = %d, want 20260817000001", parsed.CurrentVersion)
 	}
 }
+
+func TestUpSilenceUsageOnRefusal(t *testing.T) {
+	origSilenceUsage := upCmd.SilenceUsage
+	upCmd.SilenceUsage = false
+	t.Cleanup(func() { upCmd.SilenceUsage = origSilenceUsage })
+
+	var out strings.Builder
+	rootCmd.SetErr(&out)
+	rootCmd.SetOut(&out)
+	t.Cleanup(func() { rootCmd.SetErr(nil); rootCmd.SetOut(nil) })
+
+	rootCmd.SetArgs([]string{"up", "--target", "prod"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("up --target prod expected error, got nil")
+	}
+	if strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("up operational refusal printed usage block:\n%s", out.String())
+	}
+}

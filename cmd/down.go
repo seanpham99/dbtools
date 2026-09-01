@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -22,6 +23,7 @@ var downCmd = &cobra.Command{
 	Short: "Revert the last N applied migrations (default 1) using .down.sql files",
 	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SilenceUsage = false
 		targetName := args[0]
 		steps := 1
 		if len(args) == 2 {
@@ -31,7 +33,12 @@ var downCmd = &cobra.Command{
 			}
 			steps = n
 		}
-		return runDown(targetName, steps)
+		err := runDown(targetName, steps)
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 
@@ -114,7 +121,7 @@ func runDown(targetName string, steps int) error {
 			}
 		}
 		if !downYes {
-			return fmt.Errorf("target %q is protected — refusing to run destructive down migrations without --yes", targetName)
+			return ExitCode(1, fmt.Sprintf("target %q is protected — refusing to run destructive down migrations without --yes", targetName))
 		}
 	}
 

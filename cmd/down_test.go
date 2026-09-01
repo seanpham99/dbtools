@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/apply"
@@ -62,5 +63,63 @@ protected = true
 	err = downCmd.RunE(downCmd, []string{"prod", "1"})
 	if err == nil {
 		t.Fatal("expected error when down on protected target without --yes, got nil")
+	}
+}
+
+func TestDownSilenceUsageOnRefusal(t *testing.T) {
+	origSilenceUsage := downCmd.SilenceUsage
+	downCmd.SilenceUsage = false
+	t.Cleanup(func() { downCmd.SilenceUsage = origSilenceUsage })
+
+	dir := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll("migrations", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join("migrations", "20260101000000_init.up.sql"), []byte("CREATE TABLE test (id INT);"), 0o644)
+	os.WriteFile(filepath.Join("migrations", "20260101000000_init.down.sql"), []byte("DROP TABLE test;"), 0o644)
+
+	dbURL := "sqlite://" + filepath.Join(dir, "prod.db")
+	t.Setenv("DBTOOLS_PROD_URL", dbURL)
+	configContent := `migrations_dir = "migrations"
+
+[targets.prod]
+url_env = "DBTOOLS_PROD_URL"
+protected = true
+`
+	if err := os.WriteFile("dbtools.toml", []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load("dbtools.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := apply.Run(cfg, "prod", ""); err != nil {
+		t.Fatalf("apply.Run() failed: %v", err)
+	}
+
+	var out strings.Builder
+	rootCmd.SetErr(&out)
+	rootCmd.SetOut(&out)
+	t.Cleanup(func() { rootCmd.SetErr(nil); rootCmd.SetOut(nil) })
+
+	downYes = false
+	rootCmd.SetArgs([]string{"down", "prod"})
+	err = rootCmd.Execute()
+	if err == nil {
+		t.Fatal("down on protected target without --yes expected error, got nil")
+	}
+	if strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("down operational refusal printed usage block:\n%s", out.String())
 	}
 }

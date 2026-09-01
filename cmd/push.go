@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/apply"
@@ -22,7 +23,13 @@ var pushCmd = &cobra.Command{
 	Short: "Apply pending migrations to a named remote target (version-sync only)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runPush(args[0])
+		cmd.SilenceUsage = false
+		err := runPush(args[0])
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 
@@ -84,7 +91,7 @@ func runPush(targetName string) (err error) {
 				logger.Infof("  %s", f)
 			}
 		}
-		return fmt.Errorf("refusing to push migrations to %q without --yes", targetName)
+		return ExitCode(1, fmt.Sprintf("refusing to push migrations to %q without --yes", targetName))
 	}
 
 	status, err := apply.Run(cfg, targetName, pushURL)

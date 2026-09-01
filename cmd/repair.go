@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,14 +24,21 @@ var repairCmd = &cobra.Command{
 	Short: "Correct the migration ledger's applied/reverted status for one or more versions",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.SilenceUsage = false
 		if !repairYes {
-			return fmt.Errorf("repair does not execute any migration SQL — pass --yes to confirm you intend this")
+			cmd.SilenceUsage = true
+			return ExitCode(1, "repair does not execute any migration SQL — pass --yes to confirm you intend this")
 		}
 		pairs, err := parseRepairArgs(args[1])
 		if err != nil {
 			return err
 		}
-		return runRepair(args[0], pairs)
+		err = runRepair(args[0], pairs)
+		var exitErr *ExitCodeError
+		if errors.As(err, &exitErr) {
+			cmd.SilenceUsage = true
+		}
+		return err
 	},
 }
 

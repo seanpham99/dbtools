@@ -55,7 +55,7 @@ func requireUnprotected(cfg *config.Config, targetName string) error {
 		return fmt.Errorf("unknown target %q", targetName)
 	}
 	if t.Protected {
-		return fmt.Errorf("target %q is protected (declared protected in dbtools.toml) — refusing to modify it; remove the protected flag to write", targetName)
+		return ExitCode(1, fmt.Sprintf("target %q is protected (declared protected in dbtools.toml) — refusing to modify it; remove the protected flag to write", targetName))
 	}
 	return nil
 }
