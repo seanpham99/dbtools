@@ -94,9 +94,7 @@ This allows CI/CD orchestrators to parse `$STDOUT` with `jq` while log scrapers 
 
 ### Job-Completion Summary Record
 
-`dbtools up` and `dbtools push` (the mutating job commands from section 2)
-also print one final JSON-lines record to **stdout** when `--json` is
-set, after their normal result payload:
+`dbtools up --json` folds completion status (`"ok": true`) directly into its single status document on stdout. For other mutating commands (`push`, `down`, `reset`, etc.), `dbtools` can print a final JSON-lines summary record to **stdout** when `--json` is set:
 
 ```json
 {"event":"job_complete","ok":true}

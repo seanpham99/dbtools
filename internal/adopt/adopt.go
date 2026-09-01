@@ -215,9 +215,9 @@ func BuildPlan(sourceTable string, sourceRows []SourceRow, dir *migrator.Dir) Pl
 		srcVersions[r.Version] = true
 	}
 
-	var matched []uint64
-	var pending []uint64
-	var orphan []uint64
+	matched := []uint64{}
+	pending := []uint64{}
+	orphan := []uint64{}
 
 	// Collect union of all versions
 	allVersionsMap := make(map[uint64]bool)

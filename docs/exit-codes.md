@@ -47,6 +47,20 @@ Every `dbtools` command supports universal `--json`:
 - **stderr**: Diagnostic messages, errors, and warnings.
 - **Exit code**: Reflects status (`0`, `1`, or `2`) even when `--json` is enabled.
 
+### JSON contract
+
+- **One document per invocation.** No command emits a second JSON value on
+  stdout. A command that has progress/events to stream emits NDJSON — every
+  line a complete JSON object — and says so in its docs. `up`, `status`,
+  `adopt` are single-document today.
+- **Every documented field is always present.** State fields never use
+  `omitempty`: `false` and `[]` are emitted explicitly. Absence means the
+  field does not exist in this version of the tool, not "false".
+  (Exception: `error` — genuinely optional.)
+- **Empty lists are `[]`, never `null`.** A nil slice is a bug.
+- **Consumers should validate the shape and fail closed** on any field they
+  don't recognise, rather than defaulting silently.
+
 ### Example Agent Loop
 
 ```bash
