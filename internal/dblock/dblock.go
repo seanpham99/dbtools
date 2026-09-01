@@ -33,7 +33,7 @@ type Lock struct {
 	// session-scoped on every engine dbtools supports, so the lock and its
 	// release have to run on the same connection — a pooled *sql.DB would
 	// happily release on a different one, silently doing nothing.
-	conn *sql.Conn
+	conn   *sql.Conn
 	once   sync.Once
 	relErr error
 }
