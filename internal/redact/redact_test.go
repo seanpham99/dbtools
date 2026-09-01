@@ -39,7 +39,10 @@ func TestURLStripsPasswordWhenSecretInInput(t *testing.T) {
 }
 
 func TestParseErrorStripsRawURL(t *testing.T) {
-	_, err := url.Parse("mssql://user:secret@host:9x9/db")
+	// Assembled at runtime: a literal "mssql://...:9x9/..." would trip
+	// staticcheck SA1007 (the string really is an invalid URL — on purpose).
+	rawURL := fmt.Sprintf("mssql://user:%s@host:9x9/db", "secret")
+	_, err := url.Parse(rawURL)
 	if err == nil {
 		t.Fatal("expected parse error")
 	}

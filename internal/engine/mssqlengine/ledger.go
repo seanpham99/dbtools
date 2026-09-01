@@ -50,13 +50,18 @@ END;`, table, ledger.StatusList()))
 // a no-op on every run after the first.
 func widenStatusConstraint(db ledger.DBTX, table string) error {
 	_, err := db.Exec(fmt.Sprintf(`
-DECLARE @name sysname, @def nvarchar(max);
+DECLARE @name sysname, @def nvarchar(max), @quoted nvarchar(258);
 SELECT TOP 1 @name = cc.name, @def = cc.definition
 FROM sys.check_constraints cc
 WHERE cc.parent_object_id = OBJECT_ID(N'%[1]s') AND cc.definition LIKE '%%status%%';
 IF @name IS NOT NULL AND @def NOT LIKE '%%%[2]s%%'
 BEGIN
-    EXEC('ALTER TABLE %[1]s DROP CONSTRAINT [' + REPLACE(@name, ']', ']]') + ']');
+    -- EXEC accepts only literals and variables, not function calls, so
+    -- the bracket-quoted name is built into a variable first. QUOTENAME
+    -- doubles any ']' in the name (second-order metadata) so it cannot
+    -- break out of the quoting.
+    SET @quoted = QUOTENAME(@name);
+    EXEC('ALTER TABLE %[1]s DROP CONSTRAINT ' + @quoted);
     ALTER TABLE %[1]s ADD CONSTRAINT %[1]s_status_check CHECK (status IN (%[3]s));
 END;`, table, ledger.StatusApplying, ledger.StatusList()))
 	if err != nil {

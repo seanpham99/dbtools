@@ -4,7 +4,9 @@ package mssqlengine
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
@@ -201,5 +203,39 @@ func TestSetStatus_WithinTransaction(t *testing.T) {
 	}
 	if len(versions) != 1 || versions[0] != 20260101000000 {
 		t.Fatalf("AppliedVersions() after rollback = %v, want unchanged [20260101000000]", versions)
+	}
+}
+
+// A pre-v0.7 ledger whose CHECK constraint was hand-created with a name
+// containing "]" must survive the widening: the constraint name is
+// second-order metadata (sys.check_constraints) interpolated into EXEC'd
+// dynamic SQL, and QUOTENAME must escape the bracket.
+func TestEnsureSchema_WidensConstraintWithBracketInName(t *testing.T) {
+	db := openTestDB(t)
+	table := "dbtools_migration_history"
+
+	if _, err := db.Exec(fmt.Sprintf(`
+CREATE TABLE %s (
+    version BIGINT NOT NULL PRIMARY KEY,
+    status VARCHAR(10) NOT NULL,
+    CONSTRAINT [we]]ird_chk] CHECK (status IN ('applied'))
+)`, table)); err != nil {
+		t.Fatalf("creating pre-v0.7 table with hostile constraint name: %v", err)
+	}
+	t.Cleanup(func() { _, _ = db.Exec(fmt.Sprintf("DROP TABLE %s", table)) })
+
+	if err := EnsureSchema(db, table); err != nil {
+		t.Fatalf("EnsureSchema() with hostile constraint name returned error: %v", err)
+	}
+
+	var def string
+	if err := db.QueryRow(`
+SELECT cc.definition FROM sys.check_constraints cc
+JOIN sys.tables tb ON tb.object_id = cc.parent_object_id
+WHERE tb.name = @p1 AND cc.name = @p2`, table, table+"_status_check").Scan(&def); err != nil {
+		t.Fatalf("widened constraint not found: %v", err)
+	}
+	if !strings.Contains(def, "'applying'") {
+		t.Fatalf("widened constraint does not cover 'applying': %s", def)
 	}
 }
