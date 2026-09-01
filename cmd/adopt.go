@@ -15,11 +15,12 @@ import (
 )
 
 var (
-	adoptYes             bool
-	adoptForce           bool
-	adoptFromTable       string
-	adoptVersionColumn   string
-	adoptAppliedAtColumn string
+	adoptYes                bool
+	adoptForce              bool
+	adoptAllowOrphansBefore uint64
+	adoptFromTable          string
+	adoptVersionColumn      string
+	adoptAppliedAtColumn    string
 )
 
 var adoptCmd = &cobra.Command{
@@ -37,6 +38,7 @@ var adoptCmd = &cobra.Command{
 func init() {
 	adoptCmd.Flags().BoolVar(&adoptYes, "yes", false, "write the imported rows to the ledger (omit to only print the plan)")
 	adoptCmd.Flags().BoolVar(&adoptForce, "force", false, "proceed even if orphan history rows exist (rows with no matching file)")
+	adoptCmd.Flags().Uint64Var(&adoptAllowOrphansBefore, "allow-orphans-before", 0, "allow orphan history rows below this version (pre-squash history); orphans at or above it are still a hard stop")
 	adoptCmd.Flags().StringVar(&adoptFromTable, "from-table", "", "bespoke source table name (auto-detected from a known list if omitted)")
 	adoptCmd.Flags().StringVar(&adoptVersionColumn, "version-column", "", "column in --from-table holding the migration version")
 	adoptCmd.Flags().StringVar(&adoptAppliedAtColumn, "applied-at-column", "", "optional column in --from-table holding the applied timestamp")
@@ -102,9 +104,13 @@ func runAdopt(targetName string) error {
 	printAdoptPlan(plan)
 
 	if len(plan.Orphan) > 0 && !adoptForce {
-		return &ExitCodeError{
-			Code:    1,
-			Message: fmt.Sprintf("adopt found %d orphan history row(s) with no matching migration file — review them, then pass --force to proceed anyway", len(plan.Orphan)),
+		if adoptAllowOrphansBefore != 0 && adopt.OrphansBelow(plan.Orphan, adoptAllowOrphansBefore) {
+			// pre-baseline orphans expected — proceed
+		} else {
+			return &ExitCodeError{
+				Code:    1,
+				Message: fmt.Sprintf("adopt found %d orphan history row(s) with no matching migration file — if these are pre-squash rows, pass --allow-orphans-before <baseline-version>; otherwise pass --force to proceed anyway", len(plan.Orphan)),
+			}
 		}
 	}
 

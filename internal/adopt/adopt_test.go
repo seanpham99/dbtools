@@ -162,3 +162,19 @@ func TestBuildPlan_EmptyPlanMarshalsAsEmptyArrays(t *testing.T) {
 		}
 	}
 }
+
+func TestOrphansBelow(t *testing.T) {
+	orphans := []uint64{100, 200, 300}
+	if !adopt.OrphansBelow(orphans, 400) {
+		t.Errorf("OrphansBelow(%v, 400) = false, want true", orphans)
+	}
+	if adopt.OrphansBelow(orphans, 300) {
+		t.Errorf("OrphansBelow(%v, 300) = true, want false", orphans)
+	}
+	if adopt.OrphansBelow(orphans, 250) {
+		t.Errorf("OrphansBelow(%v, 250) = true, want false", orphans)
+	}
+	if !adopt.OrphansBelow([]uint64{}, 100) {
+		t.Errorf("OrphansBelow([], 100) = false, want true")
+	}
+}
