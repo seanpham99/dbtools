@@ -15,7 +15,7 @@ import (
 // parse (user:pw@tcp(host:port)/db). The character class stops the match
 // at scheme separators, so ports like ":5432" without a following "@" are
 // never touched.
-var userinfoPasswordRE = regexp.MustCompile(`:([^:@/\s]+)@`)
+var userinfoPasswordRE = regexp.MustCompile(`:([^@/\s]+)@`)
 
 // URL returns rawURL with its password replaced by "***". Strings
 // without a password component are returned unchanged.
