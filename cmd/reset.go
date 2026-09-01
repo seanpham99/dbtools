@@ -110,6 +110,12 @@ func recreateSQLiteFile(localURL string) error {
 	if path == "" {
 		return fmt.Errorf("sqlite URL %q has no file path", localURL)
 	}
+	// A planted symlink must not redirect the remove/recreate cycle at
+	// some other file's inode — reset is allowed to clobber the database
+	// file, never whatever the symlink points at.
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s is a symlink; refusing to reset it", path)
+	}
 	for _, p := range []string{path, path + "-wal", path + "-shm"} {
 		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("removing %s: %w", p, err)

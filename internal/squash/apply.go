@@ -55,6 +55,9 @@ func ApplyPlan(cfg *config.Config, targetName string, eng engine.Engine, dir *mi
 	if parseErr != nil || ver != 0 {
 		return nil, fmt.Errorf("invalid baseline filename %q: baseline version must be 0", baselineFilename)
 	}
+	if !filepath.IsLocal(baselineFilename) {
+		return nil, fmt.Errorf("invalid baseline filename %q: must be a plain filename inside the migrations dir", baselineFilename)
+	}
 
 	baselinePath := filepath.Join(migrationsDir, baselineFilename)
 	if _, statErr := os.Stat(baselinePath); statErr == nil {

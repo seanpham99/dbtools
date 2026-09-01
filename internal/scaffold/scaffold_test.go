@@ -9,7 +9,10 @@ import (
 
 func TestUpFilename(t *testing.T) {
 	now := time.Date(2026, 7, 1, 4, 11, 34, 0, time.UTC)
-	got := UpFilename(now, "add widget table", ".up.sql")
+	got, err := UpFilename(now, "add widget table", ".up.sql")
+	if err != nil {
+		t.Fatalf("UpFilename() error: %v", err)
+	}
 	want := "20260701041134_add_widget_table.up.sql"
 	if got != want {
 		t.Errorf("UpFilename() = %q, want %q", got, want)
@@ -18,10 +21,22 @@ func TestUpFilename(t *testing.T) {
 
 func TestUpFilename_AlreadySlug(t *testing.T) {
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	got := UpFilename(now, "add_widget_table", ".up.sql")
+	got, err := UpFilename(now, "add_widget_table", ".up.sql")
+	if err != nil {
+		t.Fatalf("UpFilename() error: %v", err)
+	}
 	want := "20260102030405_add_widget_table.up.sql"
 	if got != want {
 		t.Errorf("UpFilename() = %q, want %q", got, want)
+	}
+}
+
+func TestUpFilename_RejectsTraversal(t *testing.T) {
+	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, name := range []string{"../../pwn", "a/b", "back\\slash", "line\nbreak", ".."} {
+		if _, err := UpFilename(now, name, ".up.sql"); err == nil {
+			t.Errorf("UpFilename(%q) accepted an unsafe name", name)
+		}
 	}
 }
 

@@ -129,3 +129,60 @@ func TestRemoveMissingDirIsNotAnError(t *testing.T) {
 		t.Fatalf("Remove() returned error: %v", err)
 	}
 }
+
+func TestWrite_RejectsNewlineInValue(t *testing.T) {
+	chdirTemp(t)
+
+	err := Write(map[string]string{"DBTOOLS_LOCAL_URL": "postgres://x\nINJECTED=1"})
+	if err == nil {
+		t.Fatal("Write() accepted a value containing a newline")
+	}
+	if _, statErr := os.Stat(Path()); !os.IsNotExist(statErr) {
+		t.Fatalf("Write() left a file behind despite rejecting the value: %v", statErr)
+	}
+}
+
+func TestWrite_RefusesSymlinkedFile(t *testing.T) {
+	chdirTemp(t)
+
+	if err := os.MkdirAll(Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(target, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, Path()); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if err := Write(map[string]string{"DBTOOLS_LOCAL_URL": "postgres://x"}); err == nil {
+		t.Fatal("Write() followed a symlinked local.env")
+	}
+	got, err := os.ReadFile(target)
+	if err != nil || string(got) != "original" {
+		t.Fatalf("symlink target was modified: contents %q, err %v", got, err)
+	}
+}
+
+func TestWrite_Enforces0600OnPreexistingFile(t *testing.T) {
+	chdirTemp(t)
+
+	if err := os.MkdirAll(Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Path(), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Write(map[string]string{"DBTOOLS_LOCAL_URL": "postgres://x"}); err != nil {
+		t.Fatalf("Write() returned error: %v", err)
+	}
+	info, err := os.Stat(Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("local.env permissions = %o, want 600", perm)
+	}
+}

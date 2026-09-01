@@ -1,7 +1,6 @@
 package scaffold
 
 import (
-	"strings"
 	"time"
 
 	"github.com/seanpham99/dbtools/internal/migrator"
@@ -9,12 +8,15 @@ import (
 
 // UpFilename returns the filename for a new migration created at `now`
 // with the given human-readable name and up-migration suffix, e.g. "20260701041134_add_widget.up.sql".
-func UpFilename(now time.Time, name, upSuffix string) string {
+func UpFilename(now time.Time, name, upSuffix string) (string, error) {
 	if upSuffix == "" {
 		upSuffix = ".up.sql"
 	}
-	slug := strings.ReplaceAll(strings.TrimSpace(name), " ", "_")
-	return now.UTC().Format("20060102150405") + "_" + slug + upSuffix
+	slug, err := migrator.SlugMigrationName(name)
+	if err != nil {
+		return "", err
+	}
+	return now.UTC().Format("20060102150405") + "_" + slug + upSuffix, nil
 }
 
 // NextVersion returns the next migration version number to use.

@@ -45,7 +45,15 @@ func runNew(now time.Time, name string) (string, error) {
 		return "", fmt.Errorf("creating migrations dir: %w", err)
 	}
 
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	// os.Root scopes the create to the migrations dir, so even a filename
+	// that slips past name validation cannot land outside it.
+	root, err := os.OpenRoot(cfg.MigrationsDir)
+	if err != nil {
+		return "", fmt.Errorf("opening migrations dir: %w", err)
+	}
+	defer root.Close()
+
+	f, err := root.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return "", fmt.Errorf("writing migration file: %w", err)
 	}
