@@ -340,20 +340,23 @@ func TestDoctor_SkipsHashCheckForAdoptedRows(t *testing.T) {
 		t.Fatalf("evaluateTarget() exit = %d, want 0", report.Exit)
 	}
 
-	var ledgerCheck *CheckResult
+	ledgerIdx := -1
 	for i := range report.Checks {
 		if report.Checks[i].Name == "ledger-integrity" {
-			ledgerCheck = &report.Checks[i]
+			ledgerIdx = i
 			break
 		}
 	}
-	if ledgerCheck == nil {
+	if ledgerIdx < 0 {
 		t.Fatal("ledger-integrity check not found in report")
 	}
-	if ledgerCheck.Status != "ok" { //nolint:staticcheck // SA5011 false positive: t.Fatal above guarantees non-nil
+	// Value copy: avoids carrying a possibly-nil pointer past the guard,
+	// which staticcheck SA5011 flags.
+	ledgerCheck := report.Checks[ledgerIdx]
+	if ledgerCheck.Status != "ok" {
 		t.Fatalf("ledger-integrity status = %q, want ok", ledgerCheck.Status)
 	}
-	if !strings.Contains(ledgerCheck.Message, "skipped") { //nolint:staticcheck // SA5011 false positive
+	if !strings.Contains(ledgerCheck.Message, "skipped") {
 		t.Fatalf("ledger-integrity message = %q, want it to mention skipped", ledgerCheck.Message)
 	}
 }

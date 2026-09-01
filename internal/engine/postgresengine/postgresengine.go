@@ -6,7 +6,6 @@ package postgresengine
 
 import (
 	"database/sql"
-	"strings"
 
 	"github.com/lib/pq"
 
@@ -38,8 +37,11 @@ func (Postgres) Name() string { return "postgres" }
 // feedback available when dbtools runs as a private-network job whose
 // output is its log (#60).
 //
-// Routine schema-maintenance notices (e.g. "already exists, skipping" from
-// EnsureSchema's ADD COLUMN IF NOT EXISTS) are suppressed.
+// Everything is logged, including routine schema-maintenance notices:
+// suppression here is global to the connection, so filtering (say)
+// "already exists, skipping" would also swallow a migration that raises
+// the same text on purpose. EnsureSchema instead avoids emitting routine
+// notices at all (see ledger.go).
 func (Postgres) Open(rawURL string) (*sql.DB, error) {
 	clean := dburl.StripCustomParams(rawURL)
 	connector, err := pq.NewConnector(clean)
@@ -50,9 +52,6 @@ func (Postgres) Open(rawURL string) (*sql.DB, error) {
 		return sql.Open("postgres", clean)
 	}
 	return sql.OpenDB(pq.ConnectorWithNoticeHandler(connector, func(n *pq.Error) {
-		if strings.Contains(n.Message, "already exists, skipping") {
-			return
-		}
 		logger.Infof("postgres: %s: %s", n.Severity, n.Message)
 	})), nil
 }

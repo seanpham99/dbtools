@@ -42,11 +42,12 @@ CREATE TABLE dbtools_it_orders (
 		t.Fatalf("introspect() returned error: %v", err)
 	}
 
-	var orders, customers, textKeys, implicitFK *generate.TableSchema
+	ordersIdx := -1
+	var customers, textKeys, implicitFK *generate.TableSchema
 	for i := range tables {
 		switch tables[i].Name {
 		case "dbtools_it_orders":
-			orders = &tables[i]
+			ordersIdx = i
 		case "dbtools_it_customers":
 			customers = &tables[i]
 		case "dbtools_it_text_keys":
@@ -55,15 +56,18 @@ CREATE TABLE dbtools_it_orders (
 			implicitFK = &tables[i]
 		}
 	}
-	if orders == nil {
+	if ordersIdx < 0 {
 		t.Fatal("dbtools_it_orders table not found")
 	}
+	// Value copy: avoids carrying a possibly-nil pointer past the guard,
+	// which staticcheck SA5011 flags.
+	orders := tables[ordersIdx]
 
 	for _, c := range orders.Columns {
-		if c.Name == "id" && !c.IsPrimaryKey { //nolint:staticcheck // SA5011 false positive: t.Fatal above guarantees non-nil
+		if c.Name == "id" && !c.IsPrimaryKey {
 			t.Error("id column: want IsPrimaryKey true")
 		}
-		if c.Name == "status" && (!c.DefaultValue.Valid || !strings.Contains(c.DefaultValue.String, "pending")) { //nolint:staticcheck // SA5011 false positive
+		if c.Name == "status" && (!c.DefaultValue.Valid || !strings.Contains(c.DefaultValue.String, "pending")) {
 			t.Errorf("status column DefaultValue = %+v, want it to mention 'pending'", c.DefaultValue)
 		}
 		if c.OrdinalPosition == 0 {

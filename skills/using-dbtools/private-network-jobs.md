@@ -94,21 +94,18 @@ This allows CI/CD orchestrators to parse `$STDOUT` with `jq` while log scrapers 
 
 ### Job-Completion Summary Record
 
-`dbtools up --json` folds completion status (`"ok": true`) directly into its single status document on stdout. For other mutating commands (`push`, `down`, `reset`, etc.), `dbtools` can print a final JSON-lines summary record to **stdout** when `--json` is set:
+`dbtools` emits exactly **one** JSON document on stdout per `--json` run,
+and completion status is folded into it. `up` (and `push` when already
+current) carry `"ok": true` inside the status document itself; other
+mutating commands print their result document as their last stdout line.
 
-```json
-{"event":"job_complete","ok":true}
-{"event":"job_complete","ok":false,"error":"connection refused"}
-```
-
-This is emitted via a `defer`, so it fires on every path the command's
-own logic returns through — success, a refused/invalid target, a real
-migration failure — but **not** on a hard crash (OOM-kill, SIGKILL,
-timeout). A log scraper watching for this line can distinguish "the job
-ran to completion and reported its own outcome" from "the job died
-mid-write and never got to say so" — the two failure modes look
-identical from the exit code alone, since an orchestrator killing the
-container also reports a non-zero exit.
+There is no separate deferred summary record. A log scraper can still
+distinguish "the job ran to completion and reported its own outcome"
+from "the job died mid-write" by document completeness: a killed process
+never prints its status document at all, while a run that reached the
+end of its control flow always has a complete, parseable JSON value —
+the two failure modes look identical from the exit code alone, since an
+orchestrator killing the container also reports a non-zero exit.
 
 ---
 

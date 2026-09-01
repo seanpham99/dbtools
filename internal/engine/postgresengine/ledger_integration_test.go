@@ -5,9 +5,11 @@ package postgresengine
 import (
 	"database/sql"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/logger"
 )
 
 func openTestDB(t *testing.T) *sql.DB {
@@ -25,6 +27,15 @@ func openTestDB(t *testing.T) *sql.DB {
 		db.Close()
 	})
 	return db
+}
+
+// captureLogger redirects the default logger into buf until the test ends.
+func captureLogger(t *testing.T) *strings.Builder {
+	t.Helper()
+	var buf strings.Builder
+	logger.SetOutput(&buf)
+	t.Cleanup(func() { logger.SetOutput(os.Stderr) })
+	return &buf
 }
 
 func TestSetStatusAdopted(t *testing.T) {
@@ -78,14 +89,39 @@ CREATE TABLE dbtools_migration_history (
 	}
 }
 
-func TestEnsureSchema_SuppressesAlreadyExistsNotices(t *testing.T) {
+// A steady-state ensureSchema must emit no server notices at all — the
+// log is a migration job's only output, and routine "already exists,
+// skipping" noise on every command would bury real migration reports.
+// Suppression lives in ensureSchema (which simply emits nothing), never
+// in the connection-wide notice handler: a migration that deliberately
+// RAISEs the same text must still reach the log.
+func TestEnsureSchema_EmitsNoNoticesOnSteadyState(t *testing.T) {
 	db := openTestDB(t)
 	store := ledgerStore{}
 	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatal(err)
 	}
-	// Second ensureSchema runs ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
+
+	logs := captureLogger(t)
 	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
 		t.Fatalf("second ensureSchema() returned error: %v", err)
+	}
+	if out := logs.String(); out != "" {
+		t.Fatalf("steady-state ensureSchema() logged notices:\n%s", out)
+	}
+}
+
+// The connection-wide notice handler must not filter by message text: a
+// migration that RAISEs exactly the routine-suppression string reaches
+// the log.
+func TestNoticeHandler_PassesMigrationNoticesThrough(t *testing.T) {
+	db := openTestDB(t)
+
+	logs := captureLogger(t)
+	if _, err := db.Exec(`DO $$ BEGIN RAISE NOTICE 'already exists, skipping'; END $$;`); err != nil {
+		t.Fatalf("RAISE NOTICE exec failed: %v", err)
+	}
+	if out := logs.String(); !strings.Contains(out, "already exists, skipping") {
+		t.Fatalf("migration notice was suppressed, log output:\n%s", out)
 	}
 }
