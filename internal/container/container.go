@@ -25,6 +25,14 @@ import (
 // hosts.
 const DatabaseName = "dbtools_local"
 
+// password is the tool-owned local container's database password. It is a
+// public constant by design: every published port is bound to 127.0.0.1
+// (see runArgs), so the password only ever guards a loopback-only
+// throwaway database. It cannot be made per-project without breaking
+// MaintenanceURLFor — which rebuilds maintenance URLs from the stored
+// local URL alone — and existing data volumes, whose initialized password
+// is not discoverable after first boot. Scratch URLs are never persisted;
+// no production credential ever flows through this value.
 const password = "Dbtools@Local123"
 
 var escapedPassword = url.QueryEscape(password)
@@ -105,7 +113,7 @@ var mssqlSpec = spec{
 			"--name", s.name,
 			"-e", "ACCEPT_EULA=Y",
 			"-e", "MSSQL_SA_PASSWORD=" + password,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
 			s.image,
 		}
@@ -116,7 +124,7 @@ var mssqlSpec = spec{
 			"--name", s.name,
 			"-e", "ACCEPT_EULA=Y",
 			"-e", "MSSQL_SA_PASSWORD=" + password,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			s.image,
 		}
 	},
@@ -155,7 +163,7 @@ var postgresSpec = spec{
 			"--name", s.name,
 			"-e", "POSTGRES_PASSWORD=" + password,
 			"-e", "POSTGRES_DB=" + DatabaseName,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
 			s.image,
 		}
@@ -166,7 +174,7 @@ var postgresSpec = spec{
 			"--name", s.name,
 			"-e", "POSTGRES_PASSWORD=" + password,
 			"-e", "POSTGRES_DB=" + DatabaseName,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			s.image,
 		}
 	},
@@ -201,7 +209,7 @@ var mysqlSpec = spec{
 			"--name", s.name,
 			"-e", "MYSQL_ROOT_PASSWORD=" + password,
 			"-e", "MYSQL_DATABASE=" + DatabaseName,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
 			s.image,
 		}
@@ -212,7 +220,7 @@ var mysqlSpec = spec{
 			"--name", s.name,
 			"-e", "MYSQL_ROOT_PASSWORD=" + password,
 			"-e", "MYSQL_DATABASE=" + DatabaseName,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			s.image,
 		}
 	},
