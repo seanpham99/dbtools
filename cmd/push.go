@@ -27,7 +27,6 @@ var pushCmd = &cobra.Command{
 }
 
 func runPush(targetName string) (err error) {
-	defer emitJobSummary(&err)
 	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
@@ -55,12 +54,18 @@ func runPush(targetName string) (err error) {
 	}
 	if len(preview.Pending) == 0 {
 		if jsonOutput {
-			b, err := json.Marshal(statusinfo.Status{
-				Target:         targetName,
-				CurrentVersion: preview.CurrentVersion,
-				HasVersion:     preview.HasVersion,
-				Dirty:          preview.Dirty,
-				Pending:        nil,
+			b, err := json.Marshal(struct {
+				statusinfo.Status
+				OK bool `json:"ok"`
+			}{
+				Status: statusinfo.Status{
+					Target:         targetName,
+					CurrentVersion: preview.CurrentVersion,
+					HasVersion:     preview.HasVersion,
+					Dirty:          preview.Dirty,
+					Pending:        []string{},
+				},
+				OK: true,
 			})
 			if err != nil {
 				return err
@@ -88,7 +93,10 @@ func runPush(targetName string) (err error) {
 	}
 
 	if jsonOutput {
-		b, err := json.Marshal(status)
+		b, err := json.Marshal(struct {
+			statusinfo.Status
+			OK bool `json:"ok"`
+		}{Status: *status, OK: true})
 		if err != nil {
 			return err
 		}

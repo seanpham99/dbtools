@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/logger"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +19,6 @@ var upCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Apply pending migrations to the local target",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		defer emitJobSummary(&err)
 		// up is the fast local dev loop. It deliberately refuses any
 		// non-local target: reaching a remote database requires the
 		// explicit `push <target> --yes` path with its preview + guard.
@@ -40,7 +40,10 @@ var upCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			b, err := json.Marshal(status)
+			b, err := json.Marshal(struct {
+				statusinfo.Status
+				OK bool `json:"ok"`
+			}{Status: *status, OK: true})
 			if err != nil {
 				return err
 			}

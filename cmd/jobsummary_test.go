@@ -77,29 +77,6 @@ func TestEmitJobSummary_ErrorRecordWithJSON(t *testing.T) {
 	}
 }
 
-// TestUpCommand_EmitsJobSummaryOnRefusal proves the defer fires even on
-// an early-return error path (not just the success path) — up refuses a
-// non-local target before doing anything else.
-func TestUpCommand_EmitsJobSummaryOnRefusal(t *testing.T) {
-	origTarget := upTarget
-	origJSON := jsonOutput
-	t.Cleanup(func() {
-		upTarget = origTarget
-		jsonOutput = origJSON
-	})
-
-	rootCmd.SetArgs([]string{"up", "--target", "prod", "--json"})
-	out := captureStdout(t, func() {
-		_ = rootCmd.Execute()
-	})
-	if !strings.Contains(out, `"event":"job_complete"`) {
-		t.Fatalf("up --target prod --json output = %q, want a job_complete summary even on refusal", out)
-	}
-	if !strings.Contains(out, `"ok":false`) {
-		t.Fatalf("up --target prod --json output = %q, want ok:false since up refuses non-local targets", out)
-	}
-}
-
 // TestEmitJobSummary_PanicSkipsSummaryAndRepropagates guards against a
 // panic mid-RunE printing a false "ok":true record right before the
 // process actually crashes — err is still nil during panic unwinding,
