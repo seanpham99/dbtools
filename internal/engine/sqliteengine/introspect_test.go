@@ -60,10 +60,10 @@ CREATE TABLE dbtools_it_orders (
 	}
 
 	for _, c := range orders.Columns {
-		if c.Name == "id" && !c.IsPrimaryKey {
+		if c.Name == "id" && !c.IsPrimaryKey { //nolint:staticcheck // SA5011 false positive: t.Fatal above guarantees non-nil
 			t.Error("id column: want IsPrimaryKey true")
 		}
-		if c.Name == "status" && (!c.DefaultValue.Valid || !strings.Contains(c.DefaultValue.String, "pending")) {
+		if c.Name == "status" && (!c.DefaultValue.Valid || !strings.Contains(c.DefaultValue.String, "pending")) { //nolint:staticcheck // SA5011 false positive
 			t.Errorf("status column DefaultValue = %+v, want it to mention 'pending'", c.DefaultValue)
 		}
 		if c.OrdinalPosition == 0 {

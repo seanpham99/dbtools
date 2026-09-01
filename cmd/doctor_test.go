@@ -350,10 +350,10 @@ func TestDoctor_SkipsHashCheckForAdoptedRows(t *testing.T) {
 	if ledgerCheck == nil {
 		t.Fatal("ledger-integrity check not found in report")
 	}
-	if ledgerCheck.Status != "ok" {
+	if ledgerCheck.Status != "ok" { //nolint:staticcheck // SA5011 false positive: t.Fatal above guarantees non-nil
 		t.Fatalf("ledger-integrity status = %q, want ok", ledgerCheck.Status)
 	}
-	if !strings.Contains(ledgerCheck.Message, "skipped") {
+	if !strings.Contains(ledgerCheck.Message, "skipped") { //nolint:staticcheck // SA5011 false positive
 		t.Fatalf("ledger-integrity message = %q, want it to mention skipped", ledgerCheck.Message)
 	}
 }
