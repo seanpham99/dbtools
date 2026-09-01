@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26.6"
       - name: Build
         run: go build ./...
       - name: Vet
@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26.6"
       # internal/container manages its own docker lifecycle (start/stop/idempotent)
       # with tool-owned names/ports. Runs WITHOUT service containers so its
       # published ports (14330/54320) can't collide with anything else.
@@ -124,7 +124,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26.6"
       # The stock MSSQL image ships no user databases; the integration
       # suite expects one named `dbtools`. Create it inside the service
       # container (sqlcmd lives only there, not on the runner host).
@@ -182,7 +182,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26.6"
       - name: Install GoReleaser
         run: go install github.com/goreleaser/goreleaser/v2@latest
       - name: Build a local snapshot binary

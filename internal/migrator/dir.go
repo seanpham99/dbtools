@@ -240,13 +240,33 @@ func (d *Dir) NextVersion(now time.Time) (uint64, error) {
 	return clockVer, nil
 }
 
+// migrationNameRE accepts only plain filename-safe slugs. It rejects path
+// separators, leading dots, and control characters, so a crafted name can
+// never carry the scaffolded filename outside the migrations directory or
+// inject newlines into the file body.
+var migrationNameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+
+// SlugMigrationName normalizes a human-readable migration name (trim,
+// spaces to underscores) and rejects names that are unsafe as a filename
+// component — path separators, "..", newlines, other control characters.
+func SlugMigrationName(name string) (string, error) {
+	name = strings.ReplaceAll(strings.TrimSpace(name), " ", "_")
+	if !migrationNameRE.MatchString(name) {
+		return "", fmt.Errorf("invalid migration name %q: must match %s (no path separators, leading dots, or whitespace)", name, migrationNameRE.String())
+	}
+	return name, nil
+}
+
 // NextUpFilename computes the next migration filename for the given name.
 func (d *Dir) NextUpFilename(now time.Time, name string) (string, error) {
 	ver, err := d.NextVersion(now)
 	if err != nil {
 		return "", err
 	}
-	slug := strings.ReplaceAll(strings.TrimSpace(name), " ", "_")
+	slug, err := SlugMigrationName(name)
+	if err != nil {
+		return "", err
+	}
 	suffix := d.upSuffix
 	if suffix == "" {
 		suffix = ".up.sql"

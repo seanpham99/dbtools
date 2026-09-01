@@ -21,14 +21,41 @@ func placeholder(engineName string, i int) string {
 	}
 }
 
+// quoteIdentifier quotes a table or column name for engineName's dialect.
+// Names come from the source database's catalog (second-order data), so
+// they must never be interpolated raw into dest SQL: a hostile quoted
+// identifier on the source would otherwise inject SQL into the copy.
+func quoteIdentifier(engineName, name string) string {
+	switch engineName {
+	case "mssql":
+		return "[" + strings.ReplaceAll(name, "]", "]]") + "]"
+	case "mysql":
+		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	default: // postgres, sqlite
+		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	}
+}
+
+// quoteQualified quotes a possibly schema-qualified table name. Schema is
+// part of Introspect's result (non-default schemas included), so the bare
+// name must not be used: it would resolve against the connection's default
+// schema and could address a same-named table in the wrong schema.
+func quoteQualified(engineName, schema, name string) string {
+	if schema == "" {
+		return quoteIdentifier(engineName, name)
+	}
+	return quoteIdentifier(engineName, schema) + "." + quoteIdentifier(engineName, name)
+}
+
 // buildSelectSQL builds the source-side read query for one table.
 // limit <= 0 means no row limit; where == "" means no filter. MSSQL has no
 // LIMIT clause — it uses TOP N right after SELECT instead.
-func buildSelectSQL(engineName, table string, limit int, where string) string {
+func buildSelectSQL(engineName, schema, table string, limit int, where string) string {
 	whereClause := ""
 	if where != "" {
 		whereClause = " WHERE " + where
 	}
+	table = quoteQualified(engineName, schema, table)
 	if engineName == "mssql" {
 		topClause := ""
 		if limit > 0 {
@@ -45,10 +72,14 @@ func buildSelectSQL(engineName, table string, limit int, where string) string {
 
 // buildInsertSQL builds the dest-side write query for one table, with one
 // bound placeholder per column in the same order columns is given.
-func buildInsertSQL(engineName, table string, columns []string) string {
+func buildInsertSQL(engineName, schema, table string, columns []string) string {
 	placeholders := make([]string, len(columns))
 	for i := range columns {
 		placeholders[i] = placeholder(engineName, i+1)
 	}
-	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(columns, ", "), strings.Join(placeholders, ", "))
+	quoted := make([]string, len(columns))
+	for i, c := range columns {
+		quoted[i] = quoteIdentifier(engineName, c)
+	}
+	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", quoteQualified(engineName, schema, table), strings.Join(quoted, ", "), strings.Join(placeholders, ", "))
 }

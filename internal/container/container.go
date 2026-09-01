@@ -17,12 +17,22 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/microsoft/go-mssqldb"
+
+	"github.com/seanpham99/dbtools/internal/redact"
 )
 
 // DatabaseName is the local development database every engine's container
 // hosts.
 const DatabaseName = "dbtools_local"
 
+// password is the tool-owned local container's database password. It is a
+// public constant by design: every published port is bound to 127.0.0.1
+// (see runArgs), so the password only ever guards a loopback-only
+// throwaway database. It cannot be made per-project without breaking
+// MaintenanceURLFor — which rebuilds maintenance URLs from the stored
+// local URL alone — and existing data volumes, whose initialized password
+// is not discoverable after first boot. Scratch URLs are never persisted;
+// no production credential ever flows through this value.
 const password = "Dbtools@Local123"
 
 var escapedPassword = url.QueryEscape(password)
@@ -63,10 +73,10 @@ type spec struct {
 func standardURLPort(rawURL string) (host, port string, err error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return "", "", fmt.Errorf("parsing URL: %w", err)
+		return "", "", fmt.Errorf("parsing URL %q: %w", redact.URL(rawURL), redact.ParseError(err))
 	}
 	if u.Port() == "" {
-		return "", "", fmt.Errorf("URL %q has no port", rawURL)
+		return "", "", fmt.Errorf("URL %q has no port", redact.URL(rawURL))
 	}
 	return u.Hostname(), u.Port(), nil
 }
@@ -78,7 +88,7 @@ var mysqlTCPRE = regexp.MustCompile(`tcp\(([^:]*):(\d+)\)`)
 func mysqlURLPort(rawURL string) (host, port string, err error) {
 	m := mysqlTCPRE.FindStringSubmatch(rawURL)
 	if m == nil {
-		return "", "", fmt.Errorf("mysql URL %q missing tcp(host:port) syntax", rawURL)
+		return "", "", fmt.Errorf("mysql URL %q missing tcp(host:port) syntax", redact.URL(rawURL))
 	}
 	return m[1], m[2], nil
 }
@@ -103,7 +113,7 @@ var mssqlSpec = spec{
 			"--name", s.name,
 			"-e", "ACCEPT_EULA=Y",
 			"-e", "MSSQL_SA_PASSWORD=" + password,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
 			s.image,
 		}
@@ -114,7 +124,7 @@ var mssqlSpec = spec{
 			"--name", s.name,
 			"-e", "ACCEPT_EULA=Y",
 			"-e", "MSSQL_SA_PASSWORD=" + password,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			s.image,
 		}
 	},
@@ -153,7 +163,7 @@ var postgresSpec = spec{
 			"--name", s.name,
 			"-e", "POSTGRES_PASSWORD=" + password,
 			"-e", "POSTGRES_DB=" + DatabaseName,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
 			s.image,
 		}
@@ -164,7 +174,7 @@ var postgresSpec = spec{
 			"--name", s.name,
 			"-e", "POSTGRES_PASSWORD=" + password,
 			"-e", "POSTGRES_DB=" + DatabaseName,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			s.image,
 		}
 	},
@@ -199,7 +209,7 @@ var mysqlSpec = spec{
 			"--name", s.name,
 			"-e", "MYSQL_ROOT_PASSWORD=" + password,
 			"-e", "MYSQL_DATABASE=" + DatabaseName,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			"-v", volumeNameFor(s.name) + ":" + s.dataDir,
 			s.image,
 		}
@@ -210,7 +220,7 @@ var mysqlSpec = spec{
 			"--name", s.name,
 			"-e", "MYSQL_ROOT_PASSWORD=" + password,
 			"-e", "MYSQL_DATABASE=" + DatabaseName,
-			"-p", s.hostPort + ":" + s.containerPort,
+			"-p", "127.0.0.1:" + s.hostPort + ":" + s.containerPort,
 			s.image,
 		}
 	},
@@ -299,7 +309,7 @@ func MaintenanceURLFor(engineName, localURL string) (string, error) {
 		return "", fmt.Errorf("reading host/port from local URL: %w", err)
 	}
 	if !isLoopbackHost(host) {
-		return "", fmt.Errorf("local target %q does not point at the tool-owned container (host %q is not loopback); dbtools reset only ever targets the local container, never a remote server", localURL, host)
+		return "", fmt.Errorf("local target %q does not point at the tool-owned container (host %q is not loopback); dbtools reset only ever targets the local container, never a remote server", redact.URL(localURL), host)
 	}
 	s.hostPort = port
 	return s.url(s, s.maintenanceDB), nil

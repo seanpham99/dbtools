@@ -7,6 +7,46 @@ import (
 	"time"
 )
 
+func TestRunNew_RejectsTraversalNames(t *testing.T) {
+	dir := t.TempDir()
+	oldwd, _ := os.Getwd()
+	defer os.Chdir(oldwd)
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("dbtools.toml", []byte(`
+migrations_dir = "migrations"
+[targets.local]
+url_env = "X"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir("migrations", 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	fixedNow := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	for _, name := range []string{"../../../pwn", "sub/dir", "line\nDROP TABLE t;--"} {
+		if _, err := runNew(fixedNow, name); err == nil {
+			t.Errorf("runNew(%q) accepted an unsafe name", name)
+		}
+	}
+	// Nothing may have been created outside the migrations dir.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "dbtools.toml" && e.Name() != "migrations" {
+			t.Errorf("runNew escaped the migrations dir: created %q", e.Name())
+		}
+	}
+	entries, err = os.ReadDir("migrations")
+	if err != nil || len(entries) != 0 {
+		t.Errorf("migrations dir should still be empty: entries %v, err %v", entries, err)
+	}
+}
+
 func TestRunNew_CreatesMigrationFile(t *testing.T) {
 	dir := t.TempDir()
 	oldwd, _ := os.Getwd()

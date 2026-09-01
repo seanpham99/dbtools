@@ -2,9 +2,12 @@ package mysqlengine
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/go-sql-driver/mysql"
 
 	"github.com/seanpham99/dbtools/internal/ledger"
 )
@@ -77,8 +80,15 @@ JOIN information_schema.table_constraints tc
 WHERE tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = ?`, table)
 	if err != nil {
 		// check_constraints predates 8.0.16; nothing to widen if the view
-		// is absent, because the constraint cannot exist either.
-		return nil
+		// is absent (ER_UNKNOWN_TABLE 1109 / ER_NO_SUCH_TABLE 1146),
+		// because the constraint cannot exist either. Any other query
+		// failure is real — swallowing it would silently skip widening
+		// and leave `up` unable to record the applying status.
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && (mysqlErr.Number == 1109 || mysqlErr.Number == 1146) {
+			return nil
+		}
+		return fmt.Errorf("inspecting %s constraints: %w", table, err)
 	}
 	var name, clause string
 	found := false
@@ -96,6 +106,9 @@ WHERE tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = ?`, table)
 	if !found || strings.Contains(clause, string(ledger.StatusApplying)) {
 		return nil
 	}
+	// The constraint name comes from information_schema (second-order
+	// data): double any backtick so it cannot break out of the identifier.
+	name = strings.ReplaceAll(name, "`", "``")
 	if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s DROP CHECK `%s`", table, name)); err != nil {
 		return fmt.Errorf("dropping the old status constraint on %s: %w", table, err)
 	}

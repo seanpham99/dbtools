@@ -145,7 +145,7 @@ from pydantic import BaseModel, Field
 {{ range $i, $t := .Tables }}{{ if $i }}
 
 {{ end }}class {{ $t.ClassName }}(BaseModel):
-    """{{ $t.Schema }}.{{ $t.Name }}"""
+    """{{ pyStr $t.Schema }}.{{ pyStr $t.Name }}"""
 {{ range $t.Columns }}
     {{ .PyName }}: {{ if .IsNullable }}Optional[{{ .PythonType }}] = Field(alias={{ printf "%q" .Name }}){{ else }}{{ .PythonType }} = Field(alias={{ printf "%q" .Name }}){{ end }}{{ end }}
 {{ end }}`
@@ -345,7 +345,14 @@ func Render(tables []TableSchema, target string) (string, error) {
 	}
 	data.TypingImports = typingImports(data.NeedAny, data.NeedOptional)
 
-	tmpl, err := template.New("pydantic").Parse(pydanticTemplate)
+	tmpl, err := template.New("pydantic").Funcs(template.FuncMap{
+		// Catalog names reach a Python docstring; escape backslashes and
+		// double quotes so a hostile table name cannot inject Python.
+		"pyStr": func(s string) string {
+			s = strings.ReplaceAll(s, `\`, `\\`)
+			return strings.ReplaceAll(s, `"`, `\"`)
+		},
+	}).Parse(pydanticTemplate)
 	if err != nil {
 		return "", fmt.Errorf("parsing pydantic template: %w", err)
 	}

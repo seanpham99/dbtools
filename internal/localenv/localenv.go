@@ -44,6 +44,12 @@ func ensureGitignored() error {
 }
 
 func Write(vars map[string]string) error {
+	// Refuse to write through a symlinked .dbtools: a planted symlink would
+	// redirect the generated local URL (which carries a credential) to an
+	// attacker-chosen target.
+	if info, err := os.Lstat(Dir); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s is a symlink; refusing to write %s", Dir, Path())
+	}
 	if err := os.MkdirAll(Dir, 0o755); err != nil {
 		return fmt.Errorf("creating %s: %w", Dir, err)
 	}
@@ -53,13 +59,37 @@ func Write(vars map[string]string) error {
 
 	var builder strings.Builder
 	for key, value := range vars {
+		if key == "" || strings.ContainsAny(key, "=\x00\n\r") {
+			return fmt.Errorf("invalid environment variable name %q; refusing to write it to %s", key, Path())
+		}
+		if strings.ContainsAny(value, "\n\r") {
+			return fmt.Errorf("value for %s contains a newline; refusing to write it to %s", key, Path())
+		}
 		builder.WriteString(key)
 		builder.WriteString("=")
 		builder.WriteString(value)
 		builder.WriteString("\n")
 	}
 
-	if err := os.WriteFile(Path(), []byte(builder.String()), 0o600); err != nil {
+	// Refuse a symlinked local.env — a planted symlink would redirect the
+	// credential-bearing URL to an attacker-chosen target. (Lstat pre-check
+	// rather than O_NOFOLLOW, which the os package does not expose
+	// portably; the race window here is not part of the threat model.)
+	if info, err := os.Lstat(Path()); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s is a symlink; refusing to write it", Path())
+	}
+	// The mode only applies at creation, so re-open with explicit perms and
+	// re-Chmod to enforce 0600 on a pre-existing file that a permissive
+	// umask or backup restore loosened.
+	f, err := os.OpenFile(Path(), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("writing %s: %w", Path(), err)
+	}
+	defer f.Close()
+	if err := f.Chmod(0o600); err != nil {
+		return fmt.Errorf("enforcing 0600 on %s: %w", Path(), err)
+	}
+	if _, err := f.WriteString(builder.String()); err != nil {
 		return fmt.Errorf("writing %s: %w", Path(), err)
 	}
 	return nil

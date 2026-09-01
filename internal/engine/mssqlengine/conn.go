@@ -6,6 +6,8 @@ import (
 	"net/url"
 
 	_ "github.com/microsoft/go-mssqldb"
+
+	"github.com/seanpham99/dbtools/internal/redact"
 )
 
 // RewriteToSQLServerScheme rewrites rawURL's scheme from dbtools's own
@@ -16,7 +18,7 @@ import (
 func RewriteToSQLServerScheme(rawURL string) (string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return "", fmt.Errorf("parsing mssql:// URL: %w", err)
+		return "", fmt.Errorf("parsing mssql:// URL %q: %w", redact.URL(rawURL), redact.ParseError(err))
 	}
 	u.Scheme = "sqlserver"
 	return u.String(), nil

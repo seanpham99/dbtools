@@ -10,6 +10,8 @@ import (
 	_ "github.com/lib/pq"
 	_ "github.com/microsoft/go-mssqldb"
 	_ "modernc.org/sqlite"
+
+	"github.com/seanpham99/dbtools/internal/redact"
 )
 
 // Open opens a database connection for tests across MSSQL, Postgres, SQLite, or MySQL.
@@ -20,7 +22,7 @@ func Open(rawURL string) (*sql.DB, error) {
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("parsing URL: %w", err)
+		return nil, fmt.Errorf("parsing URL %q: %w", redact.URL(rawURL), redact.ParseError(err))
 	}
 	switch u.Scheme {
 	case "mssql":

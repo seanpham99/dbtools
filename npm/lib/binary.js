@@ -2,13 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
-const http = require('http');
+const crypto = require('crypto');
 const zlib = require('zlib');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 const pkg = require('../package.json');
 
 const REPO = 'seanpham99/dbtools';
+const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
 function getPlatformInfo() {
   const platform = process.platform;
@@ -41,15 +42,27 @@ function getPlatformInfo() {
 }
 
 function getCacheDir(version) {
+  if (!VERSION_RE.test(version)) {
+    throw new Error(`Invalid dbtools version: ${JSON.stringify(version)}`);
+  }
   const base = process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache');
   return path.join(base, 'dbtools', `v${version}`);
 }
 
+function isValidVersion(version) {
+  return VERSION_RE.test(version);
+}
+
+// HTTPS only: a redirect to any non-https URL is refused, so a MITM cannot
+// downgrade the download to plaintext.
 function downloadFile(url) {
   return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : http;
-    client.get(url, { headers: { 'User-Agent': 'dbtools-npx-installer' } }, (res) => {
+    https.get(url, { headers: { 'User-Agent': 'dbtools-npx-installer' } }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        if (!res.headers.location.startsWith('https://')) {
+          res.resume();
+          return reject(new Error(`Refusing non-HTTPS redirect to ${res.headers.location}`));
+        }
         return downloadFile(res.headers.location).then(resolve).catch(reject);
       }
       if (res.statusCode !== 200) {
@@ -61,6 +74,29 @@ function downloadFile(url) {
       res.on('error', reject);
     }).on('error', reject);
   });
+}
+
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+// checksums.txt is goreleaser's "<sha256>  <filename>" listing for the release.
+// Verification fails closed: no checksum entry or a mismatch aborts the install.
+function verifyChecksum(buffer, checksumsTxt, archiveName) {
+  const lines = checksumsTxt.toString('utf8').split('\n');
+  for (const line of lines) {
+    const match = line.match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/);
+    if (!match) continue;
+    if (path.basename(match[2].trim()) === archiveName) {
+      const expected = match[1].toLowerCase();
+      const actual = sha256(buffer);
+      if (actual !== expected) {
+        throw new Error(`Checksum mismatch for ${archiveName}: expected ${expected}, got ${actual}`);
+      }
+      return;
+    }
+  }
+  throw new Error(`No checksum found for ${archiveName} in checksums.txt`);
 }
 
 function extractTarGz(buffer, targetBinaryName) {
@@ -98,6 +134,23 @@ function extractTarGz(buffer, targetBinaryName) {
   throw new Error(`Binary ${targetBinaryName} not found in archive`);
 }
 
+// Atomic install: write to a unique temp file next to the target (PID +
+// random suffix, so concurrent installs of the same version never share a
+// path), then rename so a partial download never becomes the cached
+// executable. The temp file is removed if anything before the rename fails.
+function installBinary(binData, cachedBin, platform) {
+  const tempBin = `${cachedBin}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(tempBin, binData);
+    if (platform !== 'win32') {
+      fs.chmodSync(tempBin, 0o755);
+    }
+    fs.renameSync(tempBin, cachedBin);
+  } finally {
+    try { fs.unlinkSync(tempBin); } catch (_) {}
+  }
+}
+
 async function getBinaryPath() {
   if (process.env.DBTOOLS_BINARY_PATH && fs.existsSync(process.env.DBTOOLS_BINARY_PATH)) {
     return process.env.DBTOOLS_BINARY_PATH;
@@ -116,24 +169,37 @@ async function getBinaryPath() {
   fs.mkdirSync(cacheDir, { recursive: true });
 
   const archiveName = `dbtools_${version}_${osName}_${archName}.${ext}`;
-  const downloadUrl = `https://github.com/${REPO}/releases/download/v${version}/${archiveName}`;
+  const releaseBase = `https://github.com/${REPO}/releases/download/v${version}`;
+  const downloadUrl = `${releaseBase}/${archiveName}`;
 
   process.stderr.write(`Downloading dbtools v${version} for ${osName}/${archName}...\n`);
   const archiveBuf = await downloadFile(downloadUrl);
 
+  const checksumsTxt = await downloadFile(`${releaseBase}/checksums.txt`);
+  verifyChecksum(archiveBuf, checksumsTxt, archiveName);
+
   if (ext === 'tar.gz') {
     const binData = extractTarGz(archiveBuf, binName);
-    fs.writeFileSync(cachedBin, binData);
+    installBinary(binData, cachedBin, platform);
   } else {
-    // Windows zip handling
-    const tempZip = path.join(cacheDir, archiveName);
-    fs.writeFileSync(tempZip, archiveBuf);
-    execSync(`powershell -command "Expand-Archive -Path '${tempZip}' -DestinationPath '${cacheDir}' -Force"`);
-    try { fs.unlinkSync(tempZip); } catch (_) {}
-  }
-
-  if (platform !== 'win32') {
-    fs.chmodSync(cachedBin, 0o755);
+    // Windows zip handling. Paths are interpolated into a PowerShell
+    // command string, so single quotes are doubled (PowerShell's escape)
+    // and -LiteralPath/-DestinationPath keep wildcards out; the archive is
+    // extracted into a private temp directory so an interrupted run never
+    // leaves a partial file at cachedBin, which the next run would trust.
+    const psQuote = (s) => s.replace(/'/g, "''");
+    const tempDir = path.join(cacheDir, `.extract-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+    const tempZip = path.join(tempDir, archiveName);
+    try {
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(tempZip, archiveBuf);
+      execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-command',
+        `Expand-Archive -LiteralPath '${psQuote(tempZip)}' -DestinationPath '${psQuote(tempDir)}' -Force`]);
+      const binData = fs.readFileSync(path.join(tempDir, binName));
+      installBinary(binData, cachedBin, platform);
+    } finally {
+      try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
+    }
   }
 
   return cachedBin;
@@ -142,5 +208,9 @@ async function getBinaryPath() {
 module.exports = {
   getBinaryPath,
   getPlatformInfo,
-  extractTarGz
+  extractTarGz,
+  isValidVersion,
+  verifyChecksum,
+  sha256,
+  downloadFile
 };
