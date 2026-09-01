@@ -21,6 +21,8 @@ import (
 	"database/sql"
 	"fmt"
 	"hash/fnv"
+	"sync"
+	"time"
 )
 
 // Lock is a held advisory lock. Release must be called to hand it back;
@@ -32,21 +34,39 @@ type Lock struct {
 	// release have to run on the same connection — a pooled *sql.DB would
 	// happily release on a different one, silently doing nothing.
 	conn *sql.Conn
+	once   sync.Once
+	relErr error
 }
 
 // Release hands the lock back and returns the connection to the pool.
-// Safe to call more than once; only the first call does anything.
+// Safe to call more than once, from any goroutine; only the first call
+// does anything.
 func (l *Lock) Release(ctx context.Context) error {
-	if l == nil || l.conn == nil {
+	if l == nil {
 		return nil
 	}
-	relErr := l.release(ctx)
-	closeErr := l.conn.Close()
-	l.conn = nil
-	if relErr != nil {
-		return relErr
-	}
-	return closeErr
+	l.once.Do(func() {
+		if l.conn == nil {
+			return // already released, or never acquired
+		}
+		// A cancelled run context would fail the advisory-lock release
+		// even though conn.Close() below frees the session-scoped lock
+		// anyway. Cleanup runs on a fresh short-lived context so a
+		// cancelled run never reports a spurious lock error.
+		if ctx == nil || ctx.Err() != nil {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+		}
+		relErr := l.release(ctx)
+		closeErr := l.conn.Close()
+		l.conn = nil
+		l.relErr = relErr
+		if l.relErr == nil {
+			l.relErr = closeErr
+		}
+	})
+	return l.relErr
 }
 
 // Acquirer takes an engine's advisory lock on conn. Implementations block
@@ -70,7 +90,7 @@ func Acquire(ctx context.Context, db *sql.DB, key string, acquire Acquirer, rele
 		return nil, fmt.Errorf("opening a connection for the migration lock: %w", err)
 	}
 	if err := acquire(ctx, conn, key); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("acquiring the migration lock: %w", err)
 	}
 	return &Lock{

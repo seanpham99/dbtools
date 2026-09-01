@@ -11,9 +11,17 @@ type Model struct {
 	cfg     *config.Config
 	collect CollectFunc
 	table   table.Model
+	// refreshID monotonically increases per refresh so a slower, older
+	// BuildRows result can never overwrite a newer one (bubbletea runs
+	// Cmds on their own goroutines; two in-flight refreshes race).
+	refreshID int
 }
 
-type rowsMsg []Row
+// rowsMsg carries the refresh it answers, so Update can drop stale results.
+type rowsMsg struct {
+	id   int
+	rows []Row
+}
 
 func NewModel(cfg *config.Config, collect CollectFunc) Model {
 	columns := []table.Column{
@@ -21,7 +29,7 @@ func NewModel(cfg *config.Config, collect CollectFunc) Model {
 		{Title: "Status", Width: 48},
 	}
 	t := table.New(table.WithColumns(columns), table.WithFocused(true))
-	return Model{cfg: cfg, collect: collect, table: t}
+	return Model{cfg: cfg, collect: collect, table: t, refreshID: 1}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -29,9 +37,9 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) refreshCmd() tea.Cmd {
-	cfg, collect := m.cfg, m.collect
+	cfg, collect, id := m.cfg, m.collect, m.refreshID
 	return func() tea.Msg {
-		return rowsMsg(BuildRows(cfg, collect))
+		return rowsMsg{id: id, rows: BuildRows(cfg, collect)}
 	}
 }
 
@@ -42,10 +50,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "r":
+			m.refreshID++
 			return m, m.refreshCmd()
 		}
 	case rowsMsg:
-		m.table.SetRows(ToTableRows(msg))
+		if msg.id == m.refreshID {
+			m.table.SetRows(ToTableRows(msg.rows))
+		}
 		return m, nil
 	}
 
