@@ -77,3 +77,15 @@ CREATE TABLE dbtools_migration_history (
 		t.Fatalf("SetStatusAdopted() after ensureSchema migration returned error: %v", err)
 	}
 }
+
+func TestEnsureSchema_SuppressesAlreadyExistsNotices(t *testing.T) {
+	db := openTestDB(t)
+	store := ledgerStore{}
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
+		t.Fatal(err)
+	}
+	// Second ensureSchema runs ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
+	if err := store.ensureSchema(db, "dbtools_migration_history"); err != nil {
+		t.Fatalf("second ensureSchema() returned error: %v", err)
+	}
+}
