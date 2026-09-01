@@ -96,6 +96,9 @@ WHERE tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = ?`, table)
 	if !found || strings.Contains(clause, string(ledger.StatusApplying)) {
 		return nil
 	}
+	// The constraint name comes from information_schema (second-order
+	// data): double any backtick so it cannot break out of the identifier.
+	name = strings.ReplaceAll(name, "`", "``")
 	if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s DROP CHECK `%s`", table, name)); err != nil {
 		return fmt.Errorf("dropping the old status constraint on %s: %w", table, err)
 	}

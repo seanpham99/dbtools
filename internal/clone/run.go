@@ -123,7 +123,7 @@ func copyTable(sourceDB, destDB *sql.DB, engineName string, tbl generate.TableSc
 	}
 	defer rows.Close()
 
-	if _, err := destDB.Exec(fmt.Sprintf("DELETE FROM %s", tbl.Name)); err != nil {
+	if _, err := destDB.Exec(fmt.Sprintf("DELETE FROM %s", quoteIdentifier(engineName, tbl.Name))); err != nil {
 		return nil, fmt.Errorf("clearing dest %s: %w", tbl.Name, err)
 	}
 

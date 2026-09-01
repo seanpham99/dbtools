@@ -56,7 +56,7 @@ FROM sys.check_constraints cc
 WHERE cc.parent_object_id = OBJECT_ID(N'%[1]s') AND cc.definition LIKE '%%status%%';
 IF @name IS NOT NULL AND @def NOT LIKE '%%%[2]s%%'
 BEGIN
-    EXEC('ALTER TABLE %[1]s DROP CONSTRAINT [' + @name + ']');
+    EXEC('ALTER TABLE %[1]s DROP CONSTRAINT [' + REPLACE(@name, ']', ']]') + ']');
     ALTER TABLE %[1]s ADD CONSTRAINT %[1]s_status_check CHECK (status IN (%[3]s));
 END;`, table, ledger.StatusApplying, ledger.StatusList()))
 	if err != nil {

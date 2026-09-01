@@ -35,6 +35,13 @@ type Runner struct {
 // db is not closed by the Runner; the caller owns it, because callers
 // generally need the same connection for the ledger and drift checks.
 func NewRunner(eng engine.Engine, db *sql.DB, dir *Dir, ledgerTable string) *Runner {
+	// Chokepoint: the ledger table name is inlined into SQL by every
+	// engine (identifiers cannot be bind parameters), so validate here
+	// once instead of trusting every caller to have passed a name that
+	// came from cfg.LedgerTableName().
+	if err := ledger.ValidateTableName(ledgerTable); err != nil {
+		panic("migrator: " + err.Error())
+	}
 	return &Runner{
 		eng:         eng,
 		db:          db,

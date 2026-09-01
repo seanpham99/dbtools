@@ -113,9 +113,12 @@ type State struct {
 // so it lives here once rather than four times: engines delegate to it
 // instead of each carrying a copy that could drift.
 //
-// table must already have passed ValidateTableName — it is inlined, because
-// table names cannot be bind parameters.
+// table is inlined (it cannot be a bind parameter), so QueryState validates
+// it itself rather than trusting callers to have done so.
 func QueryState(db DBTX, table string) (State, error) {
+	if err := ValidateTableName(table); err != nil {
+		return State{}, err
+	}
 	var applied, applying sql.NullInt64
 	query := fmt.Sprintf(
 		`SELECT (SELECT MAX(version) FROM %[1]s WHERE status = '%[2]s'),
