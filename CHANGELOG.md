@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.2](https://github.com/seanpham99/dbtools/compare/v0.7.1...v0.7.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* json output contract, adopt orphans gate, connection/error polish ([#105](https://github.com/seanpham99/dbtools/issues/105)) ([2e22217](https://github.com/seanpham99/dbtools/commit/2e222171de85d68c80b6bf9be0638f5760033e81))
+* security audit remediation ([#103](https://github.com/seanpham99/dbtools/issues/103)) ([87e0f36](https://github.com/seanpham99/dbtools/commit/87e0f363d139e10aa1a256ff251c343b19eea009))
+
 ## [0.7.1](https://github.com/seanpham99/dbtools/compare/v0.7.0...v0.7.1) (2026-08-27)
 
 
