@@ -59,6 +59,9 @@ func Write(vars map[string]string) error {
 
 	var builder strings.Builder
 	for key, value := range vars {
+		if key == "" || strings.ContainsAny(key, "=\x00\n\r") {
+			return fmt.Errorf("invalid environment variable name %q; refusing to write it to %s", key, Path())
+		}
 		if strings.ContainsAny(value, "\n\r") {
 			return fmt.Errorf("value for %s contains a newline; refusing to write it to %s", key, Path())
 		}
