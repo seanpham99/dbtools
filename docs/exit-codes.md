@@ -17,7 +17,7 @@
 ### `dbtools plan`
 - **Exit 0**: All configured targets are fully up to date with 0 pending migrations, 0 drift, and clean ledger cursors.
 - **Exit 1**: Failed to reach one or more targets, invalid configuration, or execution failure.
-- **Exit 2**: One or more targets have pending unapplied migrations, schema drift, or dirty ledger cursors.
+- **Exit 2**: One or more targets have pending unapplied migrations, schema drift, dirty ledger cursors, or migration files that sit below the watermark and can never be applied (see [Below-watermark migration files](#below-watermark-migration-files)).
 
 ### `dbtools verify <target>`
 - **Exit 0**: Database matches the migration ledger cleanly (all applied objects exist and hashes match).
@@ -30,12 +30,54 @@
 - **Exit 2**: Structural differences found (`MISSING`, `EXTRA`, or `CHANGED` objects).
 
 ### `dbtools up` & `dbtools push <target>`
-- **Exit 0**: Migrations applied successfully (or dry-run printed).
+- **Exit 0**: Migrations applied successfully (or dry-run printed), and nothing was passed over.
 - **Exit 1**: Apply failed partway (cursor marked dirty), connection error, or missing `--yes` on protected targets.
+- **Exit 2**: The target holds one or more migration files whose version is below its current
+  watermark and which were never applied — files `up`/`push` cannot reach, because both only step
+  forward from the watermark. The command prints every ignored path and exits 2 instead of reporting
+  a clean run; see [Below-watermark migration files](#below-watermark-migration-files).
 
 ### `dbtools down <target>` & `dbtools rollback <target>`
 - **Exit 0**: Down migrations executed or soft-revert recorded in ledger.
 - **Exit 1**: Missing `.down.sql` file, connection error, or missing `--yes` on protected targets.
+
+---
+
+## Below-watermark migration files
+
+`up` and `push` apply only the files above the target's current watermark (the highest applied
+version in the ledger). A migration file whose version is **below** that watermark and which the
+ledger does not list as applied can therefore never be applied by any future run: the tool would
+print `now at version <watermark> (0 pending)`, exit `0`, and leave the file unapplied forever.
+
+That state is a reported condition, not a silent skip:
+
+- `status` names each such file under its target line, prefixed `ignored:`.
+- `status --json` exposes them in the `ignored` field: a list of migration file paths, **always
+  present** — `[]` when there are none, never absent and never `null`. `plan --json`, `up --json`
+  and `push --json` carry the same field.
+- `up` and `push` print every ignored path and exit **`2`** (pending/drift: a human has to decide),
+  rather than exiting `0` with a clean-looking report.
+- `plan` exits **`2`** as well, so an agent that previews before applying is not told a target with
+  permanently unapplied files is safe to apply.
+
+Nothing is repaired automatically — `up` will not apply a below-watermark file out of order. The
+remedies are to renumber the file above the watermark, or to revert the newer migrations
+(`down`/`rollback`) and re-run `up` so the file becomes pending again.
+
+```console
+$ dbtools status local
+local       up to date
+            1 migration file(s) below the watermark (v20260103000000) that will never be applied:
+              ignored: migrations/20260102000000_b.sql
+$ dbtools up local
+local: now at version 20260103000000 (0 pending)
+local: 1 migration file(s) below the current watermark (v20260103000000) were skipped and will never be applied:
+local:   migrations/20260102000000_b.sql
+local: 1 migration file(s) below the current watermark (v20260103000000) are permanently unapplied (see the paths above) — renumber them above the watermark, or revert the newer migrations and re-run the command
+$ echo $?
+2
+```
 
 ---
 
@@ -57,7 +99,8 @@ Every `dbtools` command supports universal `--json`:
   `omitempty`: `false` and `[]` are emitted explicitly. Absence means the
   field does not exist in this version of the tool, not "false".
   (Exception: `error` — genuinely optional.)
-- **Empty lists are `[]`, never `null`.** A nil slice is a bug.
+- **Empty lists are `[]`, never `null`.** A nil slice is a bug. (`pending`,
+  `ignored`, `drift` are the list fields on the status/plan payloads.)
 - **Consumers should validate the shape and fail closed** on any field they
   don't recognise, rather than defaulting silently.
 

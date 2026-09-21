@@ -61,6 +61,10 @@ func runPush(targetName string) (err error) {
 	}
 	if len(preview.Pending) == 0 {
 		if jsonOutput {
+			ignored := preview.Ignored
+			if ignored == nil {
+				ignored = []string{}
+			}
 			b, err := json.Marshal(struct {
 				statusinfo.Status
 				OK bool `json:"ok"`
@@ -71,6 +75,7 @@ func runPush(targetName string) (err error) {
 					HasVersion:     preview.HasVersion,
 					Dirty:          preview.Dirty,
 					Pending:        []string{},
+					Ignored:        ignored,
 				},
 				OK: true,
 			})
@@ -78,10 +83,10 @@ func runPush(targetName string) (err error) {
 				return err
 			}
 			fmt.Println(string(b))
-			return nil
+			return belowWatermarkRefusal(preview)
 		}
 		logger.Infof("%s: already up to date, nothing to push", targetName)
-		return nil
+		return belowWatermarkRefusal(preview)
 	}
 
 	if !pushYes {
@@ -112,7 +117,7 @@ func runPush(targetName string) (err error) {
 	}
 
 	logger.Infof("%s: now at version %d (%d pending)", status.Target, status.CurrentVersion, len(status.Pending))
-	return nil
+	return belowWatermarkRefusal(status)
 }
 
 func init() {

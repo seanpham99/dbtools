@@ -193,6 +193,41 @@ func (d *Dir) PendingVersions(currentVersion uint64, hasVersion bool) []uint64 {
 	return versions
 }
 
+// BelowWatermark returns the up-migration files that can no longer be
+// applied: their version is strictly below currentVersion (the watermark)
+// and the ledger's applied set does not contain them.
+//
+// PendingAfter only ever yields files above the watermark, so a file in
+// this state is passed over by every future `up` — silently, in a run that
+// still exits 0. Naming those files is what lets `status` and `up` tell
+// "nothing to do" apart from "something was skipped forever".
+//
+// hasVersion false means no migration has ever been applied (or the ledger
+// is missing). With no watermark there is nothing to fall below, so the
+// result is empty: every file is still pending.
+//
+// Files come back in ascending version order, like every other Dir listing.
+func (d *Dir) BelowWatermark(currentVersion uint64, hasVersion bool, applied []uint64) []File {
+	if !hasVersion {
+		return nil
+	}
+	isApplied := make(map[uint64]struct{}, len(applied))
+	for _, v := range applied {
+		isApplied[v] = struct{}{}
+	}
+	var skipped []File
+	for _, f := range d.upFiles {
+		if f.Version >= currentVersion {
+			continue
+		}
+		if _, ok := isApplied[f.Version]; ok {
+			continue
+		}
+		skipped = append(skipped, f)
+	}
+	return skipped
+}
+
 // DownPlan returns the list of down migration files to apply in reverse order (newest first)
 // for the given applied versions (which are in ascending order), up to steps count.
 // If steps <= 0 or steps >= len(appliedVersions), all applied versions are planned.
