@@ -113,7 +113,7 @@ func runPush(targetName string) (err error) {
 			return err
 		}
 		fmt.Println(string(b))
-		return nil
+		return belowWatermarkRefusal(status)
 	}
 
 	logger.Infof("%s: now at version %d (%d pending)", status.Target, status.CurrentVersion, len(status.Pending))
