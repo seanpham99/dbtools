@@ -60,11 +60,40 @@ func runUp() error {
 			return err
 		}
 		fmt.Println(string(b))
-		return nil
+		return belowWatermarkRefusal(status)
 	}
 
 	logger.Infof("%s: now at version %d (%d pending)", status.Target, status.CurrentVersion, len(status.Pending))
-	return nil
+	return belowWatermarkRefusal(status)
+}
+
+// belowWatermarkRefusal fails a run when the target holds migration files
+// that sit below its current watermark and were never applied.
+//
+// Both `up` and `push` step forward from the watermark only, so those files
+// are passed over on this run and on every later one. Exiting 0 with
+// "0 pending" makes that indistinguishable from a correct, fully-applied
+// target — the defect this guards against — so the run prints every ignored
+// path and returns the documented exit 2 (drift/pending: inspection found
+// something that needs a human). Nothing is repaired automatically:
+// applying a migration out of order is not this tool's decision to make.
+//
+// The refusal is reported on stderr by the logger and the error carries an
+// empty message, like the other exit-2 commands (`diff`, `verify`, `plan`):
+// main.go prints ExitCodeError.Message as well as cobra printing it, so a
+// non-empty message here would print the same paragraph twice.
+func belowWatermarkRefusal(status *statusinfo.Status) error {
+	if status == nil || len(status.Ignored) == 0 {
+		return nil
+	}
+	logger.Errorf("%s: %d migration file(s) below the current watermark (v%d) were skipped and will never be applied:",
+		status.Target, len(status.Ignored), status.CurrentVersion)
+	for _, path := range status.Ignored {
+		logger.Errorf("%s:   %s", status.Target, path)
+	}
+	logger.Errorf("%s: renumber them above v%d (`dbtools new`), or record the version you actually applied with `dbtools repair %s <version>:applied` — nothing is applied out of order",
+		status.Target, status.CurrentVersion, status.Target)
+	return ExitCode(2, "")
 }
 
 func init() {

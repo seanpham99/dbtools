@@ -14,6 +14,15 @@ type Status struct {
 	HasVersion     bool     `json:"has_version"`
 	Dirty          bool     `json:"dirty"`
 	Pending        []string `json:"pending"`
+	// Ignored lists migration files that sit below CurrentVersion but
+	// were never applied — the state `up` cannot act on, because it only
+	// steps forward from the watermark.
+	//
+	// Paths, not bare filenames: the file is a thing on disk the operator
+	// has to find and renumber, and this is the value `up` prints when it
+	// refuses to exit 0. Always non-nil ([] when there are none), per the
+	// JSON contract in docs/exit-codes.md.
+	Ignored []string `json:"ignored"`
 }
 
 // TargetResult is the outcome of collecting status for a single named target.
@@ -47,12 +56,20 @@ func Collect(databaseURL, engineName, migrationsDir, upSuffix, ledgerTable, targ
 	// ledger do not, and reporting those as "no version, everything
 	// pending" would hide the real fault behind a plausible answer.
 	var state ledger.State
+	// applied is the ledger's full applied set, needed (not just the
+	// watermark) to tell an already-applied file below the watermark from
+	// one that was never applied and never will be — see BelowWatermark.
+	var applied []uint64
 	exists, err := engine.TableExists(eng, db, ledgerTable)
 	if err != nil {
 		return nil, err
 	}
 	if exists {
 		state, err = eng.Ledger().State(db, ledgerTable)
+		if err != nil {
+			return nil, err
+		}
+		applied, err = eng.Ledger().AppliedVersions(db, ledgerTable)
 		if err != nil {
 			return nil, err
 		}
@@ -63,12 +80,18 @@ func Collect(databaseURL, engineName, migrationsDir, upSuffix, ledgerTable, targ
 		return nil, err
 	}
 
+	ignored := []string{}
+	for _, f := range d.BelowWatermark(state.Version, state.HasVersion, applied) {
+		ignored = append(ignored, f.Path)
+	}
+
 	return &Status{
 		Target:         targetName,
 		CurrentVersion: state.Version,
 		HasVersion:     state.HasVersion,
 		Dirty:          state.Dirty,
 		Pending:        d.PendingFilenames(state.Version, state.HasVersion),
+		Ignored:        ignored,
 	}, nil
 }
 

@@ -54,9 +54,13 @@ type planJSONEntry struct {
 	HasVersion     bool     `json:"has_version"`
 	Dirty          bool     `json:"dirty"`
 	Pending        []string `json:"pending"`
-	Drift          []string `json:"drift"`
-	LedgerSkipped  bool     `json:"ledger_skipped"`
-	Error          string   `json:"error,omitempty"`
+	// Ignored lists migration files below the watermark that `up` can no
+	// longer apply. A target in this state is not safe to apply, which is
+	// why it (like pending and drift) makes plan exit 2.
+	Ignored       []string `json:"ignored"`
+	Drift         []string `json:"drift"`
+	LedgerSkipped bool     `json:"ledger_skipped"`
+	Error         string   `json:"error,omitempty"`
 }
 
 func runPlan() error {
@@ -79,7 +83,11 @@ func runPlan() error {
 		if e.Error != "" {
 			hasError = true
 		}
-		if len(e.Pending) > 0 || len(e.Drift) > 0 || e.Dirty {
+		// Ignored is a third "needs attention" state alongside pending and
+		// drift: those files will never be applied by `up`, so a plan that
+		// exited 0 here would tell an agent to apply a target that cannot
+		// become correct.
+		if len(e.Pending) > 0 || len(e.Ignored) > 0 || len(e.Drift) > 0 || e.Dirty {
 			hasDriftOrPending = true
 		}
 	}
@@ -102,6 +110,7 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 			entries = append(entries, planJSONEntry{
 				Target:  r.Target,
 				Pending: []string{},
+				Ignored: []string{},
 				Drift:   []string{},
 				Error:   r.Err.Error(),
 			})
@@ -111,6 +120,10 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 		pending := s.Pending
 		if pending == nil {
 			pending = []string{}
+		}
+		ignored := s.Ignored
+		if ignored == nil {
+			ignored = []string{}
 		}
 		drift := []string{}
 		var ledgerSkipped bool
@@ -135,6 +148,7 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 			HasVersion:     s.HasVersion,
 			Dirty:          s.Dirty,
 			Pending:        pending,
+			Ignored:        ignored,
 			Drift:          drift,
 			LedgerSkipped:  ledgerSkipped,
 		}

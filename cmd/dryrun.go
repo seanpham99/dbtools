@@ -10,6 +10,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
+	"github.com/seanpham99/dbtools/internal/statusinfo"
 )
 
 type dryRunMigration struct {
@@ -22,6 +23,12 @@ type dryRunResult struct {
 	Target  string            `json:"target"`
 	DryRun  bool              `json:"dry_run"`
 	Pending []dryRunMigration `json:"pending"`
+	// Ignored names migration files that sit below the target's watermark
+	// and have no applied ledger row: this command can never apply them, so
+	// a dry run that stayed silent about them would read as "nothing to do"
+	// on a target that is not in the state its directory describes.
+	// Never nil: the JSON contract emits `[]`, not `null`.
+	Ignored []string `json:"ignored"`
 }
 
 func runDryRun(cfg *config.Config, targetName, urlOverride string) error {
@@ -67,6 +74,21 @@ func runDryRun(cfg *config.Config, targetName, urlOverride string) error {
 
 	pending := dir.PendingAfter(curVer, hasVer)
 
+	// PendingAfter only looks forward, so the files this target passed over
+	// are invisible to it. Only the ledger's applied set can tell a file
+	// that was never applied from one that is simply history; reading it
+	// needs the ledger table, which exists exactly when HasVersion is set.
+	ignoredPaths := []string{}
+	if hasVer {
+		applied, err := eng.Ledger().AppliedVersions(db, ledgerTable)
+		if err != nil {
+			return err
+		}
+		for _, f := range dir.BelowWatermark(curVer, hasVer, applied) {
+			ignoredPaths = append(ignoredPaths, f.Path)
+		}
+	}
+
 	items := make([]dryRunMigration, 0, len(pending))
 	for _, f := range pending {
 		sqlBytes, err := os.ReadFile(f.Path)
@@ -85,17 +107,20 @@ func runDryRun(cfg *config.Config, targetName, urlOverride string) error {
 			Target:  targetName,
 			DryRun:  true,
 			Pending: items,
+			Ignored: ignoredPaths,
 		})
 		if err != nil {
 			return err
 		}
 		fmt.Println(string(b))
-		return nil
+		return belowWatermarkDryRunRefusal(targetName, curVer, ignoredPaths)
 	}
 
 	if len(items) == 0 {
-		fmt.Printf("%s: already up to date, no pending migrations (dry-run)\n", targetName)
-		return nil
+		if len(ignoredPaths) == 0 {
+			fmt.Printf("%s: already up to date, no pending migrations (dry-run)\n", targetName)
+		}
+		return belowWatermarkDryRunRefusal(targetName, curVer, ignoredPaths)
 	}
 
 	fmt.Printf("%s: %d pending migration(s) (dry-run):\n\n", targetName, len(items))
@@ -104,5 +129,20 @@ func runDryRun(cfg *config.Config, targetName, urlOverride string) error {
 		fmt.Println(item.SQL)
 		fmt.Println()
 	}
-	return nil
+	return belowWatermarkDryRunRefusal(targetName, curVer, ignoredPaths)
+}
+
+// belowWatermarkDryRunRefusal routes the dry-run paths through the same
+// refusal reporter `up`/`push` use, so one state cannot be described two
+// different ways. A dry run has no statusinfo.Status of its own, so it is
+// constructed from the watermark and the ignored paths.
+func belowWatermarkDryRunRefusal(target string, watermark uint64, ignored []string) error {
+	if len(ignored) == 0 {
+		return nil
+	}
+	return belowWatermarkRefusal(&statusinfo.Status{
+		Target:         target,
+		CurrentVersion: watermark,
+		Ignored:        ignored,
+	})
 }

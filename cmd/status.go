@@ -56,9 +56,13 @@ type statusJSONEntry struct {
 	HasVersion     bool     `json:"has_version"`
 	Dirty          bool     `json:"dirty"`
 	Pending        []string `json:"pending"`
-	NoLedger       bool     `json:"no_ledger"`
-	Unconfigured   bool     `json:"unconfigured"`
-	Error          string   `json:"error,omitempty"`
+	// Ignored is always present ([] when there are none): it is the
+	// field an agent reads to find migration files that sit below the
+	// watermark and can never be applied by `up`.
+	Ignored      []string `json:"ignored"`
+	NoLedger     bool     `json:"no_ledger"`
+	Unconfigured bool     `json:"unconfigured"`
+	Error        string   `json:"error,omitempty"`
 }
 
 func collectStatuses(cfg *config.Config) ([]statusinfo.Status, []targetFailure) {
@@ -100,6 +104,15 @@ func renderStatusTable(results []statusinfo.TargetResult, noLedgerMap ...map[str
 			dirtyMark = " [DIRTY]"
 		}
 		fmt.Fprintf(&b, "%-10s  %s%s\n", s.Target, state, dirtyMark)
+		// Name the files `up` can never reach. "up to date" alone reads as
+		// success, and in this state it is the defect: the files are on
+		// disk, below the watermark, and no future run will apply them.
+		if len(s.Ignored) > 0 {
+			fmt.Fprintf(&b, "%-10s  %d migration file(s) below the watermark (v%d) that will never be applied:\n", "", len(s.Ignored), s.CurrentVersion)
+			for _, p := range s.Ignored {
+				fmt.Fprintf(&b, "%-10s    ignored: %s\n", "", p)
+			}
+		}
 		if noLedgers != nil && noLedgers[r.Target] {
 			fmt.Fprintf(&b, "%-10s  no dbtools ledger — run `dbtools adopt` to enable drift tracking\n", "")
 		}
@@ -159,12 +172,14 @@ func runStatus(targetNames ...string) error {
 				entries = append(entries, statusJSONEntry{
 					Target:       r.Target,
 					Pending:      []string{},
+					Ignored:      []string{},
 					Unconfigured: true,
 				})
 			} else if r.Err != nil {
 				entries = append(entries, statusJSONEntry{
 					Target:  r.Target,
 					Pending: []string{},
+					Ignored: []string{},
 					Error:   r.Err.Error(),
 				})
 			} else if r.Status != nil {
@@ -172,12 +187,17 @@ func runStatus(targetNames ...string) error {
 				if pending == nil {
 					pending = []string{}
 				}
+				ignored := r.Status.Ignored
+				if ignored == nil {
+					ignored = []string{}
+				}
 				entries = append(entries, statusJSONEntry{
 					Target:         r.Status.Target,
 					CurrentVersion: r.Status.CurrentVersion,
 					HasVersion:     r.Status.HasVersion,
 					Dirty:          r.Status.Dirty,
 					Pending:        pending,
+					Ignored:        ignored,
 					NoLedger:       noLedgers[r.Target],
 				})
 			}
