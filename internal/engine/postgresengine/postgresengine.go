@@ -6,6 +6,7 @@ package postgresengine
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/lib/pq"
 
@@ -45,15 +46,35 @@ func (Postgres) Name() string { return "postgres" }
 func (Postgres) Open(rawURL string) (*sql.DB, error) {
 	clean := dburl.StripCustomParams(rawURL)
 	connector, err := pq.NewConnector(clean)
+	var db *sql.DB
 	if err != nil {
 		// Fall back rather than fail: NewConnector is stricter than
 		// sql.Open about some DSN forms, and losing notices is better
 		// than refusing to connect at all.
-		return sql.Open("postgres", clean)
+		db, err = sql.Open("postgres", clean)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		db = sql.OpenDB(pq.ConnectorWithNoticeHandler(connector, func(n *pq.Error) {
+			logger.Infof("postgres: %s: %s", n.Severity, n.Message)
+		}))
 	}
-	return sql.OpenDB(pq.ConnectorWithNoticeHandler(connector, func(n *pq.Error) {
-		logger.Infof("postgres: %s: %s", n.Severity, n.Message)
-	})), nil
+
+	// sql.Open is lazy — without Ping, the first failure surfaces wherever
+	// the first query happens, formatted differently per command. Verifying
+	// connectivity here makes every caller's Open error the real connect
+	// error, and lets the SSL hint below reach status/plan/adopt/verify —
+	// the first-run commands where #102's failure actually occurs — rather
+	// than only migration execution.
+	if err := db.Ping(); err != nil {
+		db.Close()
+		if hint := SSLDiagnostic(err); hint != "" {
+			return nil, fmt.Errorf("connecting to postgres: %w\n\nHint: %s", err, hint)
+		}
+		return nil, fmt.Errorf("connecting to postgres: %w", err)
+	}
+	return db, nil
 }
 
 func (Postgres) DDL() engine.DDLDialect { return ddl{} }

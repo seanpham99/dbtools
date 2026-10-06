@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -101,6 +102,16 @@ func TestSSLDiagnostic(t *testing.T) {
 			name:     "non-pq error",
 			err:      errors.New("some io error"),
 			wantHint: false,
+		},
+		{
+			name:     "pq.ErrSSLNotSupported (the real lib/pq client-side refusal, not a *pq.Error)",
+			err:      pq.ErrSSLNotSupported,
+			wantHint: true,
+		},
+		{
+			name:     "wrapped pq.ErrSSLNotSupported",
+			err:      fmt.Errorf("connecting: %w", pq.ErrSSLNotSupported),
+			wantHint: true,
 		},
 		{
 			name: "08001 with ssl message",
