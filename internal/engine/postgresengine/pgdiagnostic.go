@@ -156,13 +156,23 @@ func RunPermissionDiagnostic(ctx context.Context, db Queryer, pqErr *pq.Error) s
 // lib/pq SSL mismatch: dbtools requires SSL by default (sslmode=require)
 // whereas many Postgres clients default to no SSL, so a DATABASE_URL that
 // works elsewhere can fail here with "pq: SSL is not enabled on the server".
+//
+// The failure reaches us two ways. When the server answers the SSLRequest
+// startup packet with 'N', lib/pq returns pq.ErrSSLNotSupported — a plain
+// error, NOT a *pq.Error — from connect before any server error field
+// exists. When the server does respond with an error record it is a
+// *pq.Error carrying SQLSTATE 08001 or a message naming ssl. Both must
+// match; testing only the *pq.Error arm misses the error a real
+// sslmode=require connection to a stock postgres container produces.
 func SSLDiagnostic(err error) string {
-	var pqErr *pq.Error
-	if !errors.As(err, &pqErr) || pqErr == nil {
+	if err == nil {
 		return ""
 	}
-	msg := strings.ToLower(pqErr.Message)
-	if pqErr.Code == "08001" && strings.Contains(msg, "ssl") || strings.Contains(msg, "ssl is not enabled") {
+	msg := strings.ToLower(err.Error())
+	var pqErr *pq.Error
+	if errors.Is(err, pq.ErrSSLNotSupported) ||
+		strings.Contains(msg, "ssl is not enabled") ||
+		(errors.As(err, &pqErr) && pqErr != nil && pqErr.Code == "08001" && strings.Contains(msg, "ssl")) {
 		return "dbtools connects with sslmode=require by default, unlike some other Postgres clients. If this server genuinely has no TLS (a local container, a CI service container), add ?sslmode=disable to the connection string."
 	}
 	return ""

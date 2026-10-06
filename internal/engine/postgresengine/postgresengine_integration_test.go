@@ -4,6 +4,7 @@ package postgresengine
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/seanpham99/dbtools/internal/ddlcheck"
@@ -123,5 +124,26 @@ func TestLiveLedgerDDLAndIntrospection(t *testing.T) {
 	cols := tables[*probe].Columns
 	if len(cols) != 3 || cols[0].PythonType != "int" || cols[1].PythonType != "str" || !cols[1].IsNullable || cols[2].PythonType != "datetime" {
 		t.Fatalf("Introspect() probe columns = %+v", cols)
+	}
+}
+
+// TestLiveOpenSSLHintOnDisabledServer reproduces the #102 failure against a
+// Postgres server with SSL disabled (stock postgres container): Open with a
+// URL that does not name sslmode must fail AND name the remedy.
+// DBTOOLS_TEST_POSTGRES_NOSSL_URL should be a postgres:// URL with no
+// sslmode parameter, pointing at a server without TLS.
+func TestLiveOpenSSLHintOnDisabledServer(t *testing.T) {
+	rawURL := os.Getenv("DBTOOLS_TEST_POSTGRES_NOSSL_URL")
+	if rawURL == "" {
+		t.Skip("DBTOOLS_TEST_POSTGRES_NOSSL_URL not set, skipping integration test")
+	}
+
+	db, err := Postgres{}.Open(rawURL)
+	if err == nil {
+		db.Close()
+		t.Skip("server accepted SSL — DBTOOLS_TEST_POSTGRES_NOSSL_URL does not exercise the hint path")
+	}
+	if !strings.Contains(err.Error(), "sslmode=disable") {
+		t.Fatalf("Open() error = %q, want it to name sslmode=disable", err.Error())
 	}
 }

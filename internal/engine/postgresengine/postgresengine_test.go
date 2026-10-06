@@ -26,12 +26,16 @@ func TestForTargetValidatesConfiguredEngine(t *testing.T) {
 	}
 }
 
-func TestOpenAcceptsPostgresURL(t *testing.T) {
-	db, err := Postgres{}.Open("postgres://user:pw@localhost:5432/db?sslmode=disable")
-	if err != nil {
-		t.Fatalf("Open() returned error: %v", err)
+func TestOpenUnreachableServerReturnsError(t *testing.T) {
+	// Open verifies connectivity: an unreachable server must fail here, at
+	// Open, rather than leaking a lazily-connected handle whose first query
+	// fails inside whichever command ran it. 127.0.0.1:1 is reserved for
+	// "nothing listens here" — connection refused, no real server needed.
+	db, err := Postgres{}.Open("postgres://user:pw@127.0.0.1:1/db?sslmode=disable")
+	if err == nil {
+		db.Close()
+		t.Fatal("Open() to an unreachable server returned nil error, want connect failure")
 	}
-	db.Close()
 }
 
 func TestMapPostgresToPython(t *testing.T) {
