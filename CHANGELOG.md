@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.3](https://github.com/seanpham99/dbtools/compare/v0.7.2...v0.7.3) (2026-10-07)
+
+
+### Bug Fixes
+
+* **pg:** deliver SSL hint on the connect path, not only on exec ([#102](https://github.com/seanpham99/dbtools/issues/102)) ([#108](https://github.com/seanpham99/dbtools/issues/108)) ([d6c5b70](https://github.com/seanpham99/dbtools/commit/d6c5b70d214f056c4da91325b87c529c8bceee3b))
+* **verify:** stop reporting drift for names a migration creates then destroys ([#111](https://github.com/seanpham99/dbtools/issues/111)) ([fe308bc](https://github.com/seanpham99/dbtools/commit/fe308bcfaa2beb241a78a9ef15e4ae7623e032be))
+
 ## [0.7.2](https://github.com/seanpham99/dbtools/compare/v0.7.1...v0.7.2) (2026-09-21)
 
 
