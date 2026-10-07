@@ -58,12 +58,11 @@ type Engine interface {
 	Introspect(db *sql.DB, excludeList []string) ([]generate.TableSchema, []string, error)
 }
 
-// DDLDialect parses migration DDL for the named objects it creates or
-// drops, and checks their existence — the primitives verify and repair
-// reason with.
+// DDLDialect parses migration DDL for the named objects it creates, drops,
+// and renames, and checks their existence — the primitives verify and
+// repair reason with.
 type DDLDialect interface {
-	ExtractObjects(sqlText string) []ddlcheck.ObjectRef
-	ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef
+	ddlcheck.Extractor
 	Exists(db *sql.DB, ref ddlcheck.ObjectRef) (bool, error)
 }
 

@@ -29,33 +29,79 @@ var dropObjectPattern = regexp.MustCompile(
 	`(?im)^\s*DROP\s+(TABLE|VIEW)\s+(?:IF\s+EXISTS\s+)?` +
 		`(?:` + identifier + `\.)?` + identifier)
 
-func refsFrom(matches [][]string) []ddlcheck.ObjectRef {
-	objects := make([]ddlcheck.ObjectRef, 0, len(matches))
-	for _, m := range matches {
-		schema := m[2]
-		if schema == "" {
-			schema = DefaultSchema
-		}
-		objects = append(objects, ddlcheck.ObjectRef{
-			Schema: schema,
-			Name:   m[3],
-			Kind:   strings.ToLower(m[1]),
-		})
+// renameObjectPattern matches a top-level ALTER TABLE … RENAME TO
+// statement, the last step of a rebuild in place. SQLite names the target
+// with a bare identifier and leaves the table in its schema, so the target
+// carries the source's schema. RENAME COLUMN does not match, because a
+// column is not a tracked object.
+var renameObjectPattern = regexp.MustCompile(
+	`(?im)^\s*ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:` + identifier + `\.)?` + identifier +
+		`\s+RENAME\s+TO\s+` + identifier)
+
+// refFromLoc builds an ObjectRef from a create- or drop-pattern match
+// located in text, whose capture groups are kind, schema, then name.
+func refFromLoc(text string, loc []int) ddlcheck.ObjectRef {
+	schema := ddlcheck.Submatch(text, loc, 2)
+	if schema == "" {
+		schema = DefaultSchema
 	}
-	return objects
+	return ddlcheck.ObjectRef{
+		Schema: schema,
+		Name:   ddlcheck.Submatch(text, loc, 3),
+		Kind:   strings.ToLower(ddlcheck.Submatch(text, loc, 1)),
+	}
 }
 
 type ddl struct{}
 
+// ExtractOperations returns every object-naming operation sqlText contains,
+// each at the offset of the statement that performs it. A rename contributes
+// two operations at one offset: the name it takes away and the name it
+// produces.
+func (ddl) ExtractOperations(sqlText string) []ddlcheck.Operation {
+	ops := make([]ddlcheck.Operation, 0, len(sqlText)/64+4)
+	for _, loc := range createObjectPattern.FindAllStringSubmatchIndex(sqlText, -1) {
+		ops = append(ops, ddlcheck.Operation{Kind: ddlcheck.OpCreate, Ref: refFromLoc(sqlText, loc), Pos: loc[0]})
+	}
+	for _, loc := range dropObjectPattern.FindAllStringSubmatchIndex(sqlText, -1) {
+		ops = append(ops, ddlcheck.Operation{Kind: ddlcheck.OpDrop, Ref: refFromLoc(sqlText, loc), Pos: loc[0]})
+	}
+	for _, loc := range renameObjectPattern.FindAllStringSubmatchIndex(sqlText, -1) {
+		schema := ddlcheck.Submatch(sqlText, loc, 1)
+		if schema == "" {
+			schema = DefaultSchema
+		}
+		ops = append(ops,
+			ddlcheck.Operation{
+				Kind: ddlcheck.OpRenameFrom,
+				Ref:  ddlcheck.ObjectRef{Schema: schema, Name: ddlcheck.Submatch(sqlText, loc, 2), Kind: "table"},
+				Pos:  loc[0],
+			},
+			ddlcheck.Operation{
+				Kind: ddlcheck.OpRenameTo,
+				Ref:  ddlcheck.ObjectRef{Schema: schema, Name: ddlcheck.Submatch(sqlText, loc, 3), Kind: "table"},
+				Pos:  loc[0],
+			},
+		)
+	}
+	return ops
+}
+
 // ExtractObjects returns the objects sqlText's top-level CREATE statements
 // name, in source order.
-func (ddl) ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
-	return refsFrom(createObjectPattern.FindAllStringSubmatch(sqlText, -1))
+func (d ddl) ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
+	return ddlcheck.RefsOf(d.ExtractOperations(sqlText), ddlcheck.OpCreate)
 }
 
 // ExtractDroppedObjects mirrors ExtractObjects for DROP statements.
-func (ddl) ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
-	return refsFrom(dropObjectPattern.FindAllStringSubmatch(sqlText, -1))
+func (d ddl) ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
+	return ddlcheck.RefsOf(d.ExtractOperations(sqlText), ddlcheck.OpDrop)
+}
+
+// ExtractRenamedObjects returns one Rename per ALTER TABLE … RENAME TO
+// statement, in source order.
+func (d ddl) ExtractRenamedObjects(sqlText string) []ddlcheck.Rename {
+	return ddlcheck.RenamesOf(d.ExtractOperations(sqlText))
 }
 
 // Exists reports whether ref currently exists in db, via sqlite_master.

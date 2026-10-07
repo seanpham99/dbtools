@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/ddlcheck"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
 	"github.com/seanpham99/dbtools/internal/migrator"
@@ -74,7 +75,15 @@ func run(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table string, p
 		if err != nil {
 			return nil, err
 		}
-		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
+		// A migration that creates a table and then renames it away, or
+		// creates and drops it, leaves nothing behind under that name, so
+		// requiring the name to exist would refuse a migration the schema
+		// matches exactly. The names the file leaves behind are the check.
+		lc := ddlcheck.Resolve(eng.DDL(), string(raw))
+		for _, obj := range lc.LeftBehind {
+			if lc.Temporary(obj) {
+				continue
+			}
 			exists, err := eng.DDL().Exists(db, obj)
 			if err != nil {
 				return nil, err

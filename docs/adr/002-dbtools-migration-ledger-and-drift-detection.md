@@ -32,7 +32,8 @@ CREATE TABLE dbtools_migration_history (
 `dbtools verify <target>` inspects target databases without executing mutations:
 1. **Content Hash Verification**: Compares the cryptographic hash of local migration files against `content_sha256` recorded in the ledger. Flagged as `DRIFT` if modified.
 2. **Object Existence Verification**: Uses AST/regex DDL extractors to identify named schema objects (tables, views) created in migration scripts and queries the database catalog (`INFORMATION_SCHEMA` or `sqlite_master`).
-3. **Drop Lifecycle Reasoning**: If an applied migration created an object, but a subsequent applied migration explicitly executed a `DROP`, the object's absence is excused as intentional rather than flagged as drift. If an object is subsequently recreated and later goes missing, drift is correctly flagged.
+3. **Drop Lifecycle Reasoning**: If an applied migration created an object, but a subsequent applied migration explicitly executed a `DROP` or renamed the object away, the object's absence is excused as intentional rather than flagged as drift. If an object is subsequently recreated and later goes missing, drift is correctly flagged.
+4. **Staging Names**: A migration file that creates an object and then destroys that same name — by dropping it, or by renaming it away — leaves nothing behind under that name, so its absence is not drift. The name a rename produces is what the file leaves behind, so that name is checked. This is the shape every constraint migration uses on SQLite, which has no `ALTER TABLE … ADD CONSTRAINT` and must rebuild the table in place. `ALTER TABLE|VIEW … RENAME TO` is read on PostgreSQL, SQLite, and MySQL. SQL Server renames through `sp_rename`, whose string-literal arguments are not parsed, so an MSSQL rebuild still reports its staging name as drift and still needs `repair --force`.
 
 ### 3. Repair Semantics (`dbtools repair`)
 Replaces the old `stamp` command. `dbtools repair <target> <version>:<status> --yes` allows operators to rectify ledger rows while enforcing that objects claimed to be `applied` actually exist in the database (unless overridden by `--force`).
@@ -45,4 +46,4 @@ Replaces the old `stamp` command. `dbtools repair <target> <version>:<status> --
 
 ### Negative
 - Extra table overhead (`dbtools_migration_history`) created in target databases.
-- DDL parsing is limited to object definitions and drops (does not perform full column-level AST diffing).
+- DDL parsing is limited to object definitions, drops, and `ALTER … RENAME TO` (does not perform full column-level AST diffing).

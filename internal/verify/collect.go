@@ -48,11 +48,14 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		return nil, err
 	}
 
-	// Objects any applied migration explicitly DROPs are expected-absent.
-	// Track drops per-object but allow a later migration to re-create the
-	// object: a version's CREATE is only excused by a drop that came
-	// BEFORE it and was not itself superseded by a re-create.
-	droppedBefore := make(map[ddlcheck.ObjectRef]uint64) // object -> version that dropped it
+	// A name is owned by the last migration that had something to say about
+	// it — the one that created it, renamed onto it, or dropped it. A
+	// version is excused for a name only when a strictly later version owns
+	// it, because that later version is the one whose create or rename
+	// failed to produce it. Naming an owner this way also keeps the
+	// pre-existing case working: a version that DROPs an object another
+	// version created owns that object's absence.
+	lastWord := make(map[ddlcheck.ObjectRef]uint64) // object -> owning version
 	for _, e := range entries {
 		if e.Status != ledger.StatusApplied {
 			continue
@@ -65,13 +68,17 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		if err != nil {
 			return nil, err
 		}
-		for _, obj := range eng.DDL().ExtractDroppedObjects(string(content)) {
-			droppedBefore[obj] = e.Version
+		lc := ddlcheck.Resolve(eng.DDL(), string(content))
+		// A staging name is skipped — it belongs to nobody, because the
+		// file leaves nothing behind under it.
+		for _, obj := range lc.LeftBehind {
+			if lc.Temporary(obj) {
+				continue
+			}
+			lastWord[obj] = e.Version
 		}
-		// If this migration itself re-creates the object, it cancels any
-		// earlier drop: a later genuine disappearance must be DRIFT.
-		for _, obj := range eng.DDL().ExtractObjects(string(content)) {
-			delete(droppedBefore, obj)
+		for _, obj := range lc.Destroyed {
+			lastWord[obj] = e.Version
 		}
 	}
 
@@ -95,7 +102,11 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		if err != nil {
 			return nil, err
 		}
-		objects := eng.DDL().ExtractObjects(string(content))
+		// What this file leaves behind: its CREATEs plus the names its
+		// renames produce. A name the file itself destroys is not on that
+		// list's critical path — see the excuse below.
+		lc := ddlcheck.Resolve(eng.DDL(), string(content))
+		objects := lc.LeftBehind
 
 		status := "OK"
 		var details []string
@@ -117,12 +128,19 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		}
 
 		for _, obj := range objects {
+			// A staging name: this file creates it and then destroys it
+			// itself, by dropping it or by renaming it away. Nothing is
+			// left under that name, so requiring it to exist would report
+			// drift against a schema that matches the file exactly.
+			if lc.Temporary(obj) {
+				continue
+			}
 			exists, err := eng.DDL().Exists(db, obj)
 			if err != nil {
 				return nil, err
 			}
-			droppedAt, wasDropped := droppedBefore[obj]
-			excused := wasDropped && droppedAt > e.Version
+			owner, hasOwner := lastWord[obj]
+			excused := hasOwner && owner > e.Version
 			if e.Status == ledger.StatusApplied && !exists && !excused {
 				status = "DRIFT"
 				details = append(details, fmt.Sprintf("%s.%s: claimed applied but missing", obj.Schema, obj.Name))
@@ -139,7 +157,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 }
 
 // collectNoLedger walks every migration file directly and checks whether
-// the objects it creates exist live — the same per-file shape
+// the objects each one leaves behind exist live — the same per-file shape
 // internal/repair uses to validate a repair target, applied to every file
 // on disk instead of specific requested versions. No content-hash
 // comparison is possible without a recorded hash to compare against.
@@ -149,17 +167,22 @@ func collectNoLedger(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, tar
 		return nil, err
 	}
 
-	droppedBefore := make(map[ddlcheck.ObjectRef]uint64)
+	// Same ownership rule as Collect, keyed by file version.
+	lastWord := make(map[ddlcheck.ObjectRef]uint64)
 	for _, f := range dir.List() {
 		raw, err := os.ReadFile(f.Path)
 		if err != nil {
 			return nil, err
 		}
-		for _, obj := range eng.DDL().ExtractDroppedObjects(string(raw)) {
-			droppedBefore[obj] = f.Version
+		lc := ddlcheck.Resolve(eng.DDL(), string(raw))
+		for _, obj := range lc.LeftBehind {
+			if lc.Temporary(obj) {
+				continue
+			}
+			lastWord[obj] = f.Version
 		}
-		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
-			delete(droppedBefore, obj)
+		for _, obj := range lc.Destroyed {
+			lastWord[obj] = f.Version
 		}
 	}
 
@@ -169,14 +192,18 @@ func collectNoLedger(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, tar
 		if err != nil {
 			return nil, err
 		}
+		lc := ddlcheck.Resolve(eng.DDL(), string(raw))
 		missing := ""
-		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
+		for _, obj := range lc.LeftBehind {
+			if lc.Temporary(obj) {
+				continue
+			}
 			exists, err := eng.DDL().Exists(db, obj)
 			if err != nil {
 				return nil, err
 			}
-			droppedAt, wasDropped := droppedBefore[obj]
-			excused := wasDropped && droppedAt > f.Version
+			owner, hasOwner := lastWord[obj]
+			excused := hasOwner && owner > f.Version
 			if !exists && !excused {
 				missing = fmt.Sprintf("%s.%s missing", obj.Schema, obj.Name)
 				break
