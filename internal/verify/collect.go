@@ -48,11 +48,12 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		return nil, err
 	}
 
-	// Objects any applied migration explicitly DROPs are expected-absent.
-	// Track drops per-object but allow a later migration to re-create the
-	// object: a version's CREATE is only excused by a drop that came
-	// BEFORE it and was not itself superseded by a re-create.
-	droppedBefore := make(map[ddlcheck.ObjectRef]uint64) // object -> version that dropped it
+	// Objects any applied migration removes are expected-absent: it DROPs
+	// them, or RENAMEs them away. Track removals per-object but allow a
+	// later migration to re-create the object: a version's CREATE is only
+	// excused by a removal that came BEFORE it and was not itself
+	// superseded by a re-create.
+	droppedBefore := make(map[ddlcheck.ObjectRef]uint64) // object -> version that removed it
 	for _, e := range entries {
 		if e.Status != ledger.StatusApplied {
 			continue
@@ -65,12 +66,18 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		if err != nil {
 			return nil, err
 		}
-		for _, obj := range eng.DDL().ExtractDroppedObjects(string(content)) {
+		lc := ddlcheck.Resolve(eng.DDL(), string(content))
+		for _, obj := range lc.Destroyed {
 			droppedBefore[obj] = e.Version
 		}
 		// If this migration itself re-creates the object, it cancels any
-		// earlier drop: a later genuine disappearance must be DRIFT.
+		// earlier removal: a later genuine disappearance must be DRIFT. A
+		// staging name keeps its removal, because the file leaves nothing
+		// behind under it.
 		for _, obj := range eng.DDL().ExtractObjects(string(content)) {
+			if lc.Temporary(obj) {
+				continue
+			}
 			delete(droppedBefore, obj)
 		}
 	}
@@ -95,7 +102,11 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		if err != nil {
 			return nil, err
 		}
-		objects := eng.DDL().ExtractObjects(string(content))
+		// What this file leaves behind: its CREATEs plus the names its
+		// renames produce. A name the file itself destroys is not on that
+		// list's critical path — see the excuse below.
+		lc := ddlcheck.Resolve(eng.DDL(), string(content))
+		objects := lc.LeftBehind
 
 		status := "OK"
 		var details []string
@@ -117,6 +128,13 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 		}
 
 		for _, obj := range objects {
+			// A staging name: this file creates it and then destroys it
+			// itself, by dropping it or by renaming it away. Nothing is
+			// left under that name, so requiring it to exist would report
+			// drift against a schema that matches the file exactly.
+			if lc.Temporary(obj) {
+				continue
+			}
 			exists, err := eng.DDL().Exists(db, obj)
 			if err != nil {
 				return nil, err
@@ -139,7 +157,7 @@ func Collect(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, table, targ
 }
 
 // collectNoLedger walks every migration file directly and checks whether
-// the objects it creates exist live — the same per-file shape
+// the objects each one leaves behind exist live — the same per-file shape
 // internal/repair uses to validate a repair target, applied to every file
 // on disk instead of specific requested versions. No content-hash
 // comparison is possible without a recorded hash to compare against.
@@ -155,10 +173,14 @@ func collectNoLedger(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, tar
 		if err != nil {
 			return nil, err
 		}
-		for _, obj := range eng.DDL().ExtractDroppedObjects(string(raw)) {
+		lc := ddlcheck.Resolve(eng.DDL(), string(raw))
+		for _, obj := range lc.Destroyed {
 			droppedBefore[obj] = f.Version
 		}
 		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
+			if lc.Temporary(obj) {
+				continue
+			}
 			delete(droppedBefore, obj)
 		}
 	}
@@ -169,8 +191,12 @@ func collectNoLedger(db *sql.DB, eng engine.Engine, migrationsDir, upSuffix, tar
 		if err != nil {
 			return nil, err
 		}
+		lc := ddlcheck.Resolve(eng.DDL(), string(raw))
 		missing := ""
-		for _, obj := range eng.DDL().ExtractObjects(string(raw)) {
+		for _, obj := range lc.LeftBehind {
+			if lc.Temporary(obj) {
+				continue
+			}
 			exists, err := eng.DDL().Exists(db, obj)
 			if err != nil {
 				return nil, err

@@ -154,9 +154,11 @@ const identifier = `"?([A-Za-z_][A-Za-z0-9_]*)"?`
 
 // createObjectPattern matches a top-level CREATE [OR REPLACE]
 // TABLE|VIEW|FUNCTION|PROCEDURE [IF NOT EXISTS] [schema.]name statement.
-// CREATE INDEX and ALTER-only statements are out of scope, mirroring the
-// MSSQL dialect. UNLOGGED/TEMP tables and MATERIALIZED views are matched
-// through their optional modifier keywords.
+// CREATE INDEX is out of scope, mirroring the MSSQL dialect; so is ALTER,
+// except for ALTER … RENAME TO, which moves an object from one tracked
+// name to another and so is part of what a file leaves behind.
+// UNLOGGED/TEMP tables and MATERIALIZED views are matched through their
+// optional modifier keywords.
 var createObjectPattern = regexp.MustCompile(
 	`(?im)^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:UNLOGGED\s+|TEMP\s+|TEMPORARY\s+|MATERIALIZED\s+)?` +
 		`(TABLE|VIEW|FUNCTION|PROCEDURE)\s+(?:IF\s+NOT\s+EXISTS\s+)?` +
@@ -165,6 +167,14 @@ var createObjectPattern = regexp.MustCompile(
 var dropObjectPattern = regexp.MustCompile(
 	`(?im)^\s*DROP\s+(?:MATERIALIZED\s+)?(TABLE|VIEW|FUNCTION|PROCEDURE)\s+(?:IF\s+EXISTS\s+)?` +
 		`(?:` + identifier + `\.)?` + identifier)
+
+// renameObjectPattern matches a top-level ALTER TABLE|VIEW … RENAME TO
+// statement, the last step of a rebuild in place. Postgres names the target
+// with a bare identifier and leaves the object in its schema, so the target
+// carries the source's schema.
+var renameObjectPattern = regexp.MustCompile(
+	`(?im)^\s*ALTER\s+(?:MATERIALIZED\s+)?(TABLE|VIEW)\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?` +
+		`(?:` + identifier + `\.)?` + identifier + `\s+RENAME\s+TO\s+` + identifier)
 
 func refsFrom(matches [][]string) []ddlcheck.ObjectRef {
 	objects := make([]ddlcheck.ObjectRef, 0, len(matches))
@@ -193,6 +203,25 @@ func (ddl) ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
 // ExtractDroppedObjects mirrors ExtractObjects for DROP statements.
 func (ddl) ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
 	return refsFrom(dropObjectPattern.FindAllStringSubmatch(maskNonExecutable(sqlText), -1))
+}
+
+// ExtractRenamedObjects returns one Rename per ALTER … RENAME TO
+// statement, in source order, ignoring anything inside dollar-quoted bodies.
+func (ddl) ExtractRenamedObjects(sqlText string) []ddlcheck.Rename {
+	matches := renameObjectPattern.FindAllStringSubmatch(maskNonExecutable(sqlText), -1)
+	renames := make([]ddlcheck.Rename, 0, len(matches))
+	for _, m := range matches {
+		schema := m[2]
+		if schema == "" {
+			schema = DefaultSchema
+		}
+		kind := strings.ToLower(m[1])
+		renames = append(renames, ddlcheck.Rename{
+			From: ddlcheck.ObjectRef{Schema: schema, Name: m[3], Kind: kind},
+			To:   ddlcheck.ObjectRef{Schema: schema, Name: m[4], Kind: kind},
+		})
+	}
+	return renames
 }
 
 // Exists reports whether ref currently exists in db.

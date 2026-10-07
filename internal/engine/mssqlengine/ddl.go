@@ -101,6 +101,16 @@ func (mssqlDDL) ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
 	return ExtractDroppedObjects(sqlText)
 }
 
+// ExtractRenamedObjects returns nothing: SQL Server renames through
+// sp_rename, a stored procedure called with string-literal arguments
+// ('object', 'new_name' [, 'OBJECT']), and there is no ALTER … RENAME
+// statement to read. Parsing the call would mean guessing at how each
+// argument is quoted and whether the third argument names the object kind,
+// so this dialect reports no renames instead. A rebuild-in-place migration
+// on MSSQL therefore still needs `dbtools repair --force` for the
+// temporary name, and verify still reports that name as drift.
+func (mssqlDDL) ExtractRenamedObjects(sqlText string) []ddlcheck.Rename { return nil }
+
 func (mssqlDDL) Exists(db *sql.DB, ref ddlcheck.ObjectRef) (bool, error) {
 	return Exists(db, ref)
 }

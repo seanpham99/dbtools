@@ -45,7 +45,7 @@ It never modifies the database, creates tables, writes to the ledger, or mutates
 - Inspects live database schema objects (tables, functions) created by applied migrations.
 - In ledger-free mode: walks migration files directly to verify object presence without requiring a recorded hash.
 - **Warn**: Skipped if ledger exists but is empty.
-- **Fail (`exit 2`)**: Schema drift detected (applied objects missing or dropped).
+- **Fail (`exit 2`)**: Schema drift detected (applied objects missing or dropped). A name the same migration creates and then drops or renames away is a staging name and is not required to exist.
 
 ### 5. `dirty-ledger`
 - Reads the `dirty` flag from migration version tracking.

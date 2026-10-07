@@ -29,6 +29,15 @@ var dropObjectPattern = regexp.MustCompile(
 	`(?im)^\s*DROP\s+(TABLE|VIEW)\s+(?:IF\s+EXISTS\s+)?` +
 		`(?:` + identifier + `\.)?` + identifier)
 
+// renameObjectPattern matches a top-level ALTER TABLE … RENAME TO
+// statement, the last step of a rebuild in place. SQLite names the target
+// with a bare identifier and leaves the table in its schema, so the target
+// carries the source's schema. RENAME COLUMN does not match, because a
+// column is not a tracked object.
+var renameObjectPattern = regexp.MustCompile(
+	`(?im)^\s*ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:` + identifier + `\.)?` + identifier +
+		`\s+RENAME\s+TO\s+` + identifier)
+
 func refsFrom(matches [][]string) []ddlcheck.ObjectRef {
 	objects := make([]ddlcheck.ObjectRef, 0, len(matches))
 	for _, m := range matches {
@@ -56,6 +65,24 @@ func (ddl) ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
 // ExtractDroppedObjects mirrors ExtractObjects for DROP statements.
 func (ddl) ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
 	return refsFrom(dropObjectPattern.FindAllStringSubmatch(sqlText, -1))
+}
+
+// ExtractRenamedObjects returns one Rename per ALTER TABLE … RENAME TO
+// statement, in source order.
+func (ddl) ExtractRenamedObjects(sqlText string) []ddlcheck.Rename {
+	matches := renameObjectPattern.FindAllStringSubmatch(sqlText, -1)
+	renames := make([]ddlcheck.Rename, 0, len(matches))
+	for _, m := range matches {
+		schema := m[1]
+		if schema == "" {
+			schema = DefaultSchema
+		}
+		renames = append(renames, ddlcheck.Rename{
+			From: ddlcheck.ObjectRef{Schema: schema, Name: m[2], Kind: "table"},
+			To:   ddlcheck.ObjectRef{Schema: schema, Name: m[3], Kind: "table"},
+		})
+	}
+	return renames
 }
 
 // Exists reports whether ref currently exists in db, via sqlite_master.

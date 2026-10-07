@@ -24,6 +24,16 @@ var dropObjectPattern = regexp.MustCompile(
 	`(?im)^\s*DROP\s+(TABLE|VIEW)\s+(?:IF\s+EXISTS\s+)?` +
 		`(?:` + identifier + `\.)?` + identifier)
 
+// renameObjectPattern matches a top-level ALTER TABLE|VIEW … RENAME
+// TO|AS statement, the last step of a rebuild in place. Both sides may name
+// a database. The standalone RENAME TABLE form is deliberately out of
+// scope: it renames a comma-separated list, and this engine's extractors
+// do not mask stored-program bodies, so a partial match would be worse
+// than none.
+var renameObjectPattern = regexp.MustCompile(
+	`(?im)^\s*ALTER\s+(TABLE|VIEW)\s+(?:IF\s+EXISTS\s+)?(?:` + identifier + `\.)?` + identifier +
+		`\s+RENAME\s+(?:TO|AS)\s+(?:` + identifier + `\.)?` + identifier)
+
 func refsFrom(matches [][]string) []ddlcheck.ObjectRef {
 	objects := make([]ddlcheck.ObjectRef, 0, len(matches))
 	for _, m := range matches {
@@ -48,6 +58,25 @@ func (mysqlDDL) ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
 
 func (mysqlDDL) ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
 	return refsFrom(dropObjectPattern.FindAllStringSubmatch(sqlText, -1))
+}
+
+// ExtractRenamedObjects returns one Rename per ALTER … RENAME TO|AS
+// statement, in source order. An unqualified target keeps the source's
+// database, which is what MySQL does when the statement does not name one.
+func (mysqlDDL) ExtractRenamedObjects(sqlText string) []ddlcheck.Rename {
+	matches := renameObjectPattern.FindAllStringSubmatch(sqlText, -1)
+	renames := make([]ddlcheck.Rename, 0, len(matches))
+	for _, m := range matches {
+		target := m[4]
+		if target == "" {
+			target = m[2]
+		}
+		renames = append(renames, ddlcheck.Rename{
+			From: ddlcheck.ObjectRef{Schema: m[2], Name: m[3], Kind: strings.ToLower(m[1])},
+			To:   ddlcheck.ObjectRef{Schema: target, Name: m[5], Kind: strings.ToLower(m[1])},
+		})
+	}
+	return renames
 }
 
 // Exists reports whether ref currently exists in db. An empty ref.Schema
