@@ -176,52 +176,72 @@ var renameObjectPattern = regexp.MustCompile(
 	`(?im)^\s*ALTER\s+(?:MATERIALIZED\s+)?(TABLE|VIEW)\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?` +
 		`(?:` + identifier + `\.)?` + identifier + `\s+RENAME\s+TO\s+` + identifier)
 
-func refsFrom(matches [][]string) []ddlcheck.ObjectRef {
-	objects := make([]ddlcheck.ObjectRef, 0, len(matches))
-	for _, m := range matches {
-		schema := m[2]
-		if schema == "" {
-			schema = DefaultSchema
-		}
-		objects = append(objects, ddlcheck.ObjectRef{
-			Schema: schema,
-			Name:   m[3],
-			Kind:   strings.ToLower(m[1]),
-		})
+// refFromLoc builds an ObjectRef from a create- or drop-pattern match
+// located in text, whose capture groups are kind, schema, then name.
+func refFromLoc(text string, loc []int) ddlcheck.ObjectRef {
+	schema := ddlcheck.Submatch(text, loc, 2)
+	if schema == "" {
+		schema = DefaultSchema
 	}
-	return objects
+	return ddlcheck.ObjectRef{
+		Schema: schema,
+		Name:   ddlcheck.Submatch(text, loc, 3),
+		Kind:   strings.ToLower(ddlcheck.Submatch(text, loc, 1)),
+	}
 }
 
 type ddl struct{}
 
-// ExtractObjects returns the objects sqlText's top-level CREATE statements
-// name, in source order, ignoring anything inside dollar-quoted bodies.
-func (ddl) ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
-	return refsFrom(createObjectPattern.FindAllStringSubmatch(maskNonExecutable(sqlText), -1))
-}
-
-// ExtractDroppedObjects mirrors ExtractObjects for DROP statements.
-func (ddl) ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
-	return refsFrom(dropObjectPattern.FindAllStringSubmatch(maskNonExecutable(sqlText), -1))
-}
-
-// ExtractRenamedObjects returns one Rename per ALTER … RENAME TO
-// statement, in source order, ignoring anything inside dollar-quoted bodies.
-func (ddl) ExtractRenamedObjects(sqlText string) []ddlcheck.Rename {
-	matches := renameObjectPattern.FindAllStringSubmatch(maskNonExecutable(sqlText), -1)
-	renames := make([]ddlcheck.Rename, 0, len(matches))
-	for _, m := range matches {
-		schema := m[2]
+// ExtractOperations returns every object-naming operation sqlText contains,
+// each at the offset of the statement that performs it, ignoring anything
+// inside dollar-quoted bodies. A rename contributes two operations at one
+// offset: the name it takes away and the name it produces.
+func (ddl) ExtractOperations(sqlText string) []ddlcheck.Operation {
+	masked := maskNonExecutable(sqlText)
+	ops := make([]ddlcheck.Operation, 0, len(sqlText)/64+4)
+	for _, loc := range createObjectPattern.FindAllStringSubmatchIndex(masked, -1) {
+		ops = append(ops, ddlcheck.Operation{Kind: ddlcheck.OpCreate, Ref: refFromLoc(masked, loc), Pos: loc[0]})
+	}
+	for _, loc := range dropObjectPattern.FindAllStringSubmatchIndex(masked, -1) {
+		ops = append(ops, ddlcheck.Operation{Kind: ddlcheck.OpDrop, Ref: refFromLoc(masked, loc), Pos: loc[0]})
+	}
+	for _, loc := range renameObjectPattern.FindAllStringSubmatchIndex(masked, -1) {
+		schema := ddlcheck.Submatch(masked, loc, 2)
 		if schema == "" {
 			schema = DefaultSchema
 		}
-		kind := strings.ToLower(m[1])
-		renames = append(renames, ddlcheck.Rename{
-			From: ddlcheck.ObjectRef{Schema: schema, Name: m[3], Kind: kind},
-			To:   ddlcheck.ObjectRef{Schema: schema, Name: m[4], Kind: kind},
-		})
+		kind := strings.ToLower(ddlcheck.Submatch(masked, loc, 1))
+		ops = append(ops,
+			ddlcheck.Operation{
+				Kind: ddlcheck.OpRenameFrom,
+				Ref:  ddlcheck.ObjectRef{Schema: schema, Name: ddlcheck.Submatch(masked, loc, 3), Kind: kind},
+				Pos:  loc[0],
+			},
+			ddlcheck.Operation{
+				Kind: ddlcheck.OpRenameTo,
+				Ref:  ddlcheck.ObjectRef{Schema: schema, Name: ddlcheck.Submatch(masked, loc, 4), Kind: kind},
+				Pos:  loc[0],
+			},
+		)
 	}
-	return renames
+	return ops
+}
+
+// ExtractObjects returns the objects sqlText's top-level CREATE statements
+// name, in source order.
+func (d ddl) ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
+	return ddlcheck.RefsOf(d.ExtractOperations(sqlText), ddlcheck.OpCreate)
+}
+
+// ExtractDroppedObjects mirrors ExtractObjects for DROP statements.
+func (d ddl) ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
+	return ddlcheck.RefsOf(d.ExtractOperations(sqlText), ddlcheck.OpDrop)
+}
+
+// ExtractRenamedObjects returns one Rename per ALTER … RENAME TO
+// statement, in source order.
+func (d ddl) ExtractRenamedObjects(sqlText string) []ddlcheck.Rename {
+	return ddlcheck.RenamesOf(d.ExtractOperations(sqlText))
 }
 
 // Exists reports whether ref currently exists in db.

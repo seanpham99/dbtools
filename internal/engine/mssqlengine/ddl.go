@@ -22,22 +22,23 @@ var kindNames = map[string]string{
 	"FUNCTION":  "function",
 }
 
+// refFromLoc builds an ObjectRef from a create- or drop-pattern match
+// located in text, whose capture groups are kind, schema, then name.
+func refFromLoc(text string, loc []int) ddlcheck.ObjectRef {
+	schema := ddlcheck.Submatch(text, loc, 2)
+	if schema == "" {
+		schema = "dbo"
+	}
+	return ddlcheck.ObjectRef{
+		Schema: schema,
+		Name:   ddlcheck.Submatch(text, loc, 3),
+		Kind:   kindNames[strings.ToUpper(ddlcheck.Submatch(text, loc, 1))],
+	}
+}
+
 // ExtractObjects scans sqlText for top-level CREATE statements.
 func ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
-	matches := createObjectPattern.FindAllStringSubmatch(sqlText, -1)
-	objects := make([]ddlcheck.ObjectRef, 0, len(matches))
-	for _, m := range matches {
-		schema := m[2]
-		if schema == "" {
-			schema = "dbo"
-		}
-		objects = append(objects, ddlcheck.ObjectRef{
-			Schema: schema,
-			Name:   m[3],
-			Kind:   kindNames[strings.ToUpper(m[1])],
-		})
-	}
-	return objects
+	return ddlcheck.RefsOf(ExtractOperations(sqlText), ddlcheck.OpCreate)
 }
 
 var dropObjectPattern = regexp.MustCompile(
@@ -46,20 +47,7 @@ var dropObjectPattern = regexp.MustCompile(
 
 // ExtractDroppedObjects scans sqlText for top-level DROP statements.
 func ExtractDroppedObjects(sqlText string) []ddlcheck.ObjectRef {
-	matches := dropObjectPattern.FindAllStringSubmatch(sqlText, -1)
-	objects := make([]ddlcheck.ObjectRef, 0, len(matches))
-	for _, m := range matches {
-		schema := m[2]
-		if schema == "" {
-			schema = "dbo"
-		}
-		objects = append(objects, ddlcheck.ObjectRef{
-			Schema: schema,
-			Name:   m[3],
-			Kind:   kindNames[strings.ToUpper(m[1])],
-		})
-	}
-	return objects
+	return ddlcheck.RefsOf(ExtractOperations(sqlText), ddlcheck.OpDrop)
 }
 
 // Exists reports whether ref currently exists in MSSQL db.
@@ -92,6 +80,24 @@ WHERE s.name = @p1 AND o.name = @p2 AND (%s)`, typeFilter)
 }
 
 type mssqlDDL struct{}
+
+// ExtractOperations returns every object-naming operation sqlText contains,
+// each at the offset of the statement that performs it. It never returns a
+// rename, for the reason ExtractRenamedObjects gives.
+func ExtractOperations(sqlText string) []ddlcheck.Operation {
+	ops := make([]ddlcheck.Operation, 0, len(sqlText)/64+4)
+	for _, loc := range createObjectPattern.FindAllStringSubmatchIndex(sqlText, -1) {
+		ops = append(ops, ddlcheck.Operation{Kind: ddlcheck.OpCreate, Ref: refFromLoc(sqlText, loc), Pos: loc[0]})
+	}
+	for _, loc := range dropObjectPattern.FindAllStringSubmatchIndex(sqlText, -1) {
+		ops = append(ops, ddlcheck.Operation{Kind: ddlcheck.OpDrop, Ref: refFromLoc(sqlText, loc), Pos: loc[0]})
+	}
+	return ops
+}
+
+func (mssqlDDL) ExtractOperations(sqlText string) []ddlcheck.Operation {
+	return ExtractOperations(sqlText)
+}
 
 func (mssqlDDL) ExtractObjects(sqlText string) []ddlcheck.ObjectRef {
 	return ExtractObjects(sqlText)

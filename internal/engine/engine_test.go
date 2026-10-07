@@ -17,6 +17,7 @@ type fakeDDL struct {
 func (d fakeDDL) ExtractObjects(string) []ddlcheck.ObjectRef        { return nil }
 func (d fakeDDL) ExtractDroppedObjects(string) []ddlcheck.ObjectRef { return nil }
 func (d fakeDDL) ExtractRenamedObjects(string) []ddlcheck.Rename    { return nil }
+func (d fakeDDL) ExtractOperations(string) []ddlcheck.Operation     { return nil }
 
 func (d fakeDDL) Exists(_ *sql.DB, ref ddlcheck.ObjectRef) (bool, error) {
 	key := ref.Schema + "." + ref.Name

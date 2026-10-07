@@ -239,3 +239,60 @@ func TestCollect_RenameTargetIsChecked(t *testing.T) {
 		t.Fatalf("entries = %+v, want version 2 to report the rename target missing", report.Entries)
 	}
 }
+
+// TestCollect_DropThenCreateStillChecksTheName pins the ordering rule at
+// the level a user sees it. A migration that DROPs a table and then CREATEs
+// it back under the same name leaves that name in place, so its absence is
+// real drift. Reading the file without order — create and drop both present
+// — would excuse it and report nothing.
+func TestCollect_DropThenCreateStillChecksTheName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1_base.up.sql"),
+		[]byte("CREATE TABLE dbtools_test_widget (id TEXT PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "2_reshape.up.sql"),
+		[]byte("DROP TABLE dbtools_test_widget;\nCREATE TABLE dbtools_test_widget (id TEXT PRIMARY KEY, n INTEGER);\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rawURL := "sqlite://" + filepath.Join(dir, "verify.db")
+	eng, err := engine.ForTarget("", rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := eng.Open(rawURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE dbtools_migration_history (
+		version INTEGER NOT NULL PRIMARY KEY,
+		status TEXT NOT NULL CHECK (status IN ('applied', 'reverted')),
+		recorded_at TIMESTAMP NULL,
+		note TEXT NULL,
+		content_sha256 TEXT NULL,
+		hash_source TEXT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []uint64{1, 2} {
+		if err := eng.Ledger().SetStatus(db, v, ledger.StatusApplied, "", "dbtools_migration_history"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report, err := Collect(db, eng, dir, ".up.sql", "dbtools_migration_history", "test-target")
+	if err != nil {
+		t.Fatalf("Collect() returned error: %v", err)
+	}
+	found := false
+	for _, e := range report.Entries {
+		if e.Status == "DRIFT" && strings.Contains(e.Detail, "dbtools_test_widget:") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("entries = %+v, want the drop-then-create name reported missing — the file leaves it in place", report.Entries)
+	}
+}
