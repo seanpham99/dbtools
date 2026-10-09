@@ -148,6 +148,7 @@ dbtools status
 | `start` / `stop` | `dbtools start [--timeout 30s] [--no-wait]` / `stop [--no-backup]` | Starts or stops the tool-owned local database Docker container (project-scoped name/volume, readiness polling). `stop` preserves data by default; `--no-backup` also wipes it. |
 | `restart` | `dbtools restart [--timeout 30s] [--no-wait]` | Restarts the local container in place; data survives. |
 | `logs` | `dbtools logs [-f]` | Streams the local container's logs; `-f`/`--follow` keeps streaming new output. |
+| `prune` | `dbtools prune [--volumes] [--dry-run]` | Removes labeled tool-owned containers whose `dbtools.toml` no longer exists (e.g. a deleted git worktree); `--volumes` also removes their data volumes. |
 
 ---
 
@@ -323,6 +324,16 @@ port = 55432         # optional; defaults to a Docker-assigned free port
 `dbtools stop --no-backup` also deletes the data volume, restoring the old
 full-wipe behavior. `dbtools reset` is unaffected either way — it always
 drops and recreates the database via SQL (mssql/postgres targets only).
+
+Containers and volumes created by `dbtools start` carry `dbtools.managed`,
+`dbtools.engine`, and `dbtools.configpath` labels. Because the container
+name is a one-way hash of the config path, `dbtools prune` uses the label
+to find resources whose owning `dbtools.toml` is gone — the leak a deleted
+git worktree leaves behind, where nothing runs `dbtools stop`. It removes
+only provably-dead resources; `--volumes` opts into deleting their data
+volumes (data loss for that project's local database), and `--dry-run`
+reports without removing. Containers and volumes created before the labels
+existed are ignored — their owning path cannot be proven.
 
 ---
 

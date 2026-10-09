@@ -424,7 +424,10 @@ func StartForWithTimeout(engineName, projectID, configuredPort string, timeout t
 		if s.hostPort == "" {
 			s.hostPort = "0"
 		}
-		if out, err := exec.Command("docker", s.runArgs(s)...).CombinedOutput(); err != nil {
+		configPath := localConfigPath()
+		ensureVolume(volumeNameFor(s.name), s.engine, configPath)
+		args := insertLabels(s.runArgs(s), managedLabels(s.engine, configPath))
+		if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
 			return "", fmt.Errorf("docker run failed: %w: %s", err, strings.TrimSpace(string(out)))
 		}
 		if s.hostPort == "0" {
@@ -592,7 +595,8 @@ func startScratch(engineName, series string, timeout time.Duration) (rawURL, con
 	s.name = scratchNameFor(engineName)
 	s.hostPort = "0"
 
-	if out, err := exec.Command("docker", s.scratchRunArgs(s)...).CombinedOutput(); err != nil {
+	args := insertLabels(s.scratchRunArgs(s), managedLabels(s.engine, localConfigPath()))
+	if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
 		return "", "", nil, fmt.Errorf("docker run failed: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	cleanup = func() error {
