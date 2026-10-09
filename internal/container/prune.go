@@ -54,11 +54,16 @@ func localConfigPath() string {
 // container so Prune can judge it independently. docker volume create is a
 // no-op for an existing volume — labels are not retro-applied, which is
 // accepted: a pre-labels volume's config path cannot be proven dead, so it
-// is left for manual docker volume prune.
-func ensureVolume(name, engineName, configPath string) {
+// is left for manual docker volume prune. The error is intentionally
+// swallowed: a failed pre-create does not stop the container run —
+// docker run itself auto-creates the volume (unlabeled) if needed.
+func ensureVolume(name, engineName, configPath string) error {
 	args := append([]string{"volume", "create"}, managedLabels(engineName, configPath)...)
 	args = append(args, name)
-	exec.Command("docker", args...).Run()
+	if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("docker volume create failed: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // PruneReport lists what Prune removed or would remove.

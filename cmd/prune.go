@@ -17,6 +17,7 @@ var (
 var pruneCmd = &cobra.Command{
 	Use:   "prune",
 	Short: "Remove tool-owned containers whose project directory is gone",
+	Args:  cobra.NoArgs,
 	Long: `Prune removes dbtools-managed containers (labeled dbtools.managed) whose
 dbtools.toml no longer exists — the leak left behind when a git worktree is
 deleted, where nothing runs dbtools stop.

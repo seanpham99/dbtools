@@ -425,7 +425,9 @@ func StartForWithTimeout(engineName, projectID, configuredPort string, timeout t
 			s.hostPort = "0"
 		}
 		configPath := localConfigPath()
-		ensureVolume(volumeNameFor(s.name), s.engine, configPath)
+		if err := ensureVolume(volumeNameFor(s.name), s.engine, configPath); err != nil {
+			return "", err
+		}
 		args := insertLabels(s.runArgs(s), managedLabels(s.engine, configPath))
 		if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
 			return "", fmt.Errorf("docker run failed: %w: %s", err, strings.TrimSpace(string(out)))
