@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0](https://github.com/seanpham99/dbtools/compare/v0.7.3...v0.8.0) (2026-10-09)
+
+
+### Features
+
+* add dbtools prune to reap containers whose project directory is gone ([#113](https://github.com/seanpham99/dbtools/issues/113)) ([f9ca96e](https://github.com/seanpham99/dbtools/commit/f9ca96ee0dac7f25aba14d0105cb4d1cc3dc885e))
+
 ## [0.7.3](https://github.com/seanpham99/dbtools/compare/v0.7.2...v0.7.3) (2026-10-07)
 
 
