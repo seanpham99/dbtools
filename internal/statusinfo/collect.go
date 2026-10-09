@@ -65,6 +65,13 @@ func Collect(databaseURL, engineName, migrationsDir, upSuffix, ledgerTable, targ
 		return nil, err
 	}
 	if exists {
+		// EnsureSchema is a no-op on a current table; on a pre-v0.7 ledger it
+		// adds the columns State/AppliedVersions select, so a status/plan call
+		// after upgrading dbtools doesn't fail on a ledger the older binary
+		// created. (apply and adopt already call it; the read paths didn't.)
+		if err := eng.Ledger().EnsureSchema(db, ledgerTable); err != nil {
+			return nil, err
+		}
 		state, err = eng.Ledger().State(db, ledgerTable)
 		if err != nil {
 			return nil, err
