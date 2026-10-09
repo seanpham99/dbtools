@@ -322,3 +322,35 @@ func TestPlanJSON_EmitFalseAndEmptyArrays(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildPlanEntries_UnconfiguredSiblingTarget guards the nil-Status deref:
+// a target whose url_env is unset produces an Unconfigured result; before the
+// fix buildPlanEntries skipped only Err and dereferenced s := r.Status → panic.
+func TestBuildPlanEntries_UnconfiguredSiblingTarget(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "migrations"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DBTOOLS_LOCAL_URL", "sqlite://"+filepath.Join(dir, "local.db"))
+	cfg := &config.Config{
+		MigrationsDir: filepath.Join(dir, "migrations"),
+		Targets: map[string]config.Target{
+			"local": {URLEnv: "DBTOOLS_LOCAL_URL"},
+			"prod":  {URLEnv: "DBTOOLS_PROD_URL"}, // deliberately unset
+		},
+	}
+	planTarget = ""
+	entries := buildPlanEntries(cfg)
+	if len(entries) != 2 {
+		t.Fatalf("entries = %d, want 2 (configured + unconfigured sibling)", len(entries))
+	}
+	var prod planJSONEntry
+	for _, e := range entries {
+		if e.Target == "prod" {
+			prod = e
+		}
+	}
+	if prod.Error == "" {
+		t.Errorf("unconfigured target entry has no Error message: %+v", prod)
+	}
+}
