@@ -59,10 +59,7 @@ func TestPlanJSONPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	planTarget = "local"
-	defer func() { planTarget = "" }()
-
-	entries := buildPlanEntries(cfg)
+	entries := buildPlanEntries(cfg, "local")
 	if len(entries) != 1 {
 		t.Fatalf("plan entries = %d, want 1", len(entries))
 	}
@@ -87,7 +84,7 @@ func TestPlanJSONPreview(t *testing.T) {
 	if err := os.WriteFile(filepath.Join("migrations", "20260817000001_users.up.sql"), []byte(`CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL, extra TEXT);`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	entries = buildPlanEntries(cfg)
+	entries = buildPlanEntries(cfg, "local")
 	if len(entries) != 1 {
 		t.Fatalf("plan entries after edit = %d, want 1", len(entries))
 	}
@@ -141,10 +138,7 @@ func TestPlanJSON_CurrentVersionZeroIsSerialized(t *testing.T) {
 		t.Fatalf("apply.Run() returned error: %v", err)
 	}
 
-	planTarget = "local"
-	defer func() { planTarget = "" }()
-
-	entries := buildPlanEntries(cfg)
+	entries := buildPlanEntries(cfg, "local")
 	if len(entries) != 1 {
 		t.Fatalf("plan entries = %d, want 1", len(entries))
 	}
@@ -292,10 +286,7 @@ func TestBuildPlanEntries_NoLedgerSetsLedgerSkippedNotDrift(t *testing.T) {
 	}
 	m.Close()
 
-	planTarget = "local"
-	defer func() { planTarget = "" }()
-
-	entries := buildPlanEntries(cfg)
+	entries := buildPlanEntries(cfg, "local")
 	if len(entries) != 1 {
 		t.Fatalf("plan entries = %d, want 1", len(entries))
 	}
@@ -305,5 +296,71 @@ func TestBuildPlanEntries_NoLedgerSetsLedgerSkippedNotDrift(t *testing.T) {
 	}
 	if len(e.Drift) != 0 {
 		t.Errorf("plan Drift = %v, want empty (no drift detected)", e.Drift)
+	}
+}
+
+// TestBuildPlanEntries_UnconfiguredSiblingTarget is the regression for the
+// `dbtools plan local` SIGSEGV: when a sibling target's url_env is unset,
+// CollectAll returns a result with Status == nil and Unconfigured set, and
+// buildPlanEntries used to dereference that nil Status outright. The plan
+// row must report the target as unconfigured instead of panicking — same
+// contract status's "[unconfigured]" row already carries.
+func TestBuildPlanEntries_UnconfiguredSiblingTarget(t *testing.T) {
+	dir := t.TempDir()
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll("migrations", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("migrations", "20260817000001_users.up.sql"), []byte(`CREATE TABLE users (id INTEGER PRIMARY KEY);`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbURL := "sqlite://" + filepath.Join(dir, "local.db")
+	t.Setenv("DBTOOLS_LOCAL_URL", dbURL)
+	// prod's env var deliberately unset -> Unconfigured result.
+	cfg := &config.Config{
+		MigrationsDir: "migrations",
+		Targets: map[string]config.Target{
+			"local": {URLEnv: "DBTOOLS_LOCAL_URL"},
+			"prod":  {URLEnv: "DBTOOLS_PLAN_TEST_PROD_URL"},
+		},
+	}
+	loadConfig = func(string) (*config.Config, error) { return cfg, nil }
+	t.Cleanup(func() { loadConfig = config.Load })
+
+	// Whole-config plan: every target gets a row, none panic.
+	entries := buildPlanEntries(cfg, "")
+	if len(entries) != 2 {
+		t.Fatalf("plan entries = %d, want 2 (local + unconfigured prod)", len(entries))
+	}
+	var prod, local *planJSONEntry
+	for i := range entries {
+		switch entries[i].Target {
+		case "prod":
+			prod = &entries[i]
+		case "local":
+			local = &entries[i]
+		}
+	}
+	if prod == nil || !prod.Unconfigured {
+		t.Fatalf("prod entry = %+v, want unconfigured:true", prod)
+	}
+	if local == nil || local.Error != "" {
+		t.Fatalf("local entry = %+v, want a normal pending-migrations row", local)
+	}
+
+	// `plan local` (positional target) must scope to local only — before
+	// the fix the positional arg was ignored entirely.
+	entries = buildPlanEntries(cfg, "local")
+	if len(entries) != 1 || entries[0].Target != "local" {
+		t.Fatalf("plan(local) entries = %+v, want exactly the local row", entries)
 	}
 }

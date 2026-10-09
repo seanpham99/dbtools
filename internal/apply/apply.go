@@ -38,10 +38,10 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 	// migrator.Open wraps golang-migrate, whose own file source driver
 	// looks for "<version>_<name>.up.sql" unconditionally — it has no way
 	// to honor a custom up_suffix. A non-default suffix would make our
-	// own dir.PendingAfter (below) report files as pending that
-	// golang-migrate's m.Step() can never find, silently applying
-	// nothing while looking like success. Fail closed instead: today,
-	// up_suffix is only honored by the read-only commands and `adopt`.
+	// own dir.PendingAfter (below) report files as pending that the
+	// source index can never resolve, silently applying nothing while
+	// looking like success. Fail closed instead: today, up_suffix is only
+	// honored by the read-only commands and `adopt`.
 	if upSuffix != config.DefaultUpSuffix {
 		return nil, fmt.Errorf("target %q: migrations.up_suffix=%q is not supported for applying migrations (up/push) — golang-migrate's execution engine requires %q; the read-only commands and `dbtools adopt` honor the custom suffix, but up/push cannot yet", targetName, upSuffix, config.DefaultUpSuffix)
 	}
@@ -77,12 +77,15 @@ func Run(cfg *config.Config, targetName string, urlOverride string) (*statusinfo
 
 	pending := dir.PendingAfter(versionBefore, hasVersionBefore)
 	for _, expected := range pending {
-		applied, err := m.Step()
-		if err != nil {
+		// Apply the file dir.PendingAfter selected, not whatever
+		// golang-migrate's index walk would pick: its Steps(1) refuses to
+		// advance (reporting "no change", which reads as success here)
+		// when the current cursor version's file no longer exists in
+		// migrationsDir. The ledger — not the file set — is the record of
+		// what was applied; missing historical files must not block
+		// pending work.
+		if err := m.ApplyFile(expected); err != nil {
 			return nil, fmt.Errorf("target %q: %w", targetName, err)
-		}
-		if !applied {
-			break // no pending migrations left
 		}
 
 		versionAfter, _, _, err := m.Version()

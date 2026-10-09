@@ -66,28 +66,39 @@ func (mg *Migrator) Up() (applied bool, err error) {
 	return true, nil
 }
 
-// Step applies the single next pending migration. applied is false if there
-// was nothing to do. Callers that need to record per-migration side effects
-// (e.g. the ledger) must use Step in a loop instead of Up, so a migration
-// that fails partway through a batch leaves the already-applied ones
-// recorded.
-//
-// golang-migrate's Steps(1) reports os.ErrNotExist ("file does not exist")
-// when the last migration has already been applied and there is no "next"
-// file — treat that as no-change, same as ErrNoChange.
-func (mg *Migrator) Step() (applied bool, err error) {
-	err = mg.m.Steps(1)
-	if errors.Is(err, migrate.ErrNoChange) || errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
+// ApplyFile applies the single migration f via m.Run: it feeds f's own
+// contents to the database driver and moves the cursor to f.Version,
+// bypassing golang-migrate's source-index walk (Steps/Up). The walk is
+// unsafe as an apply path because it guards on versionExists(cursor) —
+// golang-migrate refuses to advance when the *current* version's file no
+// longer exists on disk, and its os.ErrNotExist for that case is
+// indistinguishable from "no next migration". Once an applied file is
+// renamed or removed from migrationsDir, Steps(1) therefore returns
+// "no change" while PendingAfter still lists real pending files —
+// exactly the silent skip this replaces. Callers own the pending list:
+// apply.Run iterates dir.PendingAfter and applies each file explicitly.
+func (mg *Migrator) ApplyFile(f File) error {
+	body, err := os.Open(f.Path)
 	if err != nil {
-		return false, fmt.Errorf("applying next migration: %w", err)
+		return fmt.Errorf("opening migration file %s: %w", f.Filename, err)
 	}
-	return true, nil
+	migr, err := migrate.NewMigration(body, f.Filename, uint(f.Version), int(f.Version))
+	if err != nil {
+		body.Close()
+		return fmt.Errorf("preparing migration %s: %w", f.Filename, err)
+	}
+	if err := mg.m.Run(migr); err != nil {
+		return fmt.Errorf("applying migration %s: %w", f.Filename, err)
+	}
+	return nil
 }
 
 // StepDown rolls back the single most recently applied migration using its .down.sql file.
-// applied is false if there was nothing to do.
+// applied is false if there was nothing to do. Caveat: golang-migrate's
+// readDown emits the same os.ErrNotExist for a missing *cursor* file
+// (versionExists) as for "no previous migration" — this wrapper can't
+// distinguish them, so a deleted applied file silently stops the revert.
+// Tolerable for `down` (best-effort cleanup); never gate correctness on it.
 func (mg *Migrator) StepDown() (applied bool, err error) {
 	err = mg.m.Steps(-1)
 	if errors.Is(err, migrate.ErrNoChange) || errors.Is(err, os.ErrNotExist) || errors.Is(err, migrate.ErrNilVersion) {

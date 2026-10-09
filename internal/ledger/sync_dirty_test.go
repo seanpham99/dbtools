@@ -34,11 +34,23 @@ func TestSync_RefusesDirtyCursor(t *testing.T) {
 	defer m.Close()
 
 	// Apply version 1, then let version 2 fail — leaving the cursor dirty.
-	if _, err := m.Step(); err != nil {
-		t.Fatalf("step 1: %v", err)
+	d, err := migrator.ReadDir(dir, ".up.sql")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := m.Step(); err == nil {
-		t.Fatal("step 2 should fail (bad SQL)")
+	f1, err := d.Find(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ApplyFile(f1); err != nil {
+		t.Fatalf("apply 1: %v", err)
+	}
+	f2, err := d.Find(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ApplyFile(f2); err == nil {
+		t.Fatal("apply 2 should fail (bad SQL)")
 	}
 	v, dirty, _, err := m.Version()
 	if err != nil {
@@ -82,8 +94,16 @@ func TestSync_BackfillSkipsDirty(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	if _, err := m.Step(); err != nil {
-		t.Fatalf("step 1: %v", err)
+	d, err := migrator.ReadDir(dir, ".up.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f1, err := d.Find(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ApplyFile(f1); err != nil {
+		t.Fatalf("apply 1: %v", err)
 	}
 	db, err := migratorOpenDB(rawURL)
 	if err != nil {

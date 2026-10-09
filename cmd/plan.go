@@ -17,16 +17,20 @@ import (
 // versions. It is the agent/CI-facing "show me what happens next" surface —
 // exit 0 means "safe to apply", non-zero means "investigate first".
 var planCmd = &cobra.Command{
-	Use:   "plan",
+	Use:   "plan [target]",
 	Short: "Preview pending migrations and drift without applying anything (read-only)",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Reset explicitly: cmd is a package-level singleton, so a prior
 		// invocation's exit-2 outcome (which sets this true, below) would
 		// otherwise leak into every later invocation in the same process
 		// — including, notably, every other test in this package's suite.
 		cmd.SilenceUsage = false
-		err := runPlan()
-		// Exit 2 (pending/drift) is a documented, expected outcome of a
+		target := planTarget
+		if len(args) > 0 && args[0] != "" {
+			target = args[0]
+		}
+		err := runPlan(target)
 		// correct run, not a usage mistake — only silence usage for that
 		// specific case, so an actual invalid-flag/argument error (which
 		// cobra also routes through this same error path) still shows it.
@@ -56,16 +60,17 @@ type planJSONEntry struct {
 	Pending        []string `json:"pending,omitempty"`
 	Drift          []string `json:"drift,omitempty"`
 	LedgerSkipped  bool     `json:"ledger_skipped,omitempty"`
+	Unconfigured   bool     `json:"unconfigured,omitempty"`
 	Error          string   `json:"error,omitempty"`
 }
 
-func runPlan() error {
+func runPlan(target string) error {
 	cfg, err := loadConfig("dbtools.toml")
 	if err != nil {
 		return fmt.Errorf("loading dbtools.toml: %w", err)
 	}
 
-	entries := buildPlanEntries(cfg)
+	entries := buildPlanEntries(cfg, target)
 
 	b, err := json.Marshal(entries)
 	if err != nil {
@@ -92,17 +97,30 @@ func runPlan() error {
 	return nil
 }
 
-// buildPlanEntries collects the plan for every configured target (or the single --target).
-func buildPlanEntries(cfg *config.Config) []planJSONEntry {
-	results := statusinfo.CollectAll(cfg, planTarget, planURL)
+// buildPlanEntries collects the plan for every configured target (or the
+// single target given by a positional arg / --target flag).
+func buildPlanEntries(cfg *config.Config, target string) []planJSONEntry {
+	results := statusinfo.CollectAll(cfg, target, planURL)
 	entries := make([]planJSONEntry, 0, len(results))
 
 	for _, r := range results {
+		if r.Unconfigured {
+			// Target resolves no URL (e.g. its url_env is unset on this
+			// machine). Report it instead of dereferencing the nil Status
+			// — plan is read-only, so a missing sibling config is
+			// informational, not fatal. Mirrors status's [unconfigured].
+			entries = append(entries, planJSONEntry{Target: r.Target, Unconfigured: true})
+			continue
+		}
 		if r.Err != nil {
 			entries = append(entries, planJSONEntry{Target: r.Target, Error: r.Err.Error()})
 			continue
 		}
 		s := r.Status
+		if s == nil {
+			entries = append(entries, planJSONEntry{Target: r.Target, Error: "no status collected"})
+			continue
+		}
 		e := planJSONEntry{
 			Target:         r.Target,
 			CurrentVersion: s.CurrentVersion,
@@ -112,7 +130,7 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 		}
 		if s.HasVersion {
 			override := ""
-			if planTarget != "" {
+			if target != "" {
 				override = planURL
 			}
 			url, _ := cfg.ResolveURLOrFlag(r.Target, override)

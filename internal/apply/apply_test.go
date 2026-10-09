@@ -31,9 +31,9 @@ func TestRun_EnvVarNotSet(t *testing.T) {
 // TestRun_RefusesCustomUpSuffix is a regression test for a review finding:
 // golang-migrate's own file source is hardcoded to ".up.sql"/".down.sql"
 // regardless of migrations.up_suffix, so a custom suffix would make
-// dir.PendingAfter report files as pending that m.Step() can never find —
-// applying silently nothing while looking like success. Run must refuse
-// instead of no-op'ing.
+// dir.PendingAfter report files as pending that golang-migrate can never
+// resolve — applying silently nothing while looking like success. Run
+// must refuse instead of no-op'ing.
 func TestRun_RefusesCustomUpSuffix(t *testing.T) {
 	cfg := &config.Config{
 		MigrationsDir: "migrations",
@@ -79,5 +79,63 @@ func TestRun_BatchTimestampMigrations(t *testing.T) {
 	}
 	if len(status.Pending) != 0 {
 		t.Errorf("Pending count = %d, want 0", len(status.Pending))
+	}
+}
+
+// TestRun_AppliesPendingWhenCursorFileIsMissing is the regression for the
+// silent-skip bug: once an already-applied migration file is renamed or
+// deleted from migrationsDir, golang-migrate's Steps(1) refuses to
+// advance (its versionExists check rejects the cursor version), and the
+// old Step wrapper swallowed that os.ErrNotExist as "no change" — `up`
+// reported success while every pending file stayed pending. Run must
+// still apply the pending file: the ledger cursor, not the on-disk file
+// set, is the record of what was applied.
+func TestRun_AppliesPendingWhenCursorFileIsMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	migDir := filepath.Join(tmpDir, "migrations")
+	if err := os.MkdirAll(migDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	v1 := filepath.Join(migDir, "20260101120000_create_users.up.sql")
+	if err := os.WriteFile(v1, []byte("CREATE TABLE users (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbPath := filepath.Join(tmpDir, "test.db")
+	t.Setenv("DBTOOLS_TEST_MISSING_CURSOR_URL", "sqlite://"+dbPath)
+	cfg := &config.Config{
+		MigrationsDir: migDir,
+		Targets: map[string]config.Target{
+			"local": {URLEnv: "DBTOOLS_TEST_MISSING_CURSOR_URL"},
+		},
+	}
+
+	status, err := Run(cfg, "local", "")
+	if err != nil {
+		t.Fatalf("Run() first apply failed: %v", err)
+	}
+	if status.CurrentVersion != 20260101120000 {
+		t.Fatalf("CurrentVersion = %d, want 20260101120000", status.CurrentVersion)
+	}
+
+	// Remove the applied file and add a newer pending one — the reported
+	// state where `up` used to print "now at version <old> (1 pending)".
+	if err := os.Remove(v1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(migDir, "20260102120000_add_orders.up.sql"), []byte("CREATE TABLE orders (id INTEGER PRIMARY KEY);"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	status, err = Run(cfg, "local", "")
+	if err != nil {
+		t.Fatalf("Run() with missing cursor file returned error: %v", err)
+	}
+	if status.CurrentVersion != 20260102120000 {
+		t.Fatalf("CurrentVersion = %d, want 20260102120000 (pending migration must apply even when the cursor's file is gone)", status.CurrentVersion)
+	}
+	if len(status.Pending) != 0 {
+		t.Fatalf("Pending = %v, want none", status.Pending)
 	}
 }
