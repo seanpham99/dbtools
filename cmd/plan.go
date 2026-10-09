@@ -106,6 +106,16 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 	entries := make([]planJSONEntry, 0, len(results))
 
 	for _, r := range results {
+		if r.Unconfigured {
+			entries = append(entries, planJSONEntry{
+				Target:  r.Target,
+				Pending: []string{},
+				Ignored: []string{},
+				Drift:   []string{},
+				Error:   "unconfigured (url_env not set)",
+			})
+			continue
+		}
 		if r.Err != nil {
 			entries = append(entries, planJSONEntry{
 				Target:  r.Target,
