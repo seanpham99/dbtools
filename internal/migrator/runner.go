@@ -65,6 +65,14 @@ func (r *Runner) State(ctx context.Context) (ledger.State, error) {
 	if !exists {
 		return ledger.State{}, nil
 	}
+	// EnsureSchema is a no-op on a current table; on a ledger created by an
+	// older dbtools it adds the columns State selects, so read-only calls
+	// (status/plan/dryrun) don't fail just because the table predates a
+	// column added later. apply/adopt already guarantee this; read paths
+	// used to skip it.
+	if err := r.eng.Ledger().EnsureSchema(r.db, r.ledgerTable); err != nil {
+		return ledger.State{}, err
+	}
 	return r.eng.Ledger().State(r.db, r.ledgerTable)
 }
 
