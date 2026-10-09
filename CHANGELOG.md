@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.1](https://github.com/seanpham99/dbtools/compare/v0.8.0...v0.8.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* plan entry build no longer panics on unconfigured targets ([#116](https://github.com/seanpham99/dbtools/issues/116)) ([dcf7434](https://github.com/seanpham99/dbtools/commit/dcf7434ac14c93bfb1447ec7f38b526270691781))
+* read paths (status/plan/dryrun) ensure ledger schema before State ([#118](https://github.com/seanpham99/dbtools/issues/118)) ([9fa1953](https://github.com/seanpham99/dbtools/commit/9fa19538d8982332d3ad4fac609e8ae0476cb368))
+
 ## [0.8.0](https://github.com/seanpham99/dbtools/compare/v0.7.3...v0.8.0) (2026-10-09)
 
 
