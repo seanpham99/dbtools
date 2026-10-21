@@ -4,6 +4,9 @@ package container
 import (
 	"errors"
 	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -116,7 +119,7 @@ func TestSpecFor_UnknownEngineListsSupported(t *testing.T) {
 }
 
 func TestParseInspectOutputNoSuchContainer(t *testing.T) {
-	exists, running, err := parseInspectOutput([]byte("Error: No such container: dbtools-mssql-local\n"), errors.New("exit status 1"))
+	exists, running, err := parseInspectOutput(nil, []byte("Error: No such container: dbtools-mssql-local\n"), errors.New("exit status 1"))
 	if err != nil {
 		t.Fatalf("parseInspectOutput() returned error: %v", err)
 	}
@@ -126,7 +129,7 @@ func TestParseInspectOutputNoSuchContainer(t *testing.T) {
 }
 
 func TestParseInspectOutputNoSuchObject(t *testing.T) {
-	exists, running, err := parseInspectOutput([]byte("error: no such object: dbtools-mssql-local\n"), errors.New("exit status 1"))
+	exists, running, err := parseInspectOutput(nil, []byte("error: no such object: dbtools-mssql-local\n"), errors.New("exit status 1"))
 	if err != nil {
 		t.Fatalf("parseInspectOutput() returned error: %v", err)
 	}
@@ -136,7 +139,7 @@ func TestParseInspectOutputNoSuchObject(t *testing.T) {
 }
 
 func TestParseInspectOutputRunning(t *testing.T) {
-	exists, running, err := parseInspectOutput([]byte("true\n"), nil)
+	exists, running, err := parseInspectOutput([]byte("true\n"), nil, nil)
 	if err != nil {
 		t.Fatalf("parseInspectOutput() returned error: %v", err)
 	}
@@ -146,7 +149,7 @@ func TestParseInspectOutputRunning(t *testing.T) {
 }
 
 func TestParseInspectOutputStopped(t *testing.T) {
-	exists, running, err := parseInspectOutput([]byte("false\n"), nil)
+	exists, running, err := parseInspectOutput([]byte("false\n"), nil, nil)
 	if err != nil {
 		t.Fatalf("parseInspectOutput() returned error: %v", err)
 	}
@@ -156,8 +159,77 @@ func TestParseInspectOutputStopped(t *testing.T) {
 }
 
 func TestParseInspectOutputOtherError(t *testing.T) {
-	_, _, err := parseInspectOutput([]byte("Cannot connect to the Docker daemon"), errors.New("exit status 1"))
+	_, _, err := parseInspectOutput(nil, []byte("Cannot connect to the Docker daemon"), errors.New("exit status 1"))
 	if err == nil {
 		t.Fatal("parseInspectOutput() returned nil error, want non-nil")
+	}
+}
+
+// stubDockerOnPATH writes a `docker` script into a temp dir and puts it first
+// on PATH. body is the script body; the script must mirror real Docker:
+// messages go to stderr, the payload to stdout, and failures exit non-zero.
+func stubDockerOnPATH(t *testing.T, body string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("PATH stub uses a POSIX shell script")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "docker")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestRequireMatchingImage_VolumeProbeError(t *testing.T) {
+	stubDockerOnPATH(t, `case "$1" in
+inspect) echo "error: no such object: dbtools-pg-test" >&2; exit 1 ;;
+volume) echo "Error response from daemon: template parsing error" >&2; exit 64 ;;
+esac
+`)
+	s := spec{engine: "postgres", name: "dbtools-pg-test", image: PostgresImageFor("17")}
+	err := requireMatchingImage(s)
+	if err == nil {
+		t.Fatal("requireMatchingImage returned nil, want the volume probe error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "could not verify the existing data volume") {
+		t.Fatalf("error %q does not name the volume probe", got)
+	}
+	if !strings.Contains(got, "dbtools stop --no-backup") {
+		t.Fatalf("error %q does not offer the start-fresh option", got)
+	}
+}
+
+func TestRequireMatchingImage_UnlabeledVolume(t *testing.T) {
+	stubDockerOnPATH(t, `case "$1" in
+inspect) echo "error: no such object: dbtools-pg-test" >&2; exit 1 ;;
+volume) echo "null"; exit 0 ;;
+esac
+`)
+	// A label-less volume (`null` is not malformed) that a pinned major cannot
+	// prove it matches.
+	s := spec{engine: "postgres", name: "dbtools-pg-test", image: PostgresImageFor("16")}
+	err := requireMatchingImage(s)
+	if err == nil {
+		t.Fatal("requireMatchingImage returned nil, want the unlabeled-volume error")
+	}
+	if !strings.Contains(err.Error(), "did not record which image") {
+		t.Fatalf("error %q is not the unlabeled-volume message", err)
+	}
+}
+
+func TestRequireMatchingImage_ContainerImageMismatch(t *testing.T) {
+	stubDockerOnPATH(t, `if [ "$1" = "inspect" ]; then
+	echo "postgres:16-alpine"; exit 0
+fi
+`)
+	s := spec{engine: "postgres", name: "dbtools-pg-test", image: PostgresImageFor("17")}
+	err := requireMatchingImage(s)
+	if err == nil {
+		t.Fatal("requireMatchingImage returned nil, want the image-mismatch error")
+	}
+	if !strings.Contains(err.Error(), "was created by postgres:16-alpine") {
+		t.Fatalf("error %q is not the mismatch message", err)
 	}
 }

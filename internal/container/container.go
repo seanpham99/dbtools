@@ -378,18 +378,14 @@ Docker. On hosts without Docker, point your local target's connection env var
 'dbtools up' / 'dbtools status' directly — no container needed`, cause))
 }
 
-func parseInspectOutput(out []byte, cmdErr error) (exists bool, running bool, err error) {
+func parseInspectOutput(stdout, stderr []byte, cmdErr error) (exists bool, running bool, err error) {
 	if cmdErr != nil {
-		// Docker CLI message wording for a missing container has changed
-		// across versions ("Error: No such container: X" pre-25, "error:
-		// no such object: X" 29+) — match case-insensitively on "no such"
-		// rather than the exact phrase.
-		if strings.Contains(strings.ToLower(string(out)), "no such") {
-			return false, false, nil
+		if _, err := inspectErr(stderr, cmdErr); err != nil {
+			return false, false, err
 		}
-		return false, false, fmt.Errorf("docker inspect failed: %w: %s", cmdErr, strings.TrimSpace(string(out)))
+		return false, false, nil
 	}
-	trimmed := strings.TrimSpace(string(out))
+	trimmed := strings.TrimSpace(string(stdout))
 	if trimmed == "true" {
 		return true, true, nil
 	}
@@ -399,13 +395,31 @@ func parseInspectOutput(out []byte, cmdErr error) (exists bool, running bool, er
 	return true, false, fmt.Errorf("unexpected docker inspect output: %q", trimmed)
 }
 
+// inspectErr classifies a failed docker inspect as "the object is absent"
+// or as an operational error, and returns (false, nil) for the former.
+//
+// Docker CLI message wording for a missing object has changed across
+// versions ("Error: No such container: X" pre-25, "error: no such object:
+// X" 29+, "Error response from daemon: get X: no such volume") — match
+// case-insensitively on "no such" rather than the exact phrase.
+//
+// Anything else — a daemon or CLI failure, a template the CLI does not
+// support — is operational: the caller must not treat it as "absent",
+// because absent and unverifiable have different remedies.
+func inspectErr(stderr []byte, cmdErr error) (found bool, err error) {
+	if strings.Contains(strings.ToLower(string(stderr)), "no such") {
+		return false, nil
+	}
+	return false, fmt.Errorf("docker inspect failed: %w: %s", cmdErr, strings.TrimSpace(string(stderr)))
+}
+
 func inspect(containerName string) (exists bool, running bool, err error) {
 	cmd := exec.Command("docker", "inspect", "-f", "{{.State.Running}}", containerName)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	runErr := cmd.Run()
-	return parseInspectOutput(out.Bytes(), runErr)
+	return parseInspectOutput(stdout.Bytes(), stderr.Bytes(), runErr)
 }
 
 // discoverHostPort returns the host port Docker assigned to name's
@@ -520,14 +534,22 @@ func withPostgresMajor(s spec, postgresMajor string) spec {
 // pre-18 path. Both surface as failures that never name the remedy, so the
 // mismatch is caught here instead.
 func requireMatchingImage(s spec) error {
-	if image, ok := inspectImage(s.name); ok {
+	image, containerFound, err := inspectImage(s.name)
+	if err != nil {
+		return fmt.Errorf("could not verify the existing container %s: %w. To start fresh anyway, run 'dbtools stop --no-backup' to discard the local database, then 'dbtools start'", s.name, err)
+	}
+	if containerFound {
 		if image != "" && image != s.image {
 			return localImageMismatch(s, image)
 		}
 		return nil
 	}
-	labels, ok := volumeLabels(volumeNameFor(s.name))
-	if !ok {
+	volumeName := volumeNameFor(s.name)
+	labels, volumeFound, err := volumeLabels(volumeName)
+	if err != nil {
+		return fmt.Errorf("could not verify the existing data volume %s: %w. To start fresh anyway, run 'dbtools stop --no-backup' to discard the local database, then 'dbtools start'", volumeName, err)
+	}
+	if !volumeFound {
 		// No container and no volume: there is nothing to open yet.
 		return nil
 	}
@@ -565,7 +587,8 @@ func defaultImageFor(engineName string) string {
 // LocalImage returns the image the project's tool-owned local container
 // was created from, and whether that container exists.
 func LocalImage(engineName, projectID string) (string, bool) {
-	return inspectImage(containerNameFor(engineName, projectID))
+	image, ok, _ := inspectImage(containerNameFor(engineName, projectID))
+	return image, ok
 }
 
 // LocalVolumeImage returns the image the project's local data volume was
@@ -576,7 +599,7 @@ func LocalImage(engineName, projectID string) (string, bool) {
 // major the local database is on. Anything judging a provider switch has to
 // read this rather than the container, which a stop has already deleted.
 func LocalVolumeImage(engineName, projectID string) (string, bool) {
-	labels, ok := volumeLabels(volumeNameFor(containerNameFor(engineName, projectID)))
+	labels, ok, _ := volumeLabels(volumeNameFor(containerNameFor(engineName, projectID)))
 	if !ok {
 		return "", false
 	}
@@ -584,29 +607,50 @@ func LocalVolumeImage(engineName, projectID string) (string, bool) {
 	return image, image != ""
 }
 
-// inspectImage returns the image containerName was created from, and
-// whether the container exists.
-func inspectImage(containerName string) (string, bool) {
-	out, err := exec.Command("docker", "inspect", "-f", "{{.Config.Image}}", containerName).Output()
-	if err != nil {
-		return "", false
+// inspectImage returns the image containerName was created from, whether the
+// container exists, and whether the inspect failed operationally. A missing
+// container is (found=false, nil); a failed inspect is an error — absent and
+// unverifiable are different states and have different remedies.
+func inspectImage(containerName string) (string, bool, error) {
+	cmd := exec.Command("docker", "inspect", "-f", "{{.Config.Image}}", containerName)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	runErr := cmd.Run()
+	if runErr != nil {
+		if _, err := inspectErr(stderr.Bytes(), runErr); err != nil {
+			return "", false, err
+		}
+		return "", false, nil
 	}
-	return strings.TrimSpace(string(out)), true
+	return strings.TrimSpace(stdout.String()), true, nil
 }
 
-// volumeLabels returns one docker volume's labels, and whether the volume
-// exists. An inspect failure reports "does not exist": the only volume
-// name passed here is the project's own deterministic one.
-func volumeLabels(name string) (map[string]string, bool) {
-	out, err := exec.Command("docker", "volume", "inspect", "-f", "{{json .Labels}}", name).Output()
-	if err != nil {
-		return nil, false
+// volumeLabels returns one docker volume's labels, whether the volume
+// exists, and whether the inspect failed operationally. A missing volume is
+// (found=false, nil); a failed inspect or an unreadable label payload is an
+// error, not "absent". A label-less volume yields `null`, which unmarshals
+// to nil and must still read as (found=true, no labels).
+func volumeLabels(name string) (map[string]string, bool, error) {
+	cmd := exec.Command("docker", "volume", "inspect", "-f", "{{json .Labels}}", name)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	runErr := cmd.Run()
+	if runErr != nil {
+		if _, err := inspectErr(stderr.Bytes(), runErr); err != nil {
+			return nil, false, err
+		}
+		return nil, false, nil
 	}
-	labels := map[string]string{}
-	if err := json.Unmarshal(out, &labels); err != nil {
-		return nil, false
+	var labels map[string]string
+	if err := json.Unmarshal(stdout.Bytes(), &labels); err != nil {
+		return nil, false, fmt.Errorf("docker volume inspect returned unreadable labels for %s: %w", name, err)
 	}
-	return labels, true
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	return labels, true, nil
 }
 
 func waitReadyWithTimeout(s spec, timeout time.Duration) error {

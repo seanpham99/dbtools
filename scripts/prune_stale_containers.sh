@@ -10,8 +10,8 @@
 #      worktree-deleted leak that started this.
 #
 # The dbtools binary is resolved as ../dbtools relative to this script (the
-# repo's gitignored build output), NOT via PATH — ~/.local/bin/dbtools is an
-# older npm-installed release that lacks `prune`.
+# repo's gitignored build output), NOT via PATH — the PATH dbtools is the
+# npm wrapper, which serves the last published release and can lag this build.
 #
 # Install: crontab -e
 #   17 */6 * * * <repo>/scripts/prune_stale_containers.sh >>/tmp/dbtools-prune.log 2>&1
