@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.0](https://github.com/seanpham99/dbtools/compare/v0.8.1...v0.9.0) (2026-10-21)
+
+
+### Features
+
+* add pgx as an alternative local-database provider ([#120](https://github.com/seanpham99/dbtools/issues/120)) ([e57785b](https://github.com/seanpham99/dbtools/commit/e57785ba714e3b175966660a919dd0770507c042))
+* generalize the local database config and use a pgx scratch for diff ([6f8f783](https://github.com/seanpham99/dbtools/commit/6f8f783106350227dafdc0cc73024b64bc16bb44))
+* generalize the local database config and use a pgx scratch for diff ([6f8f783](https://github.com/seanpham99/dbtools/commit/6f8f783106350227dafdc0cc73024b64bc16bb44)), closes [#122](https://github.com/seanpham99/dbtools/issues/122) [#123](https://github.com/seanpham99/dbtools/issues/123) [#121](https://github.com/seanpham99/dbtools/issues/121)
+
 ## [0.8.1](https://github.com/seanpham99/dbtools/compare/v0.8.0...v0.8.1) (2026-10-11)
 
 
