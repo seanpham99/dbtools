@@ -77,6 +77,14 @@ type ContainerConfig struct {
 	Port int `toml:"port"`
 }
 
+// LocalConfig configures the tool-owned local database.
+type LocalConfig struct {
+	// Provider selects what hosts the tool-owned local database.
+	// "docker" (the default) runs it in a container; "pgx" runs it in an
+	// external pgx runtime, which serves the postgres engine only.
+	Provider string `toml:"provider"`
+}
+
 // LedgerConfig configures the migration-ledger table dbtools reads and writes.
 type LedgerConfig struct {
 	// Table overrides the ledger table name — set this to coexist with an
@@ -127,6 +135,7 @@ type Config struct {
 	Clone         CloneConfig       `toml:"clone"`
 	Project       ProjectConfig     `toml:"project"`
 	Container     ContainerConfig   `toml:"container"`
+	Local         LocalConfig       `toml:"local"`
 	Ledger        LedgerConfig      `toml:"ledger"`
 	Migrations    MigrationsConfig  `toml:"migrations"`
 }

@@ -11,7 +11,7 @@
 ## Key Features
 
 - **Multi-Engine Support**: Native migration engines for SQL Server (MSSQL), PostgreSQL (with session reset isolation), MySQL, and SQLite (file-based).
-- **Project-Scoped Local Dev Containers**: `dbtools start`/`stop`/`restart`/`logs` manage a tool-owned Docker container per project (no cross-repo name/port collisions), with data persisting across `stop`/`start` by default.
+- **Project-Scoped Local Dev Database**: `dbtools start`/`stop`/`restart`/`logs` manage a tool-owned local database per project (no cross-repo name/port collisions), with data persisting across `stop`/`start` by default. Runs in a Docker container, or in an external [pgx](https://github.com/pgrundev/pgx) runtime when you want no Docker.
 - **Zero-Drift Migration Ledger**: Tracks applied migrations with SHA-256 content hashes in `dbtools_migration_history` alongside standard `schema_migrations` cursors.
 - **Read-Only Drift Verification**: `dbtools verify` validates that live database objects match migration definitions and alerts when files were modified after execution.
 - **Full Structural Replay & Diff**: `dbtools diff` replays migrations into an ephemeral scratch database and compares its structural schema catalog against live targets to detect unrecorded 2am manual hotfixes that bypass the ledger.
@@ -145,10 +145,10 @@ dbtools status
 | `clone` | `dbtools clone <source> <dest> [--yes] [--no-mask] [--limit N] [--where "SQL"]` | Copies data from `source` into `dest` (same engine only), masking sensitive columns by default. `dest` must not be protected. |
 | `lint` | `dbtools lint [--dir <path>] [--json]` | Validates filenames, duplicate versions, and empty files without database connection. |
 | `dashboard` | `dbtools dashboard` | Opens terminal UI showing live target status (`r` to refresh, `q` to quit). |
-| `start` / `stop` | `dbtools start [--timeout 30s] [--no-wait]` / `stop [--no-backup]` | Starts or stops the tool-owned local database Docker container (project-scoped name/volume, readiness polling). `stop` preserves data by default; `--no-backup` also wipes it. |
-| `restart` | `dbtools restart [--timeout 30s] [--no-wait]` | Restarts the local container in place; data survives. |
-| `logs` | `dbtools logs [-f]` | Streams the local container's logs; `-f`/`--follow` keeps streaming new output. |
-| `prune` | `dbtools prune [--volumes] [--dry-run]` | Removes labeled tool-owned containers whose `dbtools.toml` no longer exists (e.g. a deleted git worktree); `--volumes` also removes their data volumes. |
+| `start` / `stop` | `dbtools start [--timeout 30s] [--no-wait]` / `stop [--no-backup]` | Starts or stops the tool-owned local database (project-scoped, readiness polling). Docker by default; the `pgx` provider serves postgres without Docker. `stop` preserves data by default; `--no-backup` also wipes it. |
+| `restart` | `dbtools restart [--timeout 30s] [--no-wait]` | Restarts the local database in place; data survives. |
+| `logs` | `dbtools logs [-f]` | Streams the local database's logs; `-f`/`--follow` keeps streaming new output. |
+| `prune` | `dbtools prune [--volumes] [--dry-run]` | Removes tool-owned local databases whose `dbtools.toml` no longer exists (e.g. a deleted git worktree); `--volumes` also removes their data. |
 
 ---
 
@@ -297,12 +297,16 @@ repopulates every cloned table).
 
 ---
 
-## Local Dev Containers
+## Local Dev Database
 
-`dbtools start` runs a tool-owned Docker container scoped to the current
-project — its name and data volume are derived from the absolute path to
-`dbtools.toml` (or an explicit override), so two dbtools checkouts on the
-same machine never collide:
+`dbtools start` provisions a tool-owned local database scoped to the
+current project. Two providers are available, and Docker is the default.
+
+### Docker (default)
+
+The Docker provider runs a container whose name and data volume are
+derived from the absolute path to `dbtools.toml` (or an explicit
+override), so two dbtools checkouts on the same machine never collide:
 
 ```bash
 dbtools start   # dbtools-<engine>-<project-id>, port auto-assigned by Docker
@@ -334,6 +338,59 @@ only provably-dead resources; `--volumes` opts into deleting their data
 volumes (data loss for that project's local database), and `--dry-run`
 reports without removing. Containers and volumes created before the labels
 existed are ignored — their owning path cannot be proven.
+
+### pgx (no Docker)
+
+The pgx provider runs the local database in an external
+[pgx](https://github.com/pgrundev/pgx) runtime instead of a container.
+It serves the **postgres** engine only, and it needs no Docker at all:
+
+```toml
+[local]
+provider = "pgx"
+```
+
+```bash
+dbtools start   # creates a per-project pgx cluster and starts it
+dbtools stop    # runtime stopped, cluster data kept
+dbtools restart # stop + start, data survives
+dbtools logs -f # stream the cluster's server log
+```
+
+Each project gets its own cluster, under `~/.dbtools/pgx/<engine>/<project-id>`,
+so two checkouts never share a database. pgx picks a free port per
+cluster.
+
+The `[container] port` setting applies here too: it pins the port the
+cluster is created with. It has no effect on a cluster that already
+exists, because pgx records the port when the cluster is initialised.
+
+pgx is an external program that dbtools invokes — it is **not** bundled
+with dbtools, and dbtools does not redistribute it. Install it separately:
+
+```bash
+curl -fsSL https://pgx.dev/install | sh
+```
+
+pgx is licensed under AGPL-3.0 while dbtools is MIT. Keeping it an
+external executable is what keeps the AGPL code out of the dbtools
+distribution, the same way dbtools already treats `docker`, `psql`, and
+`pg_dump` — tools it calls but never ships.
+
+Notes on the pgx provider:
+
+- **PostgreSQL 18 only.** The current pgx release is PostgreSQL 18.6. It
+  is not a drop-in for PostgreSQL 16 or 17, whose introspection differs
+  from 18's.
+- **No TLS.** pgx speaks the PostgreSQL wire protocol without TLS, so
+  dbtools adds `sslmode=disable` to the URL it generates. dbtools'
+  postgres engine otherwise requires TLS by default.
+- **No client tools.** The pgx distribution ships the runtime but not
+  `psql` or `pg_dump`; the `squash` path still needs a host PostgreSQL 18
+  installation for those.
+
+`dbtools reset` works with the pgx provider: it drops and recreates the
+database through the cluster's own maintenance database.
 
 ---
 

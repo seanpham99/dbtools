@@ -5,12 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/localenv"
 	"github.com/spf13/cobra"
 )
-
-var restartContainer = container.RestartForWithTimeout
 
 var (
 	restartTimeout time.Duration
@@ -19,7 +16,7 @@ var (
 
 var restartCmd = &cobra.Command{
 	Use:   "restart",
-	Short: "Restart the tool-owned local database container, preserving its data",
+	Short: "Restart the tool-owned local database, preserving its data",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runRestart()
 	},
@@ -27,7 +24,7 @@ var restartCmd = &cobra.Command{
 
 func init() {
 	restartCmd.Flags().DurationVar(&restartTimeout, "timeout", 30*time.Second, "maximum time to wait for the database engine to become ready")
-	restartCmd.Flags().BoolVar(&restartNoWait, "no-wait", false, "return immediately after restarting container without waiting for database readiness")
+	restartCmd.Flags().BoolVar(&restartNoWait, "no-wait", false, "return immediately after restarting the local database without waiting for database readiness")
 	rootCmd.AddCommand(restartCmd)
 }
 
@@ -52,13 +49,13 @@ func runRestart() error {
 		return err
 	}
 
-	url, err := restartContainer(engineName, projectID, configuredContainerPort(cfg), restartTimeout, !restartNoWait)
+	url, err := restartLocalDB(cfg, engineName, projectID, configuredContainerPort(cfg), restartTimeout, !restartNoWait)
 	if err != nil {
 		return err
 	}
 	if err := writeLocalEnv(map[string]string{target.URLEnv: url}); err != nil {
 		return err
 	}
-	fmt.Printf("local container restarted; %s is set via %s\n", target.URLEnv, localenv.Path())
+	fmt.Printf("local database restarted; %s is set via %s\n", target.URLEnv, localenv.Path())
 	return nil
 }

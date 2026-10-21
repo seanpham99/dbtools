@@ -10,16 +10,16 @@ import (
 
 func TestRunRestartWritesLocalEnv(t *testing.T) {
 	origLoadConfig := loadConfig
-	origRestartContainer := restartContainer
+	origRestartLocalDB := restartLocalDB
 	origWriteLocalEnv := writeLocalEnv
 	t.Cleanup(func() {
 		loadConfig = origLoadConfig
-		restartContainer = origRestartContainer
+		restartLocalDB = origRestartLocalDB
 		writeLocalEnv = origWriteLocalEnv
 	})
 
 	loadConfig = fakeLocalConfig("DBTOOLS_LOCAL_URL")
-	restartContainer = func(string, string, string, time.Duration, bool) (string, error) {
+	restartLocalDB = func(*config.Config, string, string, string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 	var wrote map[string]string

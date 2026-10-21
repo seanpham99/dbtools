@@ -25,7 +25,10 @@ The single, optional file at the project root, run unconditionally at the end of
 _Avoid_: fixtures, seed scripts (plural — there is only ever one)
 
 **ephemeral local database**:
-The tool-owned, per-engine container `start` provisions from a template bundled inside `dbtools` itself. Independent of any consumer repo's own container orchestration — `dbtools start` is a narrower loop for schema iteration only, not a substitute for a repo's own full-stack local dev environment.
+The tool-owned, per-engine database `start` provisions for a project. The docker provider runs it in a container from a template bundled inside `dbtools` itself; the pgx provider runs it in an external pgx runtime instead, which serves the postgres engine only. Independent of any consumer repo's own container orchestration — `dbtools start` is a narrower loop for schema iteration only, not a substitute for a repo's own full-stack local dev environment.
+
+**local provider**:
+What hosts the ephemeral local database. Selected by the `[local] provider` setting in `dbtools.toml`: `docker` (the default) or `pgx`. The provider owns the whole lifecycle — start, stop, restart, logs, reset's maintenance connection, and prune.
 
 **dashboard**:
 The read-only `bubbletea` view over `status`. It never mutates anything; `r` refreshes and `q`/`ctrl+c` quits.

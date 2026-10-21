@@ -1,5 +1,8 @@
 # dbtools container lifecycle — project scoping reference
 
+This file covers the **docker** provider, the default. For the pgx
+provider (no Docker, postgres engine only), read `pgx.md`.
+
 Every `dbtools start`/`stop`/`restart`/`logs` invocation resolves a
 **project identity** so two dbtools checkouts on one machine never collide
 on a container or volume *name*. This does **not** extend to a fixed
