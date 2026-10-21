@@ -164,6 +164,40 @@ func TestEveryCommandCarriesTheClusterEnvironment(t *testing.T) {
 	}
 }
 
+// pgx uses one exit code for two different conflicts: an
+// already-initialised cluster (benign here) and a port that is already
+// bound (a real failure). Only the first may be treated as success.
+func TestEnsureClusterTreatsAnAlreadyInitialisedClusterAsSuccess(t *testing.T) {
+	client := &Client{
+		Home:   t.TempDir(),
+		RunDir: t.TempDir(),
+		Run: func(ctx context.Context, name string, env []string, args ...string) ([]byte, []byte, error) {
+			return nil, []byte("pgx: PGX is already initialised at /tmp/cluster\n  hint: `pgx start` to use it"), &ExitError{Code: exitConflict, Stderr: "pgx: PGX is already initialised at /tmp/cluster"}
+		},
+	}
+	if err := client.EnsureCluster(context.Background(), ""); err != nil {
+		t.Fatalf("EnsureCluster() on an already-initialised cluster returned error: %v", err)
+	}
+}
+
+func TestEnsureClusterReportsABoundPort(t *testing.T) {
+	client := &Client{
+		Home:   t.TempDir(),
+		RunDir: t.TempDir(),
+		Run: func(ctx context.Context, name string, env []string, args ...string) ([]byte, []byte, error) {
+			diagnostic := "pgx: port 55432 is in use (bind 127.0.0.1:55432: Address already in use (os error 98))\n  hint: choose another with `pgx init --port N`"
+			return nil, []byte(diagnostic), &ExitError{Code: exitConflict, Stderr: diagnostic}
+		},
+	}
+	err := client.EnsureCluster(context.Background(), "55432")
+	if err == nil {
+		t.Fatal("EnsureCluster() on a bound port returned nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "in use") {
+		t.Fatalf("error %q does not say the port is in use", err)
+	}
+}
+
 func TestEnsureDatabaseTreatsAnExistingDatabaseAsSuccess(t *testing.T) {
 	client := &Client{
 		Home:   t.TempDir(),

@@ -209,7 +209,11 @@ func Prune(removeData bool, dryRun bool) (PruneReport, error) {
 			if owner == "" {
 				continue
 			}
-			if _, err := os.Stat(owner); err == nil {
+			// Only a definitively missing owner file counts as a dead
+			// project. A permission error or an I/O error is
+			// ambiguous, and the container provider skips ambiguous
+			// cases rather than destroying data on a guess.
+			if _, err := os.Stat(owner); err == nil || !os.IsNotExist(err) {
 				continue
 			}
 			client := &pgx.Client{
@@ -224,24 +228,27 @@ func Prune(removeData bool, dryRun bool) (PruneReport, error) {
 				if pgx.IsPruned(home) {
 					continue
 				}
-				// A dry run stops nothing and marks nothing.
-				if !dryRun {
-					if err := client.Stop(context.Background()); err != nil {
-						return rep, err
-					}
-					if err := pgx.MarkPruned(home); err != nil {
-						return rep, err
-					}
-				}
 				rep.StoppedClusters = append(rep.StoppedClusters, home)
+				// A dry run stops nothing and marks nothing.
+				if dryRun {
+					continue
+				}
+				if err := client.Stop(context.Background()); err != nil {
+					return rep, err
+				}
+				if err := pgx.MarkPruned(home); err != nil {
+					return rep, err
+				}
+				continue
+			}
+			rep.Clusters = append(rep.Clusters, home)
+			// A dry run removes nothing, and it leaves the runtime
+			// running: a dry run must change nothing.
+			if dryRun {
 				continue
 			}
 			if err := client.Stop(context.Background()); err != nil {
 				return rep, err
-			}
-			rep.Clusters = append(rep.Clusters, home)
-			if dryRun {
-				continue
 			}
 			if err := os.RemoveAll(home); err != nil {
 				return rep, fmt.Errorf("removing %s: %w", home, err)

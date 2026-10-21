@@ -240,6 +240,49 @@ func TestPruneSkipsWhenPgXIsNotInstalled(t *testing.T) {
 	}
 }
 
+// An owner file that cannot be read is ambiguous, not proof that the
+// project is gone. The container provider skips ambiguous cases rather
+// than destroying data on a guess, and so must this one.
+func TestPruneLeavesAClusterWhoseOwnerCannotBeRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: permission bits are not enforced")
+	}
+	fakePgX(t)
+	root := t.TempDir()
+	t.Setenv(pgx.RootEnv, root)
+
+	home := filepath.Join(root, "postgres", "abc123")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	owner := filepath.Join(root, "unreadable", "dbtools.toml")
+	if err := os.MkdirAll(filepath.Dir(owner), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(owner, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Make the owner unreadable rather than missing.
+	if err := os.Chmod(owner, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(owner, 0o600) })
+	if err := os.WriteFile(filepath.Join(home, "dbtools-owner"), []byte(owner+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Prune(true, false)
+	if err != nil {
+		t.Fatalf("Prune() returned error: %v", err)
+	}
+	if len(report.Clusters) != 0 {
+		t.Fatalf("Prune() removed %v, want nothing: an unreadable owner is not proof the project is gone", report.Clusters)
+	}
+	if _, err := os.Stat(home); err != nil {
+		t.Fatalf("the cluster directory is gone: %v", err)
+	}
+}
+
 // A dry run must change nothing: it may not stop the runtime, and it may
 // not mark the cluster as pruned.
 func TestPruneDryRunStopsNothing(t *testing.T) {
@@ -272,6 +315,33 @@ func TestPruneDryRunStopsNothing(t *testing.T) {
 	}
 	if len(second.StoppedClusters) != 1 {
 		t.Fatalf("the real prune reported %d clusters, want 1: %v", len(second.StoppedClusters), second.StoppedClusters)
+	}
+}
+
+// A dry run with --volumes must not remove the cluster either, and must
+// not stop its runtime.
+func TestPruneDryRunWithRemoveDataRemovesNothing(t *testing.T) {
+	fakePgX(t)
+	root := t.TempDir()
+	t.Setenv(pgx.RootEnv, root)
+
+	home := filepath.Join(root, "postgres", "abc123")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "dbtools-owner"), []byte(filepath.Join(root, "gone", "dbtools.toml")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Prune(true, true)
+	if err != nil {
+		t.Fatalf("Prune() returned error: %v", err)
+	}
+	if len(report.Clusters) != 1 {
+		t.Fatalf("the dry run reported %d clusters, want 1: %v", len(report.Clusters), report.Clusters)
+	}
+	if _, err := os.Stat(home); err != nil {
+		t.Fatalf("the dry run removed the cluster directory: %v", err)
 	}
 }
 

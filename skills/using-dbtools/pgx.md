@@ -54,8 +54,14 @@ a command touches is always the one this project owns.
 ## Ports
 
 pgx assigns each cluster a free port at creation, and the port is stable
-for that cluster afterwards. The `[container] port` setting does **not**
-apply to the pgx provider — it is a Docker concept.
+for that cluster afterwards.
+
+The `[container] port` setting applies to the pgx provider as well: it
+pins the port the cluster is **created** with. It has no effect on a
+cluster that already exists, because pgx records the port when the
+cluster is initialised — so changing the setting later does not move an
+existing cluster. Two projects that pin the same port will collide, the
+same way they do with the docker provider.
 
 Read the port from `.dbtools/local.env`; never hardcode it.
 

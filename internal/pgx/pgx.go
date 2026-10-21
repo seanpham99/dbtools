@@ -178,8 +178,11 @@ func execRunner(ctx context.Context, name string, env []string, args ...string) 
 // EnsureCluster creates the cluster when it does not exist yet, without
 // starting it.
 //
-// pgx reports an already-initialised cluster as a conflict, which is not
-// an error here: the cluster is what the caller wanted.
+// pgx reports a conflict both for an already-initialised cluster and for
+// a port that is already bound, and it uses the same exit code for the
+// two. Only the first is benign here — the cluster is what the caller
+// wanted — so the diagnostic decides, not the exit code. A bound port
+// is a real failure and is reported as one.
 //
 // port pins the port of a cluster that is created now. It has no effect
 // on a cluster that already exists, because pgx records the port at
@@ -192,11 +195,18 @@ func (c *Client) EnsureCluster(ctx context.Context, port string) error {
 	if initErr == nil {
 		return nil
 	}
+	diagnostic := strings.TrimSpace(string(initStderr))
 	var exitErr *ExitError
-	if errors.As(initErr, &exitErr) && exitErr.Code == exitConflict {
+	if errors.As(initErr, &exitErr) && exitErr.Code == exitConflict && isAlreadyInitialised(diagnostic) {
 		return nil
 	}
-	return fmt.Errorf("creating the pgx cluster: %w: %s", initErr, strings.TrimSpace(string(initStderr)))
+	return fmt.Errorf("creating the pgx cluster: %w: %s", initErr, diagnostic)
+}
+
+// isAlreadyInitialised reports whether pgx's diagnostic says the cluster
+// already exists, as opposed to the requested port being in use.
+func isAlreadyInitialised(diagnostic string) bool {
+	return strings.Contains(diagnostic, "already initialised")
 }
 
 // EnsureRunning starts the runtime, creating the cluster first when it

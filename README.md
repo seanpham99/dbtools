@@ -359,7 +359,11 @@ dbtools logs -f # stream the cluster's server log
 
 Each project gets its own cluster, under `~/.dbtools/pgx/<engine>/<project-id>`,
 so two checkouts never share a database. pgx picks a free port per
-cluster; the `[container] port` setting does not apply to it.
+cluster.
+
+The `[container] port` setting applies here too: it pins the port the
+cluster is created with. It has no effect on a cluster that already
+exists, because pgx records the port when the cluster is initialised.
 
 pgx is an external program that dbtools invokes — it is **not** bundled
 with dbtools, and dbtools does not redistribute it. Install it separately:
