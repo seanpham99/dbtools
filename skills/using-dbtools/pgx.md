@@ -56,14 +56,58 @@ a command touches is always the one this project owns.
 pgx assigns each cluster a free port at creation, and the port is stable
 for that cluster afterwards.
 
-The `[container] port` setting applies to the pgx provider as well: it
-pins the port the cluster is **created** with. It has no effect on a
-cluster that already exists, because pgx records the port when the
-cluster is initialised — so changing the setting later does not move an
-existing cluster. Two projects that pin the same port will collide, the
-same way they do with the docker provider.
+`[local] port` applies to the pgx provider as well: it pins the port the
+cluster is **created** with. It has no effect on a cluster that already
+exists, because pgx records the port when the cluster is initialised — so
+changing the setting later does not move an existing cluster. Two projects
+that pin the same port will collide, the same way they do with the docker
+provider. The old `[container] port` key is deprecated, still honored, and
+prints a notice on `start`/`restart`.
 
 Read the port from `.dbtools/local.env`; never hardcode it.
+
+## Postgres major
+
+The pgx runtime serves **one** PostgreSQL major — 18.6 for the current
+release, reported by the binary itself. The local database's major is
+therefore a property of the provider unless the project pins it:
+
+```toml
+[local]
+postgres_major = "18"
+```
+
+With `postgres_major` unset the provider's default applies (pgx 18,
+docker 17). Switching providers then changes the local database's major,
+and `dbtools start` says so when the other provider's local database still
+exists on this machine. Pinning `postgres_major` makes that impossible:
+
+- pgx + a pin of 18 → works.
+- pgx + a pin of any other major → `dbtools start` fails, naming both
+  majors, because the runtime cannot serve the pin. It never silently
+  creates a cluster on its own major instead.
+- docker + a pin → builds `postgres:<major>-alpine`, subject to the same
+  data-directory rule as any major change.
+
+`dbtools doctor` reports the local database's major next to the target's.
+
+## Schema comparisons
+
+`dbtools diff` uses a pgx scratch cluster when the project selected
+`provider = "pgx"` **and** the target runs the same major the runtime
+serves. Any other target keeps the container scratch, because a scratch
+database rendered by a different major reports the difference as drift.
+When the comparison cannot use pgx, diff says why in its notes.
+
+`squash` always uses the container scratch: it dumps the replay database
+with the engine's own tool, run inside that container so the tool's version
+matches the server's.
+
+Each comparison gets its own scratch cluster, named `diff-<pid>-<nano>` and
+removed when the comparison ends. A dbtools process killed mid-run leaves
+that cluster behind, exactly as a killed diff leaves its `--rm` container
+running; `dbtools prune` reaps it once the project directory it recorded is
+gone.
 
 ## Data persistence
 

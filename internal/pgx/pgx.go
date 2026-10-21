@@ -24,10 +24,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // BinaryName is the executable dbtools looks for on PATH.
 const BinaryName = "pgx"
+
+// serverMajorTimeout bounds the informational version query.
+const serverMajorTimeout = 10 * time.Second
 
 // InstallHint names the install command for a missing binary.
 const InstallHint = "the pgx CLI is not installed — install it with: curl -fsSL https://pgx.dev/install | sh"
@@ -76,6 +80,11 @@ type Client struct {
 	Home string
 	// RunDir is the PGX_RUN_DIR directory that holds the unix socket.
 	RunDir string
+	// Durability selects the cluster's init durability: "full" (the
+	// default, matching the docker provider's named volume, which survives
+	// an operating system crash) or "ephemeral" (survives a server crash
+	// only), which is the right choice for a throwaway scratch cluster.
+	Durability string
 	// Run executes the binary. It defaults to execRunner.
 	Run Runner
 }
@@ -238,11 +247,16 @@ func (c *Client) EnsureRunning(ctx context.Context, port string) error {
 }
 
 // initArgs returns the arguments that create the cluster. The durability
-// is full because the docker provider keeps the local database's data in
-// a named volume that survives an operating system crash, and the pgx
-// cluster should keep the same promise.
+// defaults to full because the docker provider keeps the local database's
+// data in a named volume that survives an operating system crash, and the
+// pgx cluster should keep the same promise for the local database. A
+// throwaway scratch cluster sets "ephemeral" instead.
 func (c *Client) initArgs(port string) []string {
-	args := []string{"init", "--durability", "full"}
+	durability := c.Durability
+	if durability == "" {
+		durability = "full"
+	}
+	args := []string{"init", "--durability", durability}
 	if port != "" {
 		args = append(args, "--port", port)
 	}
@@ -407,4 +421,66 @@ func Owner(home string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+// ServerMajor returns the PostgreSQL major version the installed pgx
+// runtime serves, read from the runtime's own report ("18.6" reports
+// "18") rather than assumed here. dbtools compares it with a target's
+// server series before using a pgx cluster for a schema comparison, so a
+// future pgx release that moves to another major is picked up without a
+// dbtools change.
+func ServerMajor() (string, error) {
+	// Bounded: this runs inside start, restart, doctor and diff, so a hung
+	// binary must not hold the command open. The real call answers in
+	// milliseconds.
+	ctx, cancel := context.WithTimeout(context.Background(), serverMajorTimeout)
+	defer cancel()
+	stdout, stderr, err := execRunner(ctx, BinaryName, nil, "--json", "version")
+	if err != nil {
+		return "", fmt.Errorf("reading the pgx runtime version: %w: %s", err, strings.TrimSpace(string(stderr)))
+	}
+	var payload struct {
+		PostgresCompat string `json:"postgres_compat"`
+		InitdbVersion  string `json:"initdb_version"`
+	}
+	if err := json.Unmarshal(stdout, &payload); err != nil {
+		return "", fmt.Errorf("parsing the pgx runtime version: %w", err)
+	}
+	version := payload.PostgresCompat
+	if version == "" {
+		version = payload.InitdbVersion
+	}
+	major, _, _ := strings.Cut(version, ".")
+	if major == "" {
+		return "", fmt.Errorf("pgx did not report the PostgreSQL version it serves")
+	}
+	return major, nil
+}
+
+// ClusterExists reports whether this project has a pgx cluster on this
+// machine. It is used to tell "the project switched to this provider" from
+// "the project has always used it".
+func ClusterExists(engineName, projectID string) bool {
+	home, _, err := Paths(engineName, projectID)
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(home)
+	return err == nil && info.IsDir()
+}
+
+// Destroy stops the runtime and removes the cluster directory together
+// with its socket directory. It is the teardown a scratch cluster needs,
+// and the purge half of a project's local database teardown.
+func (c *Client) Destroy(ctx context.Context) error {
+	if err := c.Stop(ctx); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(c.Home); err != nil {
+		return fmt.Errorf("removing the pgx cluster %s: %w", c.Home, err)
+	}
+	if err := os.RemoveAll(c.RunDir); err != nil {
+		return fmt.Errorf("removing the pgx socket directory %s: %w", c.RunDir, err)
+	}
+	return nil
 }

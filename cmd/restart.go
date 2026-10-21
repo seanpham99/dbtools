@@ -49,7 +49,7 @@ func runRestart() error {
 		return err
 	}
 
-	url, err := restartLocalDB(cfg, engineName, projectID, configuredContainerPort(cfg), restartTimeout, !restartNoWait)
+	url, err := restartLocalDB(cfg, engineName, projectID, configuredLocalPort(cfg), restartTimeout, !restartNoWait)
 	if err != nil {
 		return err
 	}

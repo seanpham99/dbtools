@@ -42,12 +42,18 @@ const DatabaseName = container.DatabaseName
 type Provider interface {
 	// Name identifies the provider in messages.
 	Name() string
+	// Major returns the Postgres major the provider serves for the
+	// project's requested major, where "" means "the provider's default".
+	// It returns "" for engines without a Postgres major, and an error when
+	// the provider cannot serve the requested major — a provider never
+	// silently substitutes its own.
+	Major(requested string) (string, error)
 	// Start provisions the local database and returns its connection URL.
-	Start(projectID string, port string, timeout time.Duration, wait bool) (string, error)
+	Start(projectID, port, major string, timeout time.Duration, wait bool) (string, error)
 	// Stop shuts the local database down. purge also deletes its data.
 	Stop(projectID string, purge bool) error
 	// Restart restarts the local database, keeping its data.
-	Restart(projectID string, port string, timeout time.Duration, wait bool) (string, error)
+	Restart(projectID, port, major string, timeout time.Duration, wait bool) (string, error)
 	// Logs prints the local database's server log.
 	Logs(projectID string, follow bool) error
 	// MaintenanceURL returns the URL of the server's maintenance database,
@@ -90,12 +96,22 @@ func ProviderName(cfg *config.Config) string {
 
 // Start provisions the tool-owned local database of one project and
 // returns its connection URL.
+//
+// The Postgres major is resolved before anything is provisioned, so a pin
+// the provider cannot serve fails here — loudly, and before a cluster or
+// container exists — rather than after the database is already on another
+// major.
 func Start(cfg *config.Config, engineName, projectID, port string, timeout time.Duration, wait bool) (string, error) {
 	p, err := Select(cfg, engineName)
 	if err != nil {
 		return "", err
 	}
-	return p.Start(projectID, port, timeout, wait)
+	major, err := p.Major(requestedMajor(cfg))
+	if err != nil {
+		return "", err
+	}
+	warnMajorChange(p, engineName, projectID, major)
+	return p.Start(projectID, port, major, timeout, wait)
 }
 
 // Stop shuts the tool-owned local database down. purge also deletes its
@@ -115,7 +131,12 @@ func Restart(cfg *config.Config, engineName, projectID, port string, timeout tim
 	if err != nil {
 		return "", err
 	}
-	return p.Restart(projectID, port, timeout, wait)
+	major, err := p.Major(requestedMajor(cfg))
+	if err != nil {
+		return "", err
+	}
+	warnMajorChange(p, engineName, projectID, major)
+	return p.Restart(projectID, port, major, timeout, wait)
 }
 
 // Logs prints the tool-owned local database's server log.

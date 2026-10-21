@@ -25,14 +25,42 @@ type pgxProvider struct {
 
 func (p pgxProvider) Name() string { return ProviderPgX }
 
+// Major returns the Postgres major the pgx runtime serves, and refuses a
+// pin it cannot serve.
+//
+// The runtime serves one major only, so a pin of any other major must fail
+// here rather than let a cluster be created on the runtime's own major
+// while the configuration says something else — that substitution is the
+// silent change the setting exists to prevent.
+func (p pgxProvider) Major(requested string) (string, error) {
+	if p.engineName != "postgres" {
+		return "", fmt.Errorf("the %s local provider serves the postgres engine only, but the local target uses %s", ProviderPgX, p.engineName)
+	}
+	runtime, err := pgx.ServerMajor()
+	if err != nil {
+		return "", err
+	}
+	if requested == "" {
+		return runtime, nil
+	}
+	if err := validateMajor(requested); err != nil {
+		return "", err
+	}
+	if requested != runtime {
+		return "", fmt.Errorf("the pgx local provider serves PostgreSQL %s only, but dbtools.toml pins [local] postgres_major = %q; remove the pin to use the runtime's major, pin %q, or use the docker provider for PostgreSQL %s", runtime, requested, runtime, requested)
+	}
+	return runtime, nil
+}
+
 // client returns the pgx client for one project.
 func (p pgxProvider) client(projectID string) (*pgx.Client, error) {
 	return pgx.NewClient(p.engineName, projectID)
 }
 
 // Start provisions the cluster and its database, and returns the
-// connection URL.
-func (p pgxProvider) Start(projectID string, port string, timeout time.Duration, wait bool) (string, error) {
+// connection URL. major is the runtime's own major, already validated by
+// Major.
+func (p pgxProvider) Start(projectID, port, major string, timeout time.Duration, wait bool) (string, error) {
 	ctx := context.Background()
 	client, err := p.client(projectID)
 	if err != nil {
@@ -71,19 +99,10 @@ func (p pgxProvider) Stop(projectID string, purge bool) error {
 	if err != nil {
 		return err
 	}
-	if err := client.Stop(ctx); err != nil {
-		return err
-	}
 	if !purge {
-		return nil
+		return client.Stop(ctx)
 	}
-	if err := os.RemoveAll(client.Home); err != nil {
-		return fmt.Errorf("removing the pgx cluster %s: %w", client.Home, err)
-	}
-	if err := os.RemoveAll(client.RunDir); err != nil {
-		return fmt.Errorf("removing the pgx socket directory %s: %w", client.RunDir, err)
-	}
-	return nil
+	return client.Destroy(ctx)
 }
 
 // Restart restarts the runtime, which keeps the cluster's data.
@@ -91,7 +110,7 @@ func (p pgxProvider) Stop(projectID string, purge bool) error {
 // The cluster is ensured first, because pgx refuses to restart a cluster
 // that was never created. Restarting then replaces the runtime in one
 // step — the runtime is not stopped and started twice.
-func (p pgxProvider) Restart(projectID string, port string, timeout time.Duration, wait bool) (string, error) {
+func (p pgxProvider) Restart(projectID, port, major string, timeout time.Duration, wait bool) (string, error) {
 	ctx := context.Background()
 	client, err := p.client(projectID)
 	if err != nil {

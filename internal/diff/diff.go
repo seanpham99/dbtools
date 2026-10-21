@@ -7,6 +7,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/engine"
+	"github.com/seanpham99/dbtools/internal/localdb"
 	"github.com/seanpham99/dbtools/internal/scratchdb"
 	"github.com/seanpham99/dbtools/internal/support"
 )
@@ -55,9 +56,12 @@ func Run(cfg *config.Config, targetName, againstURL string) (findings []Finding,
 				"so version-specific rendering differences may appear as findings", eng.Name()))
 	}
 
-	scratch, err := scratchdb.ProvisionSeries(eng, againstURL, targetSeries)
+	scratch, providerNote, err := scratchdb.ProvisionSeries(eng, againstURL, targetSeries, localdb.ProviderName(cfg) == localdb.ProviderPgX)
 	if err != nil {
 		return nil, nil, err
+	}
+	if providerNote != "" {
+		notes = append(notes, providerNote)
 	}
 	scratchURL := scratch.URL
 	if cleanup := scratch.Cleanup; cleanup != nil {

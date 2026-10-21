@@ -18,6 +18,12 @@ const (
 	LabelManaged    = "dbtools.managed"
 	LabelEngine     = "dbtools.engine"
 	LabelConfigPath = "dbtools.configpath"
+	// LabelImage records the image a data volume was initialised by. A
+	// PostgreSQL data directory belongs to the major that wrote it, so the
+	// label is what lets StartForWithTimeout refuse to open an existing
+	// volume under a different image instead of letting the server fail
+	// with a message that does not name the remedy.
+	LabelImage = "dbtools.image"
 )
 
 // managedLabels returns the docker --label args identifying a tool-owned
@@ -51,14 +57,19 @@ func localConfigPath() string {
 }
 
 // ensureVolume creates the named data volume with the same labels as its
-// container so Prune can judge it independently. docker volume create is a
-// no-op for an existing volume — labels are not retro-applied, which is
-// accepted: a pre-labels volume's config path cannot be proven dead, so it
-// is left for manual docker volume prune. The error is intentionally
-// swallowed: a failed pre-create does not stop the container run —
-// docker run itself auto-creates the volume (unlabeled) if needed.
-func ensureVolume(name, engineName, configPath string) error {
+// container so Prune can judge it independently. image is recorded too, so
+// a later start can prove which major the data directory belongs to.
+//
+// docker volume create is a no-op for an existing volume — labels are not
+// retro-applied, which is what makes the image record a creation-time fact.
+// The error is intentionally swallowed: a failed pre-create does not stop
+// the container run — docker run itself auto-creates the volume
+// (unlabeled) if needed.
+func ensureVolume(name, engineName, configPath, image string) error {
 	args := append([]string{"volume", "create"}, managedLabels(engineName, configPath)...)
+	if image != "" {
+		args = append(args, "--label", LabelImage+"="+image)
+	}
 	args = append(args, name)
 	if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("docker volume create failed: %w: %s", err, strings.TrimSpace(string(out)))
