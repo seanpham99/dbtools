@@ -395,19 +395,21 @@ func parseInspectOutput(stdout, stderr []byte, cmdErr error) (exists bool, runni
 	return true, false, fmt.Errorf("unexpected docker inspect output: %q", trimmed)
 }
 
+// noSuchObjectRE matches the CLI's message for a missing object. The object
+// names are enumerated because other "no such" errors must stay operational:
+// "dial tcp: lookup docker: no such host" is a broken DOCKER_HOST and "no
+// such file or directory" is a dead socket — both mean "unverifiable", and
+// absent and unverifiable have different remedies.
+var noSuchObjectRE = regexp.MustCompile(`(?i)\bno such (?:container|object|volume|image|network|node|service|task|secret|config|plugin)\b`)
+
 // inspectErr classifies a failed docker inspect as "the object is absent"
 // or as an operational error, and returns (false, nil) for the former.
 //
 // Docker CLI message wording for a missing object has changed across
 // versions ("Error: No such container: X" pre-25, "error: no such object:
-// X" 29+, "Error response from daemon: get X: no such volume") — match
-// case-insensitively on "no such" rather than the exact phrase.
-//
-// Anything else — a daemon or CLI failure, a template the CLI does not
-// support — is operational: the caller must not treat it as "absent",
-// because absent and unverifiable have different remedies.
+// X" 29+, "Error response from daemon: get X: no such volume").
 func inspectErr(stderr []byte, cmdErr error) (found bool, err error) {
-	if strings.Contains(strings.ToLower(string(stderr)), "no such") {
+	if noSuchObjectRE.MatchString(string(stderr)) {
 		return false, nil
 	}
 	return false, fmt.Errorf("docker inspect failed: %w: %s", cmdErr, strings.TrimSpace(string(stderr)))

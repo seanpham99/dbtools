@@ -165,6 +165,21 @@ func TestParseInspectOutputOtherError(t *testing.T) {
 	}
 }
 
+func TestParseInspectOutputConnectionErrorIsOperational(t *testing.T) {
+	// A dead DOCKER_HOST yields "no such host"; a dead socket yields "no such
+	// file or directory". Neither is a missing object — both are connection
+	// failures and must stay operational errors.
+	for _, msg := range []string{
+		"error during connect: Get http://docker:2375/v1.40/containers/json: dial tcp: lookup docker on 192.168.65.1:53: no such host",
+		"Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?: no such file or directory",
+	} {
+		_, _, err := parseInspectOutput(nil, []byte(msg), errors.New("exit status 1"))
+		if err == nil {
+			t.Fatalf("parseInspectOutput(%q) returned nil error, want operational error", msg)
+		}
+	}
+}
+
 // stubDockerOnPATH writes a `docker` script into a temp dir and puts it first
 // on PATH. body is the script body; the script must mirror real Docker:
 // messages go to stderr, the payload to stdout, and failures exit non-zero.
@@ -231,5 +246,22 @@ fi
 	}
 	if !strings.Contains(err.Error(), "was created by postgres:16-alpine") {
 		t.Fatalf("error %q is not the mismatch message", err)
+	}
+}
+
+func TestRequireMatchingImage_ConnectionFailureIsNotAbsent(t *testing.T) {
+	// An unresolvable DOCKER_HOST fails every probe with "no such host". The
+	// original bug treated that as "nothing exists" and let a start reuse a
+	// volume written by another image.
+	stubDockerOnPATH(t, `echo "error during connect: Get http://docker:2375/v1.40/containers/json: dial tcp: lookup docker on 192.168.65.1:53: no such host" >&2
+exit 1
+`)
+	s := spec{engine: "postgres", name: "dbtools-pg-test", image: PostgresImageFor("17")}
+	err := requireMatchingImage(s)
+	if err == nil {
+		t.Fatal("requireMatchingImage returned nil, want the connection error")
+	}
+	if !strings.Contains(err.Error(), "could not verify the existing container") {
+		t.Fatalf("error %q does not name the container probe", err)
 	}
 }
