@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.1](https://github.com/seanpham99/dbtools/compare/v0.9.0...v0.9.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **container:** treat docker inspect errors as unverifiable, not absent ([#126](https://github.com/seanpham99/dbtools/issues/126)) ([97c62e9](https://github.com/seanpham99/dbtools/commit/97c62e9807bab2d791cdac5035a694bdea0814a6))
+
 ## [0.9.0](https://github.com/seanpham99/dbtools/compare/v0.8.1...v0.9.0) (2026-10-21)
 
 
