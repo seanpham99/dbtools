@@ -13,7 +13,7 @@ import (
 func TestPostgresStartStopIdempotent(t *testing.T) {
 	const projectID = "itest-postgres"
 
-	url, err := StartForWithTimeout("postgres", projectID, "", 30*time.Second, true)
+	url, err := StartForWithTimeout("postgres", projectID, "", "", 30*time.Second, true)
 	if err != nil {
 		t.Fatalf("StartForWithTimeout(postgres) returned error: %v", err)
 	}
@@ -21,7 +21,7 @@ func TestPostgresStartStopIdempotent(t *testing.T) {
 		t.Fatal("StartForWithTimeout(postgres) returned empty URL")
 	}
 
-	url2, err := StartForWithTimeout("postgres", projectID, "", 30*time.Second, true)
+	url2, err := StartForWithTimeout("postgres", projectID, "", "", 30*time.Second, true)
 	if err != nil {
 		t.Fatalf("second StartForWithTimeout(postgres) returned error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestPostgresStartStopIdempotent(t *testing.T) {
 func TestPostgresStopPreservesDataUnlessPurged(t *testing.T) {
 	const projectID = "itest-postgres-persist"
 
-	url1, err := StartForWithTimeout("postgres", projectID, "", 30*time.Second, true)
+	url1, err := StartForWithTimeout("postgres", projectID, "", "", 30*time.Second, true)
 	if err != nil {
 		t.Fatalf("StartForWithTimeout(postgres) returned error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestPostgresStopPreservesDataUnlessPurged(t *testing.T) {
 		t.Fatalf("StopFor(postgres, ..., purge=false) returned error: %v", err)
 	}
 
-	url2, err := StartForWithTimeout("postgres", projectID, "", 30*time.Second, true)
+	url2, err := StartForWithTimeout("postgres", projectID, "", "", 30*time.Second, true)
 	if err != nil {
 		t.Fatalf("StartForWithTimeout(postgres) after plain Stop returned error: %v", err)
 	}

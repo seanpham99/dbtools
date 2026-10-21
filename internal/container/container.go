@@ -6,12 +6,14 @@ package container
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,11 +155,35 @@ var mssqlSpec = spec{
 	maintenanceDB:        "master",
 }
 
+// DefaultPostgresMajor is the Postgres major the docker provider runs when
+// the project pins none: the image the local container has always used.
+const DefaultPostgresMajor = "17"
+
+// PostgresImageFor returns the container image for one Postgres major.
+func PostgresImageFor(major string) string {
+	return "postgres:" + major + "-alpine"
+}
+
+// PostgresDataDirFor returns the in-container directory a Postgres major
+// keeps its data in.
+//
+// PostgreSQL 18 moved PGDATA under a major-versioned subdirectory and its
+// image refuses to initialise when a volume is mounted at the old path
+// ("appears to be PostgreSQL data in /var/lib/postgresql/data (unused
+// mount/volume)"). The mount has to follow the major, not the other way
+// around.
+func PostgresDataDirFor(major string) string {
+	if n, err := strconv.Atoi(major); err == nil && n >= 18 {
+		return "/var/lib/postgresql"
+	}
+	return "/var/lib/postgresql/data"
+}
+
 var postgresSpec = spec{
 	engine:        "postgres",
-	image:         "postgres:17-alpine",
+	image:         PostgresImageFor(DefaultPostgresMajor),
 	containerPort: "5432",
-	dataDir:       "/var/lib/postgresql/data",
+	dataDir:       PostgresDataDirFor(DefaultPostgresMajor),
 	runArgs: func(s spec) []string {
 		return []string{
 			"run", "-d",
@@ -285,7 +311,7 @@ func volumeNameFor(containerName string) string {
 // LocalDatabaseURLFor returns engineName's local database URL for a
 // container already bound to hostPort. Pure — does not touch Docker or
 // require a running container, useful for tests and for any caller that
-// already knows the port (e.g. a pinned [container] port).
+// already knows the port (e.g. a pinned [local] port).
 func LocalDatabaseURLFor(engineName, hostPort string) (string, error) {
 	s, err := specFor(engineName)
 	if err != nil {
@@ -401,14 +427,20 @@ func discoverHostPort(name, containerPort string) (string, error) {
 // container scoped to projectID, waits up to timeout for readiness if
 // wait is true, and returns the local database's connection URL.
 // configuredPort pins the published host port; "" lets Docker assign a
-// free one, discovered afterward via docker inspect.
-func StartForWithTimeout(engineName, projectID, configuredPort string, timeout time.Duration, wait bool) (string, error) {
+// free one, discovered afterward via docker inspect. postgresMajor pins
+// the image and the data directory to one Postgres major; "" keeps the
+// engine's default.
+func StartForWithTimeout(engineName, projectID, configuredPort, postgresMajor string, timeout time.Duration, wait bool) (string, error) {
 	s, err := specFor(engineName)
 	if err != nil {
 		return "", err
 	}
+	s = withPostgresMajor(s, postgresMajor)
 	s.name = containerNameFor(engineName, projectID)
 	if err := checkDocker(); err != nil {
+		return "", err
+	}
+	if err := requireMatchingImage(s); err != nil {
 		return "", err
 	}
 	exists, running, err := inspect(s.name)
@@ -438,7 +470,7 @@ func StartForWithTimeout(engineName, projectID, configuredPort string, timeout t
 			s.hostPort = "0"
 		}
 		configPath := localConfigPath()
-		if err := ensureVolume(volumeNameFor(s.name), s.engine, configPath); err != nil {
+		if err := ensureVolume(volumeNameFor(s.name), s.engine, configPath, s.image); err != nil {
 			return "", err
 		}
 		args := insertLabels(s.runArgs(s), managedLabels(s.engine, configPath))
@@ -465,6 +497,116 @@ func StartForWithTimeout(engineName, projectID, configuredPort string, timeout t
 		}
 	}
 	return s.url(s, DatabaseName), nil
+}
+
+// withPostgresMajor applies a pinned Postgres major to the engine's
+// template. An empty major keeps the template's default image and data
+// directory; every other engine has no major knob.
+func withPostgresMajor(s spec, postgresMajor string) spec {
+	if s.engine != "postgres" || postgresMajor == "" {
+		return s
+	}
+	s.image = PostgresImageFor(postgresMajor)
+	s.dataDir = PostgresDataDirFor(postgresMajor)
+	return s
+}
+
+// requireMatchingImage refuses to start a local database whose existing
+// data was written by a different image.
+//
+// A PostgreSQL data directory belongs to the major that created it: the
+// server will not open one written by another major, and PostgreSQL 18
+// additionally refuses to initialise when a volume is mounted at the
+// pre-18 path. Both surface as failures that never name the remedy, so the
+// mismatch is caught here instead.
+func requireMatchingImage(s spec) error {
+	if image, ok := inspectImage(s.name); ok {
+		if image != "" && image != s.image {
+			return localImageMismatch(s, image)
+		}
+		return nil
+	}
+	labels, ok := volumeLabels(volumeNameFor(s.name))
+	if !ok {
+		// No container and no volume: there is nothing to open yet.
+		return nil
+	}
+	if image := labels[LabelImage]; image != "" {
+		if image != s.image {
+			return localImageMismatch(s, image)
+		}
+		return nil
+	}
+	if s.image == defaultImageFor(s.engine) {
+		// A volume created before dbtools recorded its image, opened by the
+		// engine's default image: that is the combination every earlier
+		// release produced, so there is nothing to prove.
+		return nil
+	}
+	return fmt.Errorf("the local database's data volume was created by a dbtools release that did not record which image initialised it, so %s cannot be proven to match it. Run 'dbtools stop --no-backup' to discard the local database, then 'dbtools start' to recreate it on %s", s.image, s.image)
+}
+
+// localImageMismatch describes a data directory that belongs to another
+// image, and the one command that resolves it.
+func localImageMismatch(s spec, existingImage string) error {
+	return fmt.Errorf("the local database's data was created by %s, but dbtools.toml now asks for %s. A database data directory belongs to the version that wrote it, and dbtools cannot migrate one in place. Run 'dbtools stop --no-backup' to discard the local database, then 'dbtools start' to recreate it on %s", existingImage, s.image, s.image)
+}
+
+// defaultImageFor returns the engine's template image, which is what an
+// unpinned local database runs.
+func defaultImageFor(engineName string) string {
+	s, err := specFor(engineName)
+	if err != nil {
+		return ""
+	}
+	return s.image
+}
+
+// LocalImage returns the image the project's tool-owned local container
+// was created from, and whether that container exists.
+func LocalImage(engineName, projectID string) (string, bool) {
+	return inspectImage(containerNameFor(engineName, projectID))
+}
+
+// LocalVolumeImage returns the image the project's local data volume was
+// initialised by, and whether the volume records one.
+//
+// The volume outlives the container — `dbtools stop` removes the container
+// and keeps the data — so this is the durable record of which Postgres
+// major the local database is on. Anything judging a provider switch has to
+// read this rather than the container, which a stop has already deleted.
+func LocalVolumeImage(engineName, projectID string) (string, bool) {
+	labels, ok := volumeLabels(volumeNameFor(containerNameFor(engineName, projectID)))
+	if !ok {
+		return "", false
+	}
+	image := labels[LabelImage]
+	return image, image != ""
+}
+
+// inspectImage returns the image containerName was created from, and
+// whether the container exists.
+func inspectImage(containerName string) (string, bool) {
+	out, err := exec.Command("docker", "inspect", "-f", "{{.Config.Image}}", containerName).Output()
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(out)), true
+}
+
+// volumeLabels returns one docker volume's labels, and whether the volume
+// exists. An inspect failure reports "does not exist": the only volume
+// name passed here is the project's own deterministic one.
+func volumeLabels(name string) (map[string]string, bool) {
+	out, err := exec.Command("docker", "volume", "inspect", "-f", "{{json .Labels}}", name).Output()
+	if err != nil {
+		return nil, false
+	}
+	labels := map[string]string{}
+	if err := json.Unmarshal(out, &labels); err != nil {
+		return nil, false
+	}
+	return labels, true
 }
 
 func waitReadyWithTimeout(s spec, timeout time.Duration) error {
@@ -685,11 +827,11 @@ func StopFor(engineName, projectID string, purgeVolume bool) error {
 // RestartForWithTimeout stops then starts engineName's tool-owned local
 // container scoped to projectID — its data volume survives the cycle —
 // and returns the (possibly new) connection URL.
-func RestartForWithTimeout(engineName, projectID, configuredPort string, timeout time.Duration, wait bool) (string, error) {
+func RestartForWithTimeout(engineName, projectID, configuredPort, postgresMajor string, timeout time.Duration, wait bool) (string, error) {
 	if err := StopFor(engineName, projectID, false); err != nil {
 		return "", err
 	}
-	return StartForWithTimeout(engineName, projectID, configuredPort, timeout, wait)
+	return StartForWithTimeout(engineName, projectID, configuredPort, postgresMajor, timeout, wait)
 }
 
 // LogsFor streams engineName's tool-owned local container's logs (scoped

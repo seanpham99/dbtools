@@ -30,6 +30,9 @@ The tool-owned, per-engine database `start` provisions for a project. The docker
 **local provider**:
 What hosts the ephemeral local database. Selected by the `[local] provider` setting in `dbtools.toml`: `docker` (the default) or `pgx`. The provider owns the whole lifecycle — start, stop, restart, logs, reset's maintenance connection, and prune.
 
+**local major**:
+The PostgreSQL major version the ephemeral local database runs, set by `[local] postgres_major` in `dbtools.toml`. Unset means the provider's own major (docker 17, pgx 18). A pin the selected provider cannot serve is an error, never a substitution — the pgx runtime serves one major only. It is a data-format boundary as well as a setting: an existing local database cannot move between majors without discarding its data.
+
 **dashboard**:
 The read-only `bubbletea` view over `status`. It never mutates anything; `r` refreshes and `q`/`ctrl+c` quits.
 _Avoid_: dev database, local db (ambiguous with a repo's own compose-managed instance)

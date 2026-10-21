@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/seanpham99/dbtools/internal/ledger"
@@ -71,18 +72,59 @@ type ProjectConfig struct {
 }
 
 // ContainerConfig configures the tool-owned local database container.
+//
+// Deprecated key: the port moved to [local] port. The key is still read so
+// an existing dbtools.toml keeps working, but it names the setting after one
+// provider rather than after what it configures — see LocalConfig.
+//
+// Deliberately not written as a "Deprecated:" marker: staticcheck would then
+// flag the two places that legitimately construct this type — Config itself
+// and the precedence logic that reads the legacy key.
 type ContainerConfig struct {
 	// Port pins the host port `dbtools start` publishes the container on.
 	// 0 (the default) means: let Docker assign a free port.
 	Port int `toml:"port"`
 }
 
+// PostgresMajor is the PostgreSQL major the local database runs, as
+// written in dbtools.toml.
+//
+// It decodes from text so both spellings work — postgres_major = 17 and
+// postgres_major = "17" — because the natural form for a version is a bare
+// integer, and refusing that spelling would leave the setting unset and
+// hand the project the silent provider default it exists to remove.
+type PostgresMajor string
+
+// UnmarshalText records the value verbatim. Whether it names a major the
+// selected provider can serve is decided where the local database is
+// provisioned, not where the configuration is parsed: config.Load runs on
+// every command, and must not refuse `dbtools stop` over a bad pin.
+func (m *PostgresMajor) UnmarshalText(text []byte) error {
+	*m = PostgresMajor(strings.TrimSpace(string(text)))
+	return nil
+}
+
 // LocalConfig configures the tool-owned local database.
+//
+// Every setting here describes the local database itself, not the provider
+// that happens to host it. That is why the port lives here and not under
+// [container]: the two providers take the same setting with different
+// timing (see Config.LocalPort).
 type LocalConfig struct {
 	// Provider selects what hosts the tool-owned local database.
 	// "docker" (the default) runs it in a container; "pgx" runs it in an
 	// external pgx runtime, which serves the postgres engine only.
 	Provider string `toml:"provider"`
+	// Port pins the host port the local database listens on. nil means
+	// unset — the provider assigns a free port. 0 means the same as unset
+	// for the docker provider, and is distinct from nil so a project can
+	// unpin a port the deprecated [container] port set.
+	Port *int `toml:"port"`
+	// PostgresMajor pins the Postgres major version the local database
+	// runs. Empty means "the provider's default". It is a data-format
+	// boundary, not a preference: an existing local database cannot move
+	// between majors without discarding its data.
+	PostgresMajor PostgresMajor `toml:"postgres_major"`
 }
 
 // LedgerConfig configures the migration-ledger table dbtools reads and writes.
@@ -164,6 +206,30 @@ func Load(path string) (*Config, error) {
 		cfg.Generate.Exclude = exclude
 	}
 	return cfg, nil
+}
+
+// LocalPort returns the host port the tool-owned local database is pinned
+// to, and whether that value came from the deprecated [container] port.
+//
+// The canonical key is [local] port. [container] port is still honored so
+// an existing dbtools.toml keeps working, but it is deprecated — it names
+// the setting after the docker provider while it configures both. A zero
+// port means "let the provider assign a free one": both providers treat an
+// unpinned port that way, and [local] port = 0 is how a project unpins a
+// value the deprecated key still carries.
+//
+// The providers apply the pin at different moments, which is the other
+// half of why the setting is provider-neutral and its scope is documented
+// here: the docker provider publishes the pinned port on every start, and
+// the pgx provider records it once, when the cluster is initialised.
+func (c *Config) LocalPort() (port int, deprecated bool) {
+	if c == nil {
+		return 0, false
+	}
+	if c.Local.Port != nil {
+		return *c.Local.Port, false
+	}
+	return c.Container.Port, c.Container.Port != 0
 }
 
 // LedgerTableName returns the configured ledger table, defaulting for a

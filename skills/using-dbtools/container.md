@@ -6,11 +6,11 @@ provider (no Docker, postgres engine only), read `pgx.md`.
 Every `dbtools start`/`stop`/`restart`/`logs` invocation resolves a
 **project identity** so two dbtools checkouts on one machine never collide
 on a container or volume *name*. This does **not** extend to a fixed
-`[container] port` value: if you pin one, it's your responsibility to keep
-it unique per machine — two projects both pinning `port = 55432` will have
-the second `dbtools start` fail with a Docker port-already-bound error.
-Leave `[container] port` unset (the default) to let Docker assign a free
-port and avoid this entirely.
+`[local] port` value: if you pin one, it's your responsibility to keep it
+unique per machine — two projects both pinning `port = 55432` will have the
+second `dbtools start` fail with a Docker port-already-bound error. Leave
+`[local] port` unset (the default) to let Docker assign a free port and
+avoid this entirely.
 
 ## Identity
 
@@ -32,12 +32,18 @@ Container name: `dbtools-<engine>-<identity>`. Volume name:
 ## Ports
 
 ```toml
-[container]
+[local]
 port = 55432
 ```
 
 Unset (default): `dbtools start` lets Docker assign a free host port.
-Set: that exact port is published every time.
+Set: that exact port is published each time the container is created, so it
+survives `stop`/`start`. The key is provider-neutral; the pgx provider
+reads the same setting and pins it once, when the cluster is initialised.
+
+The old `[container] port` key still works, and using it prints a
+deprecation notice on `start`/`restart`. `[local] port` wins when both are
+set.
 
 ## Data persistence
 
@@ -66,7 +72,12 @@ that hasn't already excluded it. Never overwritten if it already exists.
 ## Red flags
 
 - ❌ Assuming the local database URL's port is stable across `stop`/`start`
-  when `[container] port` is unset — it's Docker-assigned each time the
+  when `[local] port` is unset — it's Docker-assigned each time the
   container is recreated. Read it from `.dbtools/local.env`, don't hardcode it.
+- ❌ Changing `[local] postgres_major` on a project that already has a local
+  data volume. PostgreSQL data directories are not readable across majors, so
+  `dbtools start` refuses with the remedy named: `dbtools stop --no-backup`
+  discards the local database, and the next `start` recreates it on the
+  configured major.
 - ❌ Expecting `dbtools reset` to also reset container-level state (image,
   volume) — it only touches the database's SQL contents.

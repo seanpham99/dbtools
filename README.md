@@ -321,8 +321,8 @@ Override the generated name or pin the host port in `dbtools.toml`:
 [project]
 name = "myapp"      # optional; defaults to a hash of dbtools.toml's path
 
-[container]
-port = 55432         # optional; defaults to a Docker-assigned free port
+[local]
+port = 55432         # optional; defaults to a provider-assigned free port
 ```
 
 `dbtools stop --no-backup` also deletes the data volume, restoring the old
@@ -361,9 +361,17 @@ Each project gets its own cluster, under `~/.dbtools/pgx/<engine>/<project-id>`,
 so two checkouts never share a database. pgx picks a free port per
 cluster.
 
-The `[container] port` setting applies here too: it pins the port the
-cluster is created with. It has no effect on a cluster that already
-exists, because pgx records the port when the cluster is initialised.
+`[local] port` applies here too: it pins the port the cluster is created
+with. It has no effect on a cluster that already exists, because pgx
+records the port when the cluster is initialised. The old `[container] port`
+key is deprecated, still honored, and prints a notice on `start`/`restart`.
+
+The pgx provider also serves `dbtools diff`: when the project selected it
+and the target runs the same major the runtime serves, diff provisions its
+scratch database in an ephemeral pgx cluster instead of a container, and
+says why in its notes when it cannot. `squash` always keeps the container
+scratch, because it dumps the replay database with the engine's own tool
+and that tool has to live in a container matching the server.
 
 pgx is an external program that dbtools invokes — it is **not** bundled
 with dbtools, and dbtools does not redistribute it. Install it separately:
@@ -376,6 +384,25 @@ pgx is licensed under AGPL-3.0 while dbtools is MIT. Keeping it an
 external executable is what keeps the AGPL code out of the dbtools
 distribution, the same way dbtools already treats `docker`, `psql`, and
 `pg_dump` — tools it calls but never ships.
+
+The local database's PostgreSQL major is a choice, not a side effect of the
+provider. Docker runs 17 and the pgx runtime runs 18 by default, so pin it
+when the two must stay the same across a provider switch:
+
+```toml
+[local]
+postgres_major = "17"   # optional; defaults to the provider's major
+```
+
+A pin the selected provider cannot serve fails `dbtools start` and names
+both majors — the pgx runtime serves 18 only, so pinning 17 with it is an
+error rather than a silent 18. The major is also a data-format boundary: an
+existing local database cannot move between majors, so dbtools refuses to
+open one written by a different image and names the remedy
+(`dbtools stop --no-backup`, then `dbtools start`). A pin outside the tested
+window (15-18) is allowed and warned about, because it can legitimately mirror
+a legacy target. `dbtools doctor` reports the local database's major next to
+the target's.
 
 Notes on the pgx provider:
 

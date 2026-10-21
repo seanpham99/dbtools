@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/logger"
 	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/seanpham99/dbtools/internal/projectid"
 )
@@ -63,12 +64,21 @@ func loadProjectIDOrDefault() string {
 	return id
 }
 
-// configuredContainerPort returns the pinned host port from dbtools.toml's
-// [container] port, or "" when unset — meaning "let Docker assign a free
+// configuredLocalPort returns the pinned host port for the tool-owned local
+// database, or "" when unset — meaning "let the provider assign a free
 // port".
-func configuredContainerPort(cfg *config.Config) string {
-	if cfg.Container.Port == 0 {
+//
+// The deprecation notice for the old [container] port key is emitted here,
+// where the value is actually used, rather than from config.Load: Load runs
+// on every command, so warning there would repeat the notice forever on
+// commands the setting cannot affect.
+func configuredLocalPort(cfg *config.Config) string {
+	port, deprecated := cfg.LocalPort()
+	if deprecated {
+		logger.Warnf("dbtools.toml: [container] port is deprecated; move it to [local] port, which names the setting by what it configures rather than by the docker provider")
+	}
+	if port == 0 {
 		return ""
 	}
-	return strconv.Itoa(cfg.Container.Port)
+	return strconv.Itoa(port)
 }

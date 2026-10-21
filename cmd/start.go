@@ -53,7 +53,7 @@ func runStart() error {
 	if !startNoWait {
 		fmt.Println("waiting for database engine to accept connections...")
 	}
-	url, err := startLocalDB(cfg, engineName, projectID, configuredContainerPort(cfg), startTimeout, !startNoWait)
+	url, err := startLocalDB(cfg, engineName, projectID, configuredLocalPort(cfg), startTimeout, !startNoWait)
 	if err != nil {
 		return err
 	}

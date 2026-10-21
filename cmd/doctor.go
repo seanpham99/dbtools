@@ -10,6 +10,7 @@ import (
 	"github.com/seanpham99/dbtools/internal/config"
 	"github.com/seanpham99/dbtools/internal/engine"
 	"github.com/seanpham99/dbtools/internal/ledger"
+	"github.com/seanpham99/dbtools/internal/localdb"
 	"github.com/seanpham99/dbtools/internal/migrator"
 	"github.com/seanpham99/dbtools/internal/scratchdb"
 	"github.com/seanpham99/dbtools/internal/support"
@@ -259,21 +260,24 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 	// Server version vs the tested window. Reported as its own check so a
 	// surprising result elsewhere is attributable, rather than the user
 	// discovering the mismatch only after distrusting a finding.
-	{
-		series := scratchdb.ServerSeries(db, eng.Name())
-		if ok, msg := support.Check(eng.Name(), series); !ok {
-			report.Checks = append(report.Checks, CheckResult{
-				Name:    "server-version",
-				Status:  "warn",
-				Message: msg,
-			})
-		} else if series != "" {
-			report.Checks = append(report.Checks, CheckResult{
-				Name:    "server-version",
-				Status:  "ok",
-				Message: fmt.Sprintf("%s %s is within the tested range", eng.Name(), series),
-			})
-		}
+	series := scratchdb.ServerSeries(db, eng.Name())
+	if ok, msg := support.Check(eng.Name(), series); !ok {
+		report.Checks = append(report.Checks, CheckResult{
+			Name:    "server-version",
+			Status:  "warn",
+			Message: msg,
+		})
+	} else if series != "" {
+		report.Checks = append(report.Checks, CheckResult{
+			Name:    "server-version",
+			Status:  "ok",
+			Message: fmt.Sprintf("%s %s is within the tested range", eng.Name(), series),
+		})
+	}
+
+	// The local development database's major, alongside the target's.
+	if check, ok := localVersionCheck(cfg, eng.Name(), series); ok {
+		report.Checks = append(report.Checks, check)
 	}
 
 	// 4. Version sync & pending check
@@ -457,6 +461,69 @@ func evaluateTarget(cfg *config.Config, targetName string) *DoctorReport {
 	}
 
 	return report
+}
+
+// localVersionCheck reports the local development database's Postgres
+// major alongside the target's.
+//
+// It returns ok=false when the project has no postgres local database, so a
+// target's report only carries a check that says something about it. The
+// check never fails: the local database is a development convenience, and
+// its absence or misconfiguration must not make an unrelated target's
+// report unhealthy. A difference between the two majors is a warning,
+// because the two render the same schema differently — the class of false
+// drift version agreement exists to prevent.
+func localVersionCheck(cfg *config.Config, targetEngine, targetSeries string) (CheckResult, bool) {
+	if localEngineName(cfg) != "postgres" {
+		return CheckResult{}, false
+	}
+	if _, configured := cfg.Targets["local"]; !configured {
+		return CheckResult{}, false
+	}
+	if targetEngine != "postgres" {
+		// A MySQL or SQL Server version string is not a postgres major, so
+		// there is nothing to compare against. Report the local major alone
+		// rather than presenting "8.0" as a postgres version.
+		targetSeries = ""
+	}
+	configured, err := localdb.EffectiveMajor(cfg, "postgres")
+	observed, observedOK := localdb.ObservedMajor(cfg, "postgres", loadProjectIDOrDefault())
+	return localVersionResult(configured, localdb.ProviderName(cfg), observed, observedOK, targetSeries, err), true
+}
+
+// localVersionResult renders the local-version check from the configured
+// and observed majors.
+//
+// It is pure so the wording and the precedence between the two values are
+// testable without Docker or a pgx installation. observed is what the
+// provider's artifact records; observedOK is false when no local database
+// exists yet, in which case the configured major is a prediction and is
+// reported as one.
+func localVersionResult(configured, provider, observed string, observedOK bool, targetSeries string, err error) CheckResult {
+	check := CheckResult{Name: "local-version"}
+	switch {
+	case err != nil:
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("cannot determine the local database's major: %v", err)
+	case observedOK && observed != "" && observed != configured:
+		// The data outranks the configuration: a pin that has not been
+		// applied yet is exactly what this report must not call healthy.
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("local database: postgres %s (%s provider), but dbtools.toml asks for postgres %s — run `dbtools stop --no-backup` then `dbtools start` to recreate it on %s", observed, provider, configured, configured)
+	case !observedOK || observed == "":
+		check.Status = "ok"
+		check.Message = fmt.Sprintf("local database: not created yet; it will run postgres %s (%s provider)", configured, provider)
+	case targetSeries == "":
+		check.Status = "ok"
+		check.Message = fmt.Sprintf("local database: postgres %s (%s provider)", observed, provider)
+	case targetSeries == observed:
+		check.Status = "ok"
+		check.Message = fmt.Sprintf("local database: postgres %s (%s provider), the same major as the target", observed, provider)
+	default:
+		check.Status = "warn"
+		check.Message = fmt.Sprintf("local database: postgres %s (%s provider); target: postgres %s — a schema developed against one major is rendered differently by the other", observed, provider, targetSeries)
+	}
+	return check
 }
 
 func renderDoctorHuman(reports []*DoctorReport) string {
