@@ -6,6 +6,7 @@ package container
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -330,13 +331,25 @@ func checkDocker() error {
 	return nil
 }
 
+// IsDockerUnavailable reports whether err says that docker is missing or
+// that its daemon is not responding.
+func IsDockerUnavailable(err error) bool {
+	return errors.Is(err, ErrDockerUnavailable)
+}
+
+// ErrDockerUnavailable marks the error that says the docker CLI is
+// missing or its daemon is not responding. Callers that can do their work
+// without docker — prune, which also cleans up pgx clusters — use
+// errors.Is to tell it apart from a real failure.
+var ErrDockerUnavailable = errors.New("docker is not available")
+
 func dockerUnavailableError(cause string) error {
-	return fmt.Errorf(`Docker is not available here (%s).
+	return fmt.Errorf("%w: %s", ErrDockerUnavailable, fmt.Sprintf(`Docker is not available here (%s).
 
 dbtools start/stop manage a tool-owned local database container, which needs
 Docker. On hosts without Docker, point your local target's connection env var
 (e.g. DBTOOLS_LOCAL_URL) at a database instance you run elsewhere, then use
-'dbtools up' / 'dbtools status' directly — no container needed`, cause)
+'dbtools up' / 'dbtools status' directly — no container needed`, cause))
 }
 
 func parseInspectOutput(out []byte, cmdErr error) (exists bool, running bool, err error) {

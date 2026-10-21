@@ -47,16 +47,16 @@ func TestLoadLocalEnvIntoProcessEnvironment(t *testing.T) {
 
 func TestRunStartWritesLocalEnv(t *testing.T) {
 	origLoadConfig := loadConfig
-	origStartContainer := startContainer
+	origStartLocalDB := startLocalDB
 	origWriteLocalEnv := writeLocalEnv
 	t.Cleanup(func() {
 		loadConfig = origLoadConfig
-		startContainer = origStartContainer
+		startLocalDB = origStartLocalDB
 		writeLocalEnv = origWriteLocalEnv
 	})
 
 	loadConfig = fakeLocalConfig("DBTOOLS_LOCAL_URL")
-	startContainer = func(string, string, string, time.Duration, bool) (string, error) {
+	startLocalDB = func(*config.Config, string, string, string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 	var wrote map[string]string
@@ -75,16 +75,16 @@ func TestRunStartWritesLocalEnv(t *testing.T) {
 
 func TestRunStartUsesConfiguredURLEnv(t *testing.T) {
 	origLoadConfig := loadConfig
-	origStartContainer := startContainer
+	origStartLocalDB := startLocalDB
 	origWriteLocalEnv := writeLocalEnv
 	t.Cleanup(func() {
 		loadConfig = origLoadConfig
-		startContainer = origStartContainer
+		startLocalDB = origStartLocalDB
 		writeLocalEnv = origWriteLocalEnv
 	})
 
 	loadConfig = fakeLocalConfig("CUSTOM_LOCAL_URL")
-	startContainer = func(string, string, string, time.Duration, bool) (string, error) {
+	startLocalDB = func(*config.Config, string, string, string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 	var wrote map[string]string
@@ -115,14 +115,14 @@ func TestRunStartMissingLocalTarget(t *testing.T) {
 }
 
 func TestRunStopRemovesLocalEnv(t *testing.T) {
-	origStopContainer := stopContainer
+	origStopLocalDB := stopLocalDB
 	origRemoveLocalEnv := removeLocalEnv
 	t.Cleanup(func() {
-		stopContainer = origStopContainer
+		stopLocalDB = origStopLocalDB
 		removeLocalEnv = origRemoveLocalEnv
 	})
 
-	stopContainer = func(string, string, bool) error { return nil }
+	stopLocalDB = func(*config.Config, string, string, bool) error { return nil }
 	removed := false
 	removeLocalEnv = func() error {
 		removed = true
@@ -149,13 +149,13 @@ func TestRunStartWritesFileRelativeToWorkingDirectory(t *testing.T) {
 	}
 
 	origLoadConfig := loadConfig
-	origStartContainer := startContainer
+	origStartLocalDB := startLocalDB
 	t.Cleanup(func() {
 		loadConfig = origLoadConfig
-		startContainer = origStartContainer
+		startLocalDB = origStartLocalDB
 	})
 	loadConfig = fakeLocalConfig("DBTOOLS_LOCAL_URL")
-	startContainer = func(string, string, string, time.Duration, bool) (string, error) {
+	startLocalDB = func(*config.Config, string, string, string, time.Duration, bool) (string, error) {
 		return "mssql://sa:pw@localhost:14330?database=dbtools_local", nil
 	}
 

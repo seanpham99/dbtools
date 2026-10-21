@@ -9,15 +9,15 @@ import (
 
 func TestRunLogsCallsLogsContainer(t *testing.T) {
 	origLoadConfig := loadConfig
-	origLogsContainer := logsContainer
+	origLogsLocalDB := logsLocalDB
 	t.Cleanup(func() {
 		loadConfig = origLoadConfig
-		logsContainer = origLogsContainer
+		logsLocalDB = origLogsLocalDB
 	})
 
 	loadConfig = fakeLocalConfig("DBTOOLS_LOCAL_URL")
 	var gotEngine string
-	logsContainer = func(engineName, projectID string, follow bool) error {
+	logsLocalDB = func(_ *config.Config, engineName, projectID string, follow bool) error {
 		gotEngine = engineName
 		return nil
 	}
@@ -26,7 +26,7 @@ func TestRunLogsCallsLogsContainer(t *testing.T) {
 		t.Fatalf("runLogs() returned error: %v", err)
 	}
 	if gotEngine != "mssql" {
-		t.Fatalf("runLogs() called logsContainer with engine %q, want mssql", gotEngine)
+		t.Fatalf("runLogs() called logsLocalDB with engine %q, want mssql", gotEngine)
 	}
 }
 
