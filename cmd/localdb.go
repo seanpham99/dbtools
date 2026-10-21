@@ -14,6 +14,9 @@ var (
 	stopLocalDB    = localdb.Stop
 	restartLocalDB = localdb.Restart
 	logsLocalDB    = localdb.Logs
+	// pruneLocalDB removes the pgx clusters whose owning project
+	// directory is gone.
+	pruneLocalDB = localdb.Prune
 )
 
 // localMaintenanceURL returns the URL of the maintenance database that

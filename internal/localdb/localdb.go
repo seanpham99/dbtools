@@ -224,11 +224,14 @@ func Prune(removeData bool, dryRun bool) (PruneReport, error) {
 				if pgx.IsPruned(home) {
 					continue
 				}
-				if err := client.Stop(context.Background()); err != nil {
-					return rep, err
-				}
-				if err := pgx.MarkPruned(home); err != nil {
-					return rep, err
+				// A dry run stops nothing and marks nothing.
+				if !dryRun {
+					if err := client.Stop(context.Background()); err != nil {
+						return rep, err
+					}
+					if err := pgx.MarkPruned(home); err != nil {
+						return rep, err
+					}
 				}
 				rep.StoppedClusters = append(rep.StoppedClusters, home)
 				continue

@@ -240,6 +240,41 @@ func TestPruneSkipsWhenPgXIsNotInstalled(t *testing.T) {
 	}
 }
 
+// A dry run must change nothing: it may not stop the runtime, and it may
+// not mark the cluster as pruned.
+func TestPruneDryRunStopsNothing(t *testing.T) {
+	fakePgX(t)
+	root := t.TempDir()
+	t.Setenv(pgx.RootEnv, root)
+
+	home := filepath.Join(root, "postgres", "abc123")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "dbtools-owner"), []byte(filepath.Join(root, "gone", "dbtools.toml")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Prune(false, true)
+	if err != nil {
+		t.Fatalf("Prune() returned error: %v", err)
+	}
+	if len(report.StoppedClusters) != 1 {
+		t.Fatalf("the dry run reported %d clusters, want 1: %v", len(report.StoppedClusters), report.StoppedClusters)
+	}
+	if pgx.IsPruned(home) {
+		t.Fatal("the dry run marked the cluster as pruned")
+	}
+	// The cluster is still reportable, so a real prune still finds it.
+	second, err := Prune(false, false)
+	if err != nil {
+		t.Fatalf("the second Prune() returned error: %v", err)
+	}
+	if len(second.StoppedClusters) != 1 {
+		t.Fatalf("the real prune reported %d clusters, want 1: %v", len(second.StoppedClusters), second.StoppedClusters)
+	}
+}
+
 // A cluster whose runtime a previous prune already stopped is not
 // reported again — the leak is closed, and repeating it would be noise.
 func TestPruneDoesNotReportAnAlreadyStoppedClusterTwice(t *testing.T) {

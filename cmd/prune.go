@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/seanpham99/dbtools/internal/container"
-	"github.com/seanpham99/dbtools/internal/localdb"
 	"github.com/spf13/cobra"
 )
 
@@ -59,6 +58,10 @@ func runPrune() error {
 		fmt.Printf("%s pgx cluster %s (project config gone)\n", verb, path)
 	}
 	for _, path := range pgxReport.StoppedClusters {
+		if pruneDryRun {
+			fmt.Printf("would stop pgx cluster %s (project config gone; data kept)\n", path)
+			continue
+		}
 		fmt.Printf("stopped pgx cluster %s (project config gone; data kept)\n", path)
 	}
 
@@ -84,7 +87,3 @@ func runPrune() error {
 	}
 	return nil
 }
-
-// pruneLocalDB removes the pgx clusters whose owning project directory is
-// gone. It is the injection seam a test replaces.
-var pruneLocalDB = localdb.Prune
