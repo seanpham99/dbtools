@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -119,6 +120,23 @@ func deadOwner(labels map[string]string) bool {
 	return err != nil && os.IsNotExist(err)
 }
 
+// liveOwner reports whether the resource's configpath label points at a
+// config file that still exists — i.e. the resource is still owned by a
+// live project. Used to refuse deletion of a volume that a dead container
+// happens to mount but that is explicitly labeled as belonging to a live
+// project.
+func liveOwner(labels map[string]string) bool {
+	if labels[LabelManaged] != "true" {
+		return false
+	}
+	path := labels[LabelConfigPath]
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // listManaged returns names of docker objects ("container" or "volume")
 // carrying LabelManaged.
 func listManaged(kind string) ([]string, error) {
@@ -141,10 +159,30 @@ func listManaged(kind string) ([]string, error) {
 	return names, nil
 }
 
+// volumeMounts returns the names of docker volumes mounted by the container
+// named name, along with any inspect error. Only volumes of type "volume"
+// are returned; bind mounts are ignored.
+func volumeMounts(name string) ([]string, error) {
+	out, err := exec.Command("docker", "inspect", "-f", `{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\n"}}{{end}}{{end}}`, name).Output()
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" && !seen[line] {
+			seen[line] = true
+			names = append(names, line)
+		}
+	}
+	return names, nil
+}
+
 // Prune removes tool-owned containers whose owning dbtools.toml no longer
 // exists — the worktree-deleted leak, where nothing runs dbtools stop. With
-// removeVolumes it also removes the labeled -data volumes those containers
-// left behind. dryRun reports without removing. Only labeled objects are
+// removeVolumes it also removes the data volumes those containers mounted
+// (labeled or not), since a dead container's mounts are dead by the same
+// evidence. dryRun reports without removing. Only labeled containers are
 // considered; unlabeled legacy containers predate the labels and are left
 // for manual cleanup because their owning path cannot be proven dead.
 func Prune(removeVolumes, dryRun bool) (PruneReport, error) {
@@ -156,11 +194,26 @@ func Prune(removeVolumes, dryRun bool) (PruneReport, error) {
 	if err != nil {
 		return rep, err
 	}
+	deadContainerVolumes := map[string]bool{}
+	extraVolumes := []string{}
 	for _, name := range containers {
-		if !deadOwner(labelsFor("container", name)) {
+		labels := labelsFor("container", name)
+		if !deadOwner(labels) {
 			continue
 		}
 		rep.Containers = append(rep.Containers, name)
+		if removeVolumes {
+			vols, err := volumeMounts(name)
+			if err != nil {
+				return rep, fmt.Errorf("inspecting mounts of %s: %w", name, err)
+			}
+			for _, v := range vols {
+				if !deadContainerVolumes[v] {
+					deadContainerVolumes[v] = true
+					extraVolumes = append(extraVolumes, v)
+				}
+			}
+		}
 		if !dryRun {
 			if out, err := exec.Command("docker", "rm", "-f", name).CombinedOutput(); err != nil {
 				return rep, fmt.Errorf("removing %s: %w: %s", name, err, strings.TrimSpace(string(out)))
@@ -170,13 +223,39 @@ func Prune(removeVolumes, dryRun bool) (PruneReport, error) {
 	if !removeVolumes {
 		return rep, nil
 	}
+	// Sort extra volumes for deterministic output.
+	sort.Strings(extraVolumes)
+
 	volumes, err := listManaged("volume")
 	if err != nil {
 		return rep, err
 	}
-	for _, name := range volumes {
-		if !deadOwner(labelsFor("volume", name)) {
-			continue
+	seen := map[string]bool{}
+	var candidates []string
+	for _, v := range volumes {
+		if !seen[v] {
+			seen[v] = true
+			candidates = append(candidates, v)
+		}
+	}
+	for _, v := range extraVolumes {
+		if !seen[v] {
+			seen[v] = true
+			candidates = append(candidates, v)
+		}
+	}
+	for _, name := range candidates {
+		if deadContainerVolumes[name] {
+			// A volume mounted by a dead container is dead by the same
+			// evidence, unless its own labels identify a live owner — in
+			// that case refuse to delete it.
+			if liveOwner(labelsFor("volume", name)) {
+				continue
+			}
+		} else {
+			if !deadOwner(labelsFor("volume", name)) {
+				continue
+			}
 		}
 		rep.Volumes = append(rep.Volumes, name)
 		if !dryRun {
