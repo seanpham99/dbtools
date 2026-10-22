@@ -41,6 +41,15 @@ func loadLocalEnv() error {
 		return err
 	}
 	for key, value := range vars {
+		// A non-empty value the caller already exported takes precedence
+		// over the convenience file: .dbtools/local.env is only a fallback
+		// for the tool-owned local database, and silently replacing an
+		// explicit DB URL would make dbtools target a different database
+		// than the one the caller named. An empty/unset variable is treated
+		// as "not provided" so the local.env value still applies.
+		if os.Getenv(key) != "" {
+			continue
+		}
 		if err := os.Setenv(key, value); err != nil {
 			return fmt.Errorf("setting %s from %s: %w", key, localenv.Path(), err)
 		}
