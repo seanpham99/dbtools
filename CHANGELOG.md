@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.2](https://github.com/seanpham99/dbtools/compare/v0.9.1...v0.9.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **container:** prune --volumes removes unlabeled data volumes mounted by dead containers ([#130](https://github.com/seanpham99/dbtools/issues/130)) ([54c3fc1](https://github.com/seanpham99/dbtools/commit/54c3fc10031a3ef9da496524ff0ae5e5a2696b2f))
+* **localenv:** don't silently override caller's environment ([#131](https://github.com/seanpham99/dbtools/issues/131)) ([da64a93](https://github.com/seanpham99/dbtools/commit/da64a93e5f87bf52ea8e990c4a7bf78051fcc73a))
+
 ## [0.9.1](https://github.com/seanpham99/dbtools/compare/v0.9.0...v0.9.1) (2026-10-21)
 
 
