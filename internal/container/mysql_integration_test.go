@@ -14,7 +14,7 @@ import (
 func TestMySQLStartStopIdempotent(t *testing.T) {
 	const projectID = "itest-mysql"
 
-	url, err := StartForWithTimeout("mysql", projectID, "", 60*time.Second, true)
+	url, err := StartForWithTimeout("mysql", projectID, "", "", 60*time.Second, true)
 	if err != nil {
 		t.Fatalf("StartForWithTimeout(mysql) returned error: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestMySQLStartStopIdempotent(t *testing.T) {
 		t.Fatal("StartForWithTimeout(mysql) returned empty URL")
 	}
 
-	url2, err := StartForWithTimeout("mysql", projectID, "", 60*time.Second, true)
+	url2, err := StartForWithTimeout("mysql", projectID, "", "", 60*time.Second, true)
 	if err != nil {
 		t.Fatalf("second StartForWithTimeout(mysql) returned error: %v", err)
 	}

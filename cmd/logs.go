@@ -4,17 +4,14 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/spf13/cobra"
 )
-
-var logsContainer = container.LogsFor
 
 var logsFollow bool
 
 var logsCmd = &cobra.Command{
 	Use:   "logs",
-	Short: "Stream logs from the tool-owned local database container",
+	Short: "Stream logs from the tool-owned local database",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runLogs()
 	},
@@ -32,11 +29,11 @@ func runLogs() error {
 	}
 	engineName := localEngineName(cfg)
 	if engineName == "sqlite" {
-		return fmt.Errorf("sqlite has no container to show logs for")
+		return fmt.Errorf("sqlite has no local database to show logs for")
 	}
 	projectID, err := loadProjectID(cfg)
 	if err != nil {
 		return err
 	}
-	return logsContainer(engineName, projectID, logsFollow)
+	return logsLocalDB(cfg, engineName, projectID, logsFollow)
 }

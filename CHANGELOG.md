@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.2](https://github.com/seanpham99/dbtools/compare/v0.9.1...v0.9.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **container:** prune --volumes removes unlabeled data volumes mounted by dead containers ([#130](https://github.com/seanpham99/dbtools/issues/130)) ([54c3fc1](https://github.com/seanpham99/dbtools/commit/54c3fc10031a3ef9da496524ff0ae5e5a2696b2f))
+* **localenv:** don't silently override caller's environment ([#131](https://github.com/seanpham99/dbtools/issues/131)) ([da64a93](https://github.com/seanpham99/dbtools/commit/da64a93e5f87bf52ea8e990c4a7bf78051fcc73a))
+
+## [0.9.1](https://github.com/seanpham99/dbtools/compare/v0.9.0...v0.9.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **container:** treat docker inspect errors as unverifiable, not absent ([#126](https://github.com/seanpham99/dbtools/issues/126)) ([97c62e9](https://github.com/seanpham99/dbtools/commit/97c62e9807bab2d791cdac5035a694bdea0814a6))
+
+## [0.9.0](https://github.com/seanpham99/dbtools/compare/v0.8.1...v0.9.0) (2026-10-21)
+
+
+### Features
+
+* add pgx as an alternative local-database provider ([#120](https://github.com/seanpham99/dbtools/issues/120)) ([e57785b](https://github.com/seanpham99/dbtools/commit/e57785ba714e3b175966660a919dd0770507c042))
+* generalize the local database config and use a pgx scratch for diff ([6f8f783](https://github.com/seanpham99/dbtools/commit/6f8f783106350227dafdc0cc73024b64bc16bb44))
+* generalize the local database config and use a pgx scratch for diff ([6f8f783](https://github.com/seanpham99/dbtools/commit/6f8f783106350227dafdc0cc73024b64bc16bb44)), closes [#122](https://github.com/seanpham99/dbtools/issues/122) [#123](https://github.com/seanpham99/dbtools/issues/123) [#121](https://github.com/seanpham99/dbtools/issues/121)
+
+## [0.8.1](https://github.com/seanpham99/dbtools/compare/v0.8.0...v0.8.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* plan entry build no longer panics on unconfigured targets ([#116](https://github.com/seanpham99/dbtools/issues/116)) ([dcf7434](https://github.com/seanpham99/dbtools/commit/dcf7434ac14c93bfb1447ec7f38b526270691781))
+* read paths (status/plan/dryrun) ensure ledger schema before State ([#118](https://github.com/seanpham99/dbtools/issues/118)) ([9fa1953](https://github.com/seanpham99/dbtools/commit/9fa19538d8982332d3ad4fac609e8ae0476cb368))
+* **scripts:** count only client backends in idle-container reap ([#119](https://github.com/seanpham99/dbtools/issues/119)) ([36dcb95](https://github.com/seanpham99/dbtools/commit/36dcb95d920ff280ec7889b7551a477cad127eb5))
+
 ## [0.8.0](https://github.com/seanpham99/dbtools/compare/v0.7.3...v0.8.0) (2026-10-09)
 
 

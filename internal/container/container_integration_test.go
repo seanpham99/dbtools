@@ -10,7 +10,7 @@ import (
 func TestMSSQLStartStopIdempotent(t *testing.T) {
 	const projectID = "itest-mssql"
 
-	url, err := StartForWithTimeout("mssql", projectID, "", 30*time.Second, true)
+	url, err := StartForWithTimeout("mssql", projectID, "", "", 30*time.Second, true)
 	if err != nil {
 		t.Fatalf("StartForWithTimeout(mssql) returned error: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestMSSQLStartStopIdempotent(t *testing.T) {
 	}
 
 	// Calling Start again while already running must be a no-op, not an error.
-	url2, err := StartForWithTimeout("mssql", projectID, "", 30*time.Second, true)
+	url2, err := StartForWithTimeout("mssql", projectID, "", "", 30*time.Second, true)
 	if err != nil {
 		t.Fatalf("second StartForWithTimeout(mssql) returned error: %v", err)
 	}

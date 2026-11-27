@@ -47,15 +47,37 @@ func TestLoadProjectIDOrDefault_FallsBackWithoutConfig(t *testing.T) {
 	}
 }
 
-func TestConfiguredContainerPort_DefaultsToEmpty(t *testing.T) {
-	if got := configuredContainerPort(&config.Config{}); got != "" {
-		t.Fatalf("configuredContainerPort(zero-value) = %q, want empty (let Docker assign)", got)
+func TestConfiguredLocalPort_DefaultsToEmpty(t *testing.T) {
+	if got := configuredLocalPort(&config.Config{}); got != "" {
+		t.Fatalf("configuredLocalPort(zero-value) = %q, want empty (let the provider assign)", got)
 	}
 }
 
-func TestConfiguredContainerPort_UsesConfiguredValue(t *testing.T) {
+func TestConfiguredLocalPort_HonorsDeprecatedContainerPort(t *testing.T) {
 	cfg := &config.Config{Container: config.ContainerConfig{Port: 55432}}
-	if got := configuredContainerPort(cfg); got != "55432" {
-		t.Fatalf("configuredContainerPort() = %q, want %q", got, "55432")
+	if got := configuredLocalPort(cfg); got != "55432" {
+		t.Fatalf("configuredLocalPort() = %q, want %q", got, "55432")
+	}
+}
+
+func TestConfiguredLocalPort_LocalKeyWinsOverContainerKey(t *testing.T) {
+	pinned := 55433
+	cfg := &config.Config{
+		Local:     config.LocalConfig{Port: &pinned},
+		Container: config.ContainerConfig{Port: 55432},
+	}
+	if got := configuredLocalPort(cfg); got != "55433" {
+		t.Fatalf("configuredLocalPort() = %q, want %q ([local] port must win)", got, "55433")
+	}
+}
+
+func TestConfiguredLocalPort_ExplicitZeroUnpinsTheLegacyValue(t *testing.T) {
+	zero := 0
+	cfg := &config.Config{
+		Local:     config.LocalConfig{Port: &zero},
+		Container: config.ContainerConfig{Port: 55432},
+	}
+	if got := configuredLocalPort(cfg); got != "" {
+		t.Fatalf("configuredLocalPort() = %q, want empty: an explicit [local] port = 0 must unpin, not fall back to the deprecated key", got)
 	}
 }

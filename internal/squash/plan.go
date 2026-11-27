@@ -10,6 +10,7 @@ import (
 
 	"github.com/seanpham99/dbtools/internal/apply"
 	"github.com/seanpham99/dbtools/internal/config"
+	"github.com/seanpham99/dbtools/internal/container"
 	"github.com/seanpham99/dbtools/internal/diff"
 	"github.com/seanpham99/dbtools/internal/dump"
 	"github.com/seanpham99/dbtools/internal/engine"
@@ -57,11 +58,19 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("no migration versions at or below %d found in %s", uptoVersion, migrationsDir)
 	}
 
-	replay, err := scratchdb.ProvisionSeries(eng, "", targetSeries)
+	replay, err := scratchdb.ProvisionContainer(eng, "", targetSeries)
 	if err != nil {
 		return nil, fmt.Errorf("provisioning replay scratch database: %w", err)
 	}
 	url1 := replay.URL
+	// squash dumps the replay database's schema with the engine's own tool,
+	// run inside the scratch container so the tool's version always matches
+	// the server's (ADR 003 decision 7). A container-less scratch would
+	// silently downgrade the dump to a host binary of unknown version, so
+	// refuse rather than produce a baseline that does not apply.
+	if !useHostTools && container.SupportsInContainerDump(eng.Name()) && replay.Container == "" {
+		return nil, fmt.Errorf("the scratch database has no container to run %s's dump tool in; squash needs a version-matched dump tool, so its scratch database must be container-backed", eng.Name())
+	}
 	if cleanup1 := replay.Cleanup; cleanup1 != nil {
 		defer func() {
 			if cerr := cleanup1(); cerr != nil && err == nil {
@@ -117,7 +126,7 @@ func BuildPlan(cfg *config.Config, eng engine.Engine, migrationsDir, upSuffix st
 		return nil, fmt.Errorf("dumping scratch database schema: %w", err)
 	}
 
-	verify, err := scratchdb.ProvisionSeries(eng, "", targetSeries)
+	verify, err := scratchdb.ProvisionContainer(eng, "", targetSeries)
 	if err != nil {
 		return nil, fmt.Errorf("provisioning verification scratch database: %w", err)
 	}

@@ -24,6 +24,7 @@ nuance than a table row can hold, read the matching file before using them:
 | `dbtools generate` — Pydantic/TS codegen, `--check` CI drift gate | `codegen.md` |
 | MySQL `url_env` connection-string format and gotchas | `mysql.md` |
 | Container lifecycle project scoping, ports, volume persistence | `container.md` |
+| pgx provider — running the local database without Docker (postgres only) | `pgx.md` |
 | Docker image — base, tags, mount vs. build-`FROM` consumption patterns | `docker-image.md` |
 | Private-network job execution — read-only observation, container retry policies, structured logging, diagnostics | `private-network-jobs.md` |
 
@@ -40,6 +41,7 @@ nuance than a table row can hold, read the matching file before using them:
 | **adopt** | Imports existing migration history from another tool (Flyway, Knex, EF, Alembic, golang-migrate). | `import`, `migrate-from` |
 | **repair** | Corrects ledger status for target versions. Replaces deprecated `stamp`. | `stamp` (removed; use `repair`) |
 | **clone** | Copies data from one target into another of the same engine, masking sensitive columns by default (`--no-mask` opts out). Data-only — schema must already match (both targets share one `migrations_dir`). | `sync`, `restore` |
+| **local provider** | What hosts the tool-owned local database: `docker` (default) or `pgx` (postgres only, no Docker). Set by `[local] provider` in `dbtools.toml`. | "the container" (say "the local database") |
 
 ## Quick Command Reference
 
@@ -65,13 +67,14 @@ dbtools up [--target local] [--dry-run]
 # Apply pending migrations to named target (explicit target name; refuses without --yes)
 dbtools push <target_name> [--yes] [--dry-run]
 
-# Start/stop/restart the tool-owned local database container (project-scoped
-# name and port; data survives stop unless --no-backup is passed)
+# Start/stop/restart the tool-owned local database (project-scoped; Docker
+# by default, or a pgx runtime with [local] provider = "pgx"; data survives
+# stop unless --no-backup is passed)
 dbtools start [--timeout 30s] [--no-wait]
 dbtools stop [--no-backup]
 dbtools restart [--timeout 30s] [--no-wait]
 
-# Stream logs from the tool-owned local database container
+# Stream logs from the tool-owned local database
 dbtools logs [-f]
 
 # Reap tool-owned local databases whose dbtools.toml no longer exists
@@ -150,6 +153,11 @@ name = "my-project"                 # optional; human-readable name for the
 [container]
 port = 55432                        # optional; pins the local database host port
                                     # (default: Docker assigns a free port)
+
+[local]
+provider = "docker"                 # optional; "pgx" runs the local database in an
+                                    # external pgx runtime instead of a container
+                                    # (postgres engine only, no Docker needed)
 
 [targets.local]
 url_env = "DBTOOLS_LOCAL_URL"

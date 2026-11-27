@@ -24,6 +24,12 @@ var seedRun = seed.Run
 
 var resetLocalDatabase = recreateLocalDatabase
 
+// maintenanceURLFor resolves the maintenance database URL of the
+// tool-owned local database. The docker provider re-derives it from the
+// container; the pgx provider re-derives it from the cluster's own
+// credentials.
+var maintenanceURLFor = localMaintenanceURL
+
 var (
 	resetYes    bool
 	resetTarget string
@@ -55,9 +61,9 @@ func init() {
 }
 
 // recreateLocalDatabase drops and recreates the tool-owned local
-// container's database for eng. For server engines, reset is deliberately
-// scoped to that container — its maintenance URL comes from the container
-// package, never from user configuration, so a mistyped target URL can't
+// database for eng. For server engines, reset is deliberately scoped to
+// that local database — its maintenance URL comes from the local
+// provider, never from user configuration, so a mistyped target URL can't
 // aim the drop at a real server. For sqlite there is no server: the local
 // target's own database file is deleted and recreated empty.
 func recreateLocalDatabase(eng engine.Engine, localURL string) error {
@@ -65,7 +71,7 @@ func recreateLocalDatabase(eng engine.Engine, localURL string) error {
 		return recreateSQLiteFile(localURL)
 	}
 
-	maintenanceURL, err := container.MaintenanceURLFor(eng.Name(), localURL)
+	maintenanceURL, err := maintenanceURLFor(eng.Name(), localURL)
 	if err != nil {
 		return err
 	}

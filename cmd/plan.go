@@ -17,14 +17,18 @@ import (
 // versions. It is the agent/CI-facing "show me what happens next" surface —
 // exit 0 means "safe to apply", non-zero means "investigate first".
 var planCmd = &cobra.Command{
-	Use:   "plan",
+	Use:   "plan [target]",
 	Short: "Preview pending migrations and drift without applying anything (read-only)",
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Reset explicitly: cmd is a package-level singleton, so a prior
 		// invocation's exit-2 outcome (which sets this true, below) would
 		// otherwise leak into every later invocation in the same process
 		// — including, notably, every other test in this package's suite.
 		cmd.SilenceUsage = false
+		if len(args) > 0 && args[0] != "" {
+			planTarget = args[0]
+		}
 		err := runPlan()
 		// Exit 2 (pending/drift) is a documented, expected outcome of a
 		// correct run, not a usage mistake — only silence usage for that
@@ -142,14 +146,20 @@ func buildPlanEntries(cfg *config.Config) []planJSONEntry {
 			if planTarget != "" {
 				override = planURL
 			}
-			url, _ := cfg.ResolveURLOrFlag(r.Target, override)
-			eng, err := engine.ForTarget(cfg.EngineName(r.Target), url)
-			if err == nil {
-				d, ls := planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), r.Target)
-				if d != nil {
-					drift = d
+			url, err := cfg.ResolveURLOrFlag(r.Target, override)
+			if err != nil {
+				drift = []string{"verify: " + err.Error()}
+			} else {
+				eng, err := engine.ForTarget(cfg.EngineName(r.Target), url)
+				if err != nil {
+					drift = []string{"verify: " + err.Error()}
+				} else {
+					d, ls := planDrift(url, eng, cfg.MigrationsDir, cfg.Migrations.UpSuffix, cfg.LedgerTableName(), r.Target)
+					if d != nil {
+						drift = d
+					}
+					ledgerSkipped = ls
 				}
-				ledgerSkipped = ls
 			}
 		}
 		e := planJSONEntry{

@@ -10,8 +10,8 @@
 #      worktree-deleted leak that started this.
 #
 # The dbtools binary is resolved as ../dbtools relative to this script (the
-# repo's gitignored build output), NOT via PATH — ~/.local/bin/dbtools is an
-# older npm-installed release that lacks `prune`.
+# repo's gitignored build output), NOT via PATH — the PATH dbtools is the
+# npm wrapper, which serves the last published release and can lag this build.
 #
 # Install: crontab -e
 #   17 */6 * * * <repo>/scripts/prune_stale_containers.sh >>/tmp/dbtools-prune.log 2>&1
@@ -33,8 +33,12 @@ for name in $(docker ps --format '{{.Names}}' | grep -E '^dbtools-postgres-[0-9a
     # connection or idle-in-transaction session is still a live client, and
     # reaping under it kills in-flight work. Idle dev containers leak by
     # having no connections at all, not by having idle ones.
+    # Filter backend_type='client backend': postgres system workers
+    # (checkpointer, background writer, walwriter, autovacuum launcher,
+    # logical replication launcher) also appear in pg_stat_activity and
+    # would make every container report ~5 phantom "clients" forever.
     conns=$(docker exec "$name" psql -U postgres -tAc \
-        "select count(*) from pg_stat_activity where pid<>pg_backend_pid()" \
+        "select count(*) from pg_stat_activity where pid<>pg_backend_pid() and backend_type='client backend'" \
         2>/dev/null || echo -1)
     # a failed check (-1) means "don't touch" — never reap blind.
     if [ "$conns" = "0" ]; then
