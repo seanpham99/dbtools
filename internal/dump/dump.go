@@ -213,7 +213,7 @@ func dumpMSSQL(scratchURL string, excludeTables []string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s failed: %w: %s", toolName, err, strings.TrimSpace(string(out)))
 	}
-	return StripMSSQLUseStatement(string(out)), nil
+	return NormalizeMSSQLConstraintNames(StripMSSQLUseStatement(string(out))), nil
 }
 
 var (
