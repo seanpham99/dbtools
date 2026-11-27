@@ -61,6 +61,7 @@ When deploying the squashed codebase to other already-migrated environments (suc
 
 ```bash
 dbtools repair <target> 0:applied --yes
+dbtools repair <target> <v1>:reverted,<v2>:reverted,... --yes
 ```
 
-This marks version `0` as applied in that environment's ledger, ensuring it will not attempt to run the squashed baseline. Fresh environments do not need this — they simply run `dbtools up` or `dbtools push` to apply the baseline.
+The first command marks version `0` (the squashed baseline) as applied so the environment will not attempt to run it. The second marks every collapsed version `reverted` — the required end state: an `applied` ledger row whose file was archived away reports DRIFT, while `verify` accepts a `reverted` row with no file (it is skipped before any object check). On the squashed target itself `squash --yes` already performs both steps; only *other* migrated targets need them by hand. Fresh environments do not need any of this — they simply run `dbtools up` or `dbtools push` to apply the baseline.
