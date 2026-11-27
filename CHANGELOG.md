@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.4](https://github.com/seanpham99/dbtools/compare/v0.9.3...v0.9.4) (2026-11-27)
+
+
+### Bug Fixes
+
+* **dump:** deterministic, collision-safe constraint normalization + skill corrections ([f623c8b](https://github.com/seanpham99/dbtools/commit/f623c8bcdc0666f8cced911b2fdeee60c6453ad0))
+* **dump:** deterministic, collision-safe MSSQL constraint name normalization ([d790844](https://github.com/seanpham99/dbtools/commit/d790844c2f66e45e52375d26a5a28f81571cc880))
+
 ## [0.9.3](https://github.com/seanpham99/dbtools/compare/v0.9.2...v0.9.3) (2026-11-27)
 
 
