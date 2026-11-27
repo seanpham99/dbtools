@@ -184,12 +184,13 @@ protected = true                    # optional; refuses destructive ops
 
 ### 3. Checking for Drift & Repairing Ledger
 1. Run `dbtools verify <target>` to check ledger entries against live DB objects and file hashes; `dbtools diff <target>` for structural drift beyond the ledger.
-2. If drift or state mismatch is found, fix ledger using `dbtools repair <target> <version>:<status> --yes` (or `dbtools force` for a stuck `applying` row).
+2. Scope `dbtools repair <target> <version>:<status> --yes` strictly to the versions `verify` flags — repair rewrites ledger rows only, it never changes schema. `dbtools force` is only the escape hatch for a stuck `applying` row.
+3. Structural drift reported by `dbtools diff` is real schema the ledger doesn't know about: fix it by scaffolding a new migration with `dbtools new`, never with `repair`/`force` — those would mark the drift resolved without touching the database.
 
 ### 4. Squashing Migration History
 1. Run `dbtools squash <target>` dry-run first — it replays migrations into scratch DBs and verifies the dumped baseline reproduces the schema before writing anything.
 2. `--yes` writes `0000000000000_squashed_baseline.up.sql`, archives collapsed files to `migrations/_archived/`, and re-stamps already-applied targets.
-3. Other already-migrated environments need `dbtools repair <target> 0:applied --yes` after the squash lands.
+3. Other already-migrated environments need the same ledger surgery by hand after the squash lands: `dbtools repair <target> 0:applied --yes` for the baseline, plus `dbtools repair <target> <v1>:reverted,<v2>:reverted,... --yes` marking each collapsed version reverted — `verify` accepts a reverted row whose migration file was archived away. (`squash --yes` already does both on the squashed target itself.)
 
 ### 5. Generating Pydantic Models for Downstream Code
 1. Ensure migrations are applied (`dbtools up` or `dbtools reset`).
